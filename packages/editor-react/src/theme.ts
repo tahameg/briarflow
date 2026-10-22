@@ -126,6 +126,51 @@ export function nodeAccent(color: NodeColor | null | undefined, category: string
   return CATEGORY_TOKENS[key] ?? "stone";
 }
 
+/**
+ * LED color family of a port (woodshop nodes): text amber, numbers green, boolean yellow,
+ * media red, structured (struct, enum, json, file) frosted white, unbound `$T` "any".
+ * The CSS colors are `--bf-led-<family>`.
+ */
+export type LedFamily = "text" | "num" | "bool" | "media" | "data" | "any";
+
+const PRIMITIVE_LEDS: Record<string, LedFamily> = {
+  text: "text",
+  int: "num",
+  float: "num",
+  boolean: "bool",
+  image: "media",
+  video: "media",
+  audio: "media",
+  model3d: "media",
+};
+
+/**
+ * LED family of a type; `list<X>` and `X?` take X's family.
+ *
+ * @example
+ * ```ts
+ * ledFamily({ kind: "list", of: { kind: "primitive", name: "int" } }); // "num"
+ * ```
+ */
+export function ledFamily(type: TypeRef): LedFamily {
+  switch (type.kind) {
+    case "primitive":
+      return PRIMITIVE_LEDS[type.name] ?? "data";
+    case "named":
+      return "data";
+    case "list":
+    case "optional":
+      return ledFamily(type.of);
+    case "var":
+      return "any";
+  }
+}
+
+/** `list<X>` or `list<X>?`: the LED is a bar instead of a dot. */
+export function isListType(type: TypeRef): boolean {
+  return type.kind === "list" || (type.kind === "optional" && type.of.kind === "list");
+}
+
 /** The theme object (`briarTheme`) with the same names as the CSS tokens. */
 export const briarTheme = {
   tokens: BRIAR_TOKENS,

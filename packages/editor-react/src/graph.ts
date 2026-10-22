@@ -28,8 +28,8 @@ import type {
   TypeScope,
 } from "@briarflow/core";
 import type { NodeRunState, RunState } from "@briarflow/editor";
-import { nodeAccent, typeStyle } from "./theme.js";
-import type { BriarToken, NamedKindLookup, TypeStyle } from "./theme.js";
+import { isListType, ledFamily, nodeAccent, typeStyle } from "./theme.js";
+import type { BriarToken, LedFamily, NamedKindLookup, TypeStyle } from "./theme.js";
 
 /** One port of a node on the canvas. */
 export interface PortView {
@@ -40,6 +40,12 @@ export interface PortView {
   /** Shorthand (`list<Character?>`). */
   typeText: string;
   style: TypeStyle;
+  /** LED color family. */
+  led: LedFamily;
+  /** `list<…>`: bar LED. */
+  list: boolean;
+  /** Wires on this port (inputs: 0 or 1). */
+  links: number;
   widget?: PortWidget;
   hasDefault: boolean;
   default?: unknown;
@@ -89,6 +95,8 @@ export interface EdgeView {
   targetPort: string;
   /** Source port color. */
   color: string;
+  /** Source port LED family (cable core color). */
+  family: LedFamily;
   /** Error message when the edge is invalid (e.g. `edge.type_mismatch`). */
   invalid?: string;
   /** Target node is running. */
@@ -182,7 +190,12 @@ export function buildFlowView(
   for (const node of flow.nodes) titles.set(node.id, nodeTitle(doc, flow, node, cat.get(node.type)));
 
   const incoming = new Map<string, { nodeId: string; port: string; edgeId: string }>();
-  for (const e of flow.edges) incoming.set(`${e.to.node}\u0000${e.to.port}`, { nodeId: e.from.node, port: e.from.port, edgeId: e.id });
+  const outgoing = new Map<string, number>();
+  for (const e of flow.edges) {
+    incoming.set(`${e.to.node}\u0000${e.to.port}`, { nodeId: e.from.node, port: e.from.port, edgeId: e.id });
+    const key = `${e.from.node}\u0000${e.from.port}`;
+    outgoing.set(key, (outgoing.get(key) ?? 0) + 1);
+  }
 
   const portView = (node: NodeInstance, p: ResolvedPort, dir: "in" | "out", diags: Diagnostic[]): PortView => {
     const view: PortView = {
@@ -191,6 +204,9 @@ export function buildFlowView(
       type: p.type,
       typeText: formatType(p.type, scope),
       style: typeStyle(p.type, kindOf),
+      led: ledFamily(p.type),
+      list: isListType(p.type),
+      links: dir === "out" ? (outgoing.get(`${node.id}\u0000${p.name}`) ?? 0) : 0,
       hasDefault: p.hasDefault,
       hasValue: false,
       errors: diags.filter((d) => d.severity === "error" && d.path.port === p.name).map((d) => d.message),
@@ -200,7 +216,10 @@ export function buildFlowView(
     if (p.hasDefault) view.default = p.default;
     if (dir === "in") {
       const src = incoming.get(`${node.id}\u0000${p.name}`);
-      if (src) view.source = { ...src, label: `${titles.get(src.nodeId) ?? src.nodeId}.${src.port}` };
+      if (src) {
+        view.source = { ...src, label: `${titles.get(src.nodeId) ?? src.nodeId}.${src.port}` };
+        view.links = 1;
+      }
       const values = node.values ?? {};
       if (Object.prototype.hasOwnProperty.call(values, p.name)) {
         view.hasValue = true;
@@ -251,6 +270,7 @@ export function buildFlowView(
       target: e.to.node,
       targetPort: e.to.port,
       color: src?.style.color ?? "var(--bf-ink-muted)",
+      family: src?.led ?? "any",
       running: runNodes?.[e.to.node]?.status === "running",
     };
     if (invalid) view.invalid = invalid.message;

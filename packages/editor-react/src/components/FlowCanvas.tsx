@@ -18,7 +18,7 @@ import {
   Position as HandlePosition,
   ReactFlow,
   ReactFlowProvider,
-  getSmoothStepPath,
+  getBezierPath,
   useReactFlow,
   useStore as useFlowStore,
   useUpdateNodeInternals,
@@ -34,11 +34,12 @@ import { useCanvasHandle, useDispatch, useEditorState, useEditorStore, useFlowId
 import { NODE_CONFIG_MIME, NODE_TYPE_MIME, initialConfig, snap } from "../palette.js";
 import { formatDuration, previewValue } from "../values.js";
 import { TypePicker } from "./TypePicker.js";
-import { AddRow, Badge, EditableName, StatusDot, portClasses } from "./ui.js";
+import { AddRow, Badge, EditableName } from "./ui.js";
 import type { DotState } from "./ui.js";
 import { ValueEditor } from "./ValueEditor.js";
 import { useEditorShortcuts } from "./shortcuts.js";
 import { useCanvasMenu } from "./canvasMenu.js";
+import { Led, NodeMedal, PilotLamp, VuMeter, inputLed, medalIcon, outputLed } from "./nodeParts.js";
 
 interface NodeData extends Record<string, unknown> {
   view: NodeView;
@@ -291,20 +292,20 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
         snapGrid={[12, 12]}
         minZoom={0.2}
         maxZoom={2.5}
-        connectionLineStyle={{ stroke: "var(--bf-yellow)", strokeWidth: 3, strokeDasharray: "6 4" }}
+        connectionLineStyle={{ stroke: "var(--bf-brass-hi)", strokeWidth: 2.5, strokeDasharray: "6 5" }}
         defaultEdgeOptions={{ type: "briar" }}
         proOptions={{ hideAttribution: true }}
         colorMode="dark"
         aria-label={`Flow ${view.flow.name}`}
       >
-        <Background id="minor" variant={BackgroundVariant.Lines} gap={24} color="var(--bf-grid-minor)" lineWidth={1} />
-        <Background id="major" variant={BackgroundVariant.Lines} gap={120} color="var(--bf-grid-major)" lineWidth={1} />
+        <Background id="minor" variant={BackgroundVariant.Lines} gap={24} color="var(--bf-bench-grid-minor)" lineWidth={1} />
+        <Background id="major" variant={BackgroundVariant.Lines} gap={120} color="var(--bf-bench-grid-major)" lineWidth={1} />
         <Controls className="bf-canvas__controls" showInteractive={false} fitViewOptions={BUTTON_FIT}>
           <ControlButton onClick={() => setShowMap((v) => !v)} title={showMap ? "Hide minimap" : "Show minimap"} aria-label={showMap ? "Hide minimap" : "Show minimap"}>
             ▦
           </ControlButton>
         </Controls>
-        {showMap ? <MiniMap className="bf-minimap" pannable zoomable nodeColor={() => "var(--bf-surface-3)"} maskColor="rgba(0,0,0,0.6)" /> : null}
+        {showMap ? <MiniMap className="bf-minimap" pannable zoomable nodeColor={() => "#9a4a22"} maskColor="rgba(0,0,0,0.6)" /> : null}
       </ReactFlow>
     </div>
   );
@@ -357,100 +358,117 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
   const status = nodeDot(view, runActive);
   const compact = useFlowStore((s) => s.transform[2] < COMPACT_BELOW_ZOOM);
   useEffect(() => updateNodeInternals(id), [id, layoutKey, compact, updateNodeInternals]);
+  const running = view.run?.status === "running";
   const classes = [
     "bf-node",
     compact && "bf-node--compact",
     view.builtin && "bf-node--builtin",
     view.variable && "bf-node--variable",
     selected && "bf-node--selected",
+    running && "bf-node--running",
     view.errorCount > 0 && "bf-node--error",
     view.run?.status === "skipped" && "bf-node--skipped",
     view.run?.status === "failed" && "bf-node--failed",
   ]
     .filter(Boolean)
     .join(" ");
-  const failure = view.run?.status === "failed" ? view.run.error?.message : undefined;
+  const failure = view.run?.status === "failed" ? (view.run.error?.message ?? "The node failed.") : undefined;
+  const icon = medalIcon({ builtin: view.builtin ? (view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output") : undefined, variable: view.variable, category: view.definition?.category });
   return (
-    <div className={classes} style={{ "--bf-node-strip": `var(--bf-${view.accent})` } as CSSProperties} title={failure}>
-      <header className="bf-node__header">
-        <span className="bf-node__titles">
-          <span className="bf-node__title">{view.title}</span>
-          {!view.builtin && !view.variable && (view.unknownType || view.typeTitle !== view.title) ? <span className="bf-node__type">{view.unknownType ? `${view.type} (unknown)` : view.typeTitle}</span> : null}
-        </span>
-        <span className="bf-node__status">
-          {view.errorCount > 0 ? (
-            <Badge tone="danger" title={view.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("\n")}>
-              ⚠ {view.errorCount}
-            </Badge>
-          ) : view.warningCount > 0 ? (
-            <Badge tone="peach" title={view.diagnostics.map((d) => d.message).join("\n")}>
-              ⚠ {view.warningCount}
-            </Badge>
-          ) : null}
-          {status?.badge ? (
-            <Badge tone={status.badge.tone} title={status.badge.title}>
-              {status.badge.text}
-            </Badge>
-          ) : null}
-          {status ? <StatusDot state={status.state} label={`run status: ${status.state}`} /> : null}
-        </span>
-      </header>
-      {view.run?.status === "running" && view.run.progress !== undefined ? (
-        <div className="bf-node__progress" style={{ width: `${Math.round(Math.min(1, Math.max(0, view.run.progress)) * 100)}%` }} />
-      ) : null}
-      <div className="bf-node__body">
-        {view.builtin ? <SignatureRows dir={view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output"} ports={view.type === FLOW_INPUT_NODE_TYPE ? view.outputs : view.inputs} flowId={flowId} scope={scope} /> : null}
-        {!view.builtin && view.inputs.map((p) => (
-          <div className={p.errors.length ? "bf-node__row bf-node__row--invalid" : "bf-node__row"} key={`i:${p.name}`} title={`${p.title}: ${p.typeText}${p.errors.length ? `\n${p.errors.join("\n")}` : ""}`}>
-            <Handle
-              type="target"
-              position={HandlePosition.Left}
-              id={inHandle(p.name)}
-              className={`bf-handle ${portClasses(p.style)}`}
-              style={{ "--bf-port-color": p.style.color } as CSSProperties}
-              aria-label={`input ${p.name}: ${p.typeText}`}
-            />
-            <span className="bf-node__label">{p.title}</span>
-            {p.source ? (
-              <span className="bf-node__source">← {p.source.label}</span>
-            ) : (
-              <span className="bf-node__widget">
-                <ValueEditor
-                  compact
-                  type={p.type}
-                  scope={scope}
-                  widget={p.widget}
-                  label={`${view.title} ${p.title}`}
-                  value={p.hasValue ? p.value : undefined}
-                  placeholder={p.hasDefault ? previewValue(p.default, 20) : undefined}
-                  invalid={p.errors.length > 0}
-                  mediaUrl={mediaUrl}
-                  onCommit={(value) => dispatch({ op: "node.setValue", flowId, nodeId: view.id, port: p.name, value })}
-                />
-              </span>
-            )}
+    <div className={classes}>
+      <div className="bf-node__plate">
+        <header className="bf-node__header">
+          <NodeMedal icon={icon} />
+          <span className="bf-node__titles">
+            <span className="bf-node__title">{view.title}</span>
+            {!view.builtin && !view.variable && (view.unknownType || view.typeTitle !== view.title) ? <span className="bf-node__type">{view.unknownType ? `${view.type} (unknown)` : view.typeTitle}</span> : null}
+          </span>
+          <span className="bf-node__status">
+            {view.errorCount > 0 ? (
+              <Badge tone="danger" title={view.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("\n")}>
+                {view.errorCount} {view.errorCount === 1 ? "error" : "errors"}
+              </Badge>
+            ) : view.warningCount > 0 ? (
+              <Badge tone="peach" title={view.diagnostics.map((d) => d.message).join("\n")}>
+                {view.warningCount} warn
+              </Badge>
+            ) : null}
+            {status?.badge ? (
+              <Badge tone={status.badge.tone} title={status.badge.title}>
+                {status.badge.text}
+              </Badge>
+            ) : null}
+            <PilotLamp state={status?.state} />
+          </span>
+        </header>
+        {running && view.run?.progress !== undefined ? <VuMeter progress={view.run.progress} /> : null}
+        <div className="bf-node__body">
+          {view.builtin ? <SignatureRows dir={view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output"} ports={view.type === FLOW_INPUT_NODE_TYPE ? view.outputs : view.inputs} flowId={flowId} scope={scope} /> : null}
+          {!view.builtin && view.inputs.map((p) => (
+            <div className={p.errors.length ? "bf-node__row bf-node__row--invalid" : "bf-node__row"} key={`i:${p.name}`} title={`${p.title}: ${p.typeText}${p.errors.length ? `\n${p.errors.join("\n")}` : ""}`}>
+              <Handle
+                type="target"
+                position={HandlePosition.Left}
+                id={inHandle(p.name)}
+                className={socketClass(p)}
+                style={socketStyle(p)}
+                aria-label={`input ${p.name}: ${p.typeText}`}
+              />
+              <Led family={p.led} state={inputLed(p, running)} bar={p.list} />
+              <span className="bf-node__label">{p.title}</span>
+              {p.source ? (
+                <span className="bf-node__source">← {p.source.label}</span>
+              ) : (
+                <span className="bf-node__widget">
+                  <ValueEditor
+                    compact
+                    type={p.type}
+                    scope={scope}
+                    widget={p.widget}
+                    label={`${view.title} ${p.title}`}
+                    value={p.hasValue ? p.value : undefined}
+                    placeholder={p.hasDefault ? previewValue(p.default, 20) : undefined}
+                    invalid={p.errors.length > 0}
+                    mediaUrl={mediaUrl}
+                    onCommit={(value) => dispatch({ op: "node.setValue", flowId, nodeId: view.id, port: p.name, value })}
+                  />
+                </span>
+              )}
+            </div>
+          ))}
+          {!view.builtin && view.outputs.map((p) => (
+            <div className="bf-node__row bf-node__row--out" key={`o:${p.name}`} title={`${p.title}: ${p.typeText}`}>
+              <span className="bf-node__otype">{p.typeText}</span>
+              <span className="bf-node__label">{p.title}</span>
+              <Led family={p.led} state={outputLed(p)} bar={p.list} />
+              <Handle
+                type="source"
+                position={HandlePosition.Right}
+                id={outHandle(p.name)}
+                className={socketClass(p)}
+                style={socketStyle(p)}
+                aria-label={`output ${p.name}: ${p.typeText}`}
+              />
+            </div>
+          ))}
+          {!view.builtin && view.inputs.length === 0 && view.outputs.length === 0 ? <div className="bf-node__row bf-node__row--empty">no ports</div> : null}
+        </div>
+        {view.preview ? <footer className="bf-node__preview">{view.preview}</footer> : null}
+        {failure ? (
+          <div className="bf-node__tag" role="alert">
+            <span className="bf-node__cap">Run failed</span>
+            {failure}
           </div>
-        ))}
-        {!view.builtin && view.outputs.map((p) => (
-          <div className="bf-node__row bf-node__row--out" key={`o:${p.name}`} title={`${p.title}: ${p.typeText}`}>
-            <span className="bf-node__label">{p.title}</span>
-            <span className="bf-node__otype">{p.typeText}</span>
-            <Handle
-              type="source"
-              position={HandlePosition.Right}
-              id={outHandle(p.name)}
-              className={`bf-handle ${portClasses(p.style)}`}
-              style={{ "--bf-port-color": p.style.color } as CSSProperties}
-              aria-label={`output ${p.name}: ${p.typeText}`}
-            />
-          </div>
-        ))}
-        {!view.builtin && view.inputs.length === 0 && view.outputs.length === 0 ? <div className="bf-node__row bf-node__row--empty">no ports</div> : null}
+        ) : null}
+        <span className="bf-screw bf-screw--l" aria-hidden="true" />
+        <span className="bf-screw bf-screw--r" aria-hidden="true" />
       </div>
-      {view.preview ? <footer className="bf-node__preview">{view.preview}</footer> : null}
     </div>
   );
 }
+
+const socketClass = (p: PortView) => (p.links > 0 ? "bf-handle bf-socket bf-socket--plugged" : "bf-handle bf-socket");
+const socketStyle = (p: PortView) => ({ "--bf-led-c": `var(--bf-led-${p.led})` }) as CSSProperties;
 
 /**
  * Rows of the built-in Input node (flow inputs, handles on the right) or Output node (flow
@@ -473,14 +491,16 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
             type={dir === "input" ? "source" : "target"}
             position={dir === "input" ? HandlePosition.Right : HandlePosition.Left}
             id={dir === "input" ? outHandle(p.name) : inHandle(p.name)}
-            className={`bf-handle ${portClasses(p.style)}`}
-            style={{ "--bf-port-color": p.style.color } as CSSProperties}
+            className={socketClass(p)}
+            style={socketStyle(p)}
             aria-label={`${dir === "input" ? "output" : "input"} ${p.name}: ${p.typeText}`}
           />
         );
+        const led = <Led family={p.led} state={dir === "input" ? outputLed(p) : inputLed(p, false)} bar={p.list} />;
         return (
           <div className={dir === "input" ? "bf-node__row bf-node__row--sig bf-node__row--out" : "bf-node__row bf-node__row--sig"} key={p.name}>
             {dir === "output" ? handle : null}
+            {dir === "output" ? led : null}
             <button
               type="button"
               className="bf-icon-btn bf-icon-btn--danger bf-node__remove nodrag"
@@ -508,6 +528,7 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
               label={`Type of flow ${dir} ${p.name}`}
               onCommit={(t) => dispatch(dir === "input" ? { op: "flow.input.setType", flowId, name: p.name, type: t } : { op: "flow.output.setType", flowId, name: p.name, type: t })}
             />
+            {dir === "input" ? led : null}
             {dir === "input" ? handle : null}
           </div>
         );
@@ -524,20 +545,21 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
 // ---- edge -----------------------------------------------------------------------------------
 
 function BriarEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<BriarRFEdge>) {
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 0 });
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const v = data?.view;
   const invalid = v?.invalid;
-  const color = invalid ? "var(--bf-danger)" : selected ? "var(--bf-yellow)" : (v?.color ?? "var(--bf-ink-muted)");
-  const style: CSSProperties = { stroke: color, strokeWidth: selected ? 4 : 3 };
-  if (invalid) style.strokeDasharray = "6 4";
+  const core = invalid ? "var(--bf-led-media)" : `var(--bf-wire-${v?.family ?? "any"})`;
+  const style: CSSProperties = { stroke: core, strokeWidth: 2.5 };
+  if (invalid) style.strokeDasharray = "6 5";
   return (
     <>
-      {selected ? <path d={path} fill="none" stroke="var(--bf-ink)" strokeWidth={7} className="bf-edge__outline" /> : null}
-      <BaseEdge id={id} path={path} style={style} className={["bf-edge", v?.running && !invalid ? "bf-edge--running" : ""].filter(Boolean).join(" ")} interactionWidth={16} />
+      <path d={path} className={selected ? "bf-edge__sheath bf-edge__sheath--selected" : "bf-edge__sheath"} />
+      <BaseEdge id={id} path={path} style={style} className="bf-edge" interactionWidth={18} />
+      {v?.running && !invalid ? <path d={path} className="bf-edge__spark" /> : null}
       {invalid ? (
         <EdgeLabelRenderer>
           <div className="bf-edge__warning nodrag nopan" style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }} title={invalid} role="img" aria-label={invalid}>
-            ⚠
+            !
           </div>
         </EdgeLabelRenderer>
       ) : null}

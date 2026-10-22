@@ -60,6 +60,19 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - The Nodes panel is gone from the studio (stored layouts are normalized: `normalizeLayout`);
   `NodePalette` stays exported. Verified in headless Chrome.
 
+### Woodshop nodes (2026-10-22)
+- Canvas nodes follow the "Briar woodshop" design (canvas: https://claude.ai/artifact/BziNuowaHk2gUFYHLBPriD):
+  briar-wood frame (walnut for flow Input/Output, maple for variable GET/SET), matte plate with screws,
+  brass category medal, pilot lamp for run state, VU strip for progress, last-value "dial window",
+  failure tag. Ports are brass sockets on the rim with a 3 mm LED beside each row: color = type
+  family (`ledFamily`: text amber, numbers green, boolean yellow, media red, structured frosted white),
+  bar for lists; off / dim (typed value) / on (wired) / pulse (data flowing). Edges are bezier cables
+  (dark sheath, type-colored core, sparks while running). The context menu is a plate in a briar frame.
+- View model: `PortView.led`, `.list`, `.links`; `EdgeView.family`. Tokens `--bf-led-*`, `--bf-wire-*`,
+  `--bf-plate-*`, `--bf-brass*`, `--bf-bench*`, fonts `--bf-font-plate` / `--bf-font-engraved` (Barlow,
+  Barlow Condensed; the studio self-hosts them). Studio chrome is still Briar Brutal; design-system.md
+  not yet updated for the node look.
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.

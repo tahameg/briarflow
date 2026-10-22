@@ -5,7 +5,7 @@ import type { ContextDocument } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
 import { buildFlowView, canConnect } from "../../src/graph.js";
 import { initialConfig, paletteGroups, snap } from "../../src/palette.js";
-import { typeStyle } from "../../src/theme.js";
+import { isListType, ledFamily, typeStyle } from "../../src/theme.js";
 import { initialValue, widgetKind } from "../../src/values.js";
 
 const catalog = createCatalog([stdPack]);
@@ -46,6 +46,18 @@ describe("buildFlowView", () => {
     expect(view.edges[0]!.color).toBe("var(--bf-mint)");
   });
 
+  it("gives ports an LED family, a list flag and a wire count", () => {
+    const doc = sample();
+    const view = buildFlowView(doc, "flow_p", catalog, [], undefined)!;
+    const [count, style] = view.byId.get("n_in")!.outputs;
+    expect([count!.led, count!.links, style!.led]).toEqual(["num", 0, "data"]);
+    const join = view.byId.get("n_join")!;
+    expect(join.outputs[0]).toMatchObject({ led: "text", links: 1 });
+    expect(join.inputs.find((p) => p.name === "items")?.list).toBe(true);
+    expect(view.byId.get("n_out")!.inputs[0]!.links).toBe(1);
+    expect(view.edges[0]!.family).toBe("text");
+  });
+
   it("checks connections with assignability", () => {
     const doc = sample();
     const view = buildFlowView(doc, "flow_p", catalog, [], undefined)!;
@@ -82,5 +94,22 @@ describe("helpers", () => {
     expect(widgetKind({ kind: "primitive", name: "image" }, undefined)).toBe("media");
     expect(initialValue({ kind: "primitive", name: "int", constraints: { min: 3 } }, undefined)).toBe(3);
     expect(initialValue({ kind: "list", of: { kind: "primitive", name: "text" } }, undefined)).toEqual([]);
+  });
+});
+
+describe("ledFamily", () => {
+  const t = (name: string) => ({ kind: "primitive", name }) as const;
+
+  it("groups types by family through lists and optionals", () => {
+    expect([t("text"), t("int"), t("float"), t("boolean"), t("image"), t("audio"), t("file")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data"]);
+    expect(ledFamily({ kind: "optional", of: { kind: "list", of: t("int") } })).toBe("num");
+    expect(ledFamily({ kind: "named", id: "ty_style" })).toBe("data");
+    expect(ledFamily({ kind: "var", name: "T" })).toBe("any");
+  });
+
+  it("marks lists, optional or not", () => {
+    expect(isListType({ kind: "list", of: t("text") })).toBe(true);
+    expect(isListType({ kind: "optional", of: { kind: "list", of: t("text") } })).toBe(true);
+    expect(isListType({ kind: "list", of: t("text") }.of)).toBe(false);
   });
 });

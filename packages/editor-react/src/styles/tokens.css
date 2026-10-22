@@ -44,10 +44,34 @@
   --bf-status-warning: var(--bf-peach);
   --bf-status-queued: var(--bf-ink-muted);
 
+  /* woodshop: canvas bench, node plates, LEDs, cables, menus */
+  --bf-bench: #262019;
+  --bf-bench-grid-minor: rgba(180, 161, 132, 0.07);
+  --bf-bench-grid-major: rgba(180, 161, 132, 0.13);
+  --bf-plate-ink: #eadfca;
+  --bf-plate-muted: #a99c86;
+  --bf-plate-value: #f3c776;
+  --bf-brass: #c49a4e;
+  --bf-brass-hi: #ffcf6e;
+  --bf-led-text: #ffae2b;
+  --bf-led-num: #6fe04f;
+  --bf-led-bool: #f2e04a;
+  --bf-led-media: #ff4b3a;
+  --bf-led-data: #ffe9c8;
+  --bf-led-any: #cfc3ad;
+  --bf-wire-text: #e39a2f;
+  --bf-wire-num: #5fc243;
+  --bf-wire-bool: #d6c63e;
+  --bf-wire-media: #e0473a;
+  --bf-wire-data: #e6d3b0;
+  --bf-wire-any: #a99c86;
+
   /* typography */
   --bf-font-display: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --bf-font-body: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --bf-font-code: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --bf-font-plate: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bf-font-engraved: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
 
   --bf-text-xs: 11px;
   --bf-text-sm: 12px;

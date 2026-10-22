@@ -91,8 +91,8 @@ export {
 } from "./components/ui.js";
 export type { ButtonProps, ConfirmDialogProps, DotState, ModalProps, PanelProps, TabItem, Tone } from "./components/ui.js";
 
-export { BRIAR_TOKENS, briarTheme, nodeAccent, tokenVar, typeColor, typeStyle } from "./theme.js";
-export type { BriarToken, NamedKindLookup, TypeStyle } from "./theme.js";
+export { BRIAR_TOKENS, briarTheme, isListType, ledFamily, nodeAccent, tokenVar, typeColor, typeStyle } from "./theme.js";
+export type { BriarToken, LedFamily, NamedKindLookup, TypeStyle } from "./theme.js";
 export { buildFlowView, canConnect, emptyCatalog, kindLookup, nodeTitle } from "./graph.js";
 export type { EdgeView, FlowView, NodeView, PortView } from "./graph.js";
 export { NODE_CONFIG_MIME, NODE_TYPE_MIME, initialConfig, paletteGroups, snap } from "./palette.js";
