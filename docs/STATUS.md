@@ -70,8 +70,11 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   (dark sheath, type-colored core, sparks while running). The context menu is a plate in a briar frame.
 - View model: `PortView.led`, `.list`, `.links`; `EdgeView.family`. Tokens `--bf-led-*`, `--bf-wire-*`,
   `--bf-plate-*`, `--bf-brass*`, `--bf-bench*`, fonts `--bf-font-plate` / `--bf-font-engraved` (Barlow,
-  Barlow Condensed; the studio self-hosts them). Studio chrome is still Briar Brutal; design-system.md
-  not yet updated for the node look.
+  Barlow Condensed; the studio self-hosts them).
+- Studio chrome in the same language: tokens retuned (warm plate surfaces, brass `--bf-yellow`,
+  1px dark `--bf-line` grooves, soft shadows, 12px radius, Barlow fonts); walnut top bar with a brass
+  nameplate, plate panels/docks, brass primary buttons, recessed inputs, LED checkboxes, engraved tabs,
+  briar-framed modals and menus. design-system.md (still "Briar Brutal") needs a rewrite.
 
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).

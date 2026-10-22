@@ -16,7 +16,7 @@
   gap: var(--bf-space-4);
   padding: 0 var(--bf-space-3);
   background: var(--bf-surface);
-  border-bottom: var(--bf-border-thick) solid var(--bf-ink);
+  border-bottom: var(--bf-border-thick) solid var(--bf-line);
   z-index: var(--bf-z-panel);
 }
 .bf-topbar__left,
@@ -176,7 +176,7 @@
   flex-direction: column;
   min-height: 0;
   background: var(--bf-surface);
-  border: var(--bf-border-thick) solid var(--bf-ink);
+  border: var(--bf-border-thick) solid var(--bf-line);
 }
 .bf-dock__body {
   flex: 1;
@@ -214,7 +214,7 @@
   max-width: 640px;
   padding: var(--bf-space-6);
   background: var(--bf-surface);
-  border: var(--bf-border-heavy) solid var(--bf-ink);
+  border: var(--bf-border-heavy) solid var(--bf-line);
   box-shadow: 8px 8px 0 0 var(--bf-yellow);
 }
 .bf-splash__title {
@@ -324,7 +324,7 @@
   justify-content: space-between;
   gap: var(--bf-space-2);
   padding-right: var(--bf-space-2);
-  border-bottom: var(--bf-border-thick) solid var(--bf-ink);
+  border-bottom: var(--bf-border-thick) solid var(--bf-line);
 }
 .bf-dock__bar .bf-tabs {
   border-bottom: 0;
@@ -347,7 +347,7 @@
   flex-direction: column;
   min-width: 150px;
   background: var(--bf-surface);
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
   box-shadow: var(--bf-shadow-md);
 }
 .bf-zone--bottom .bf-move__menu {
@@ -371,4 +371,48 @@
 .bf-move__item--muted {
   border-top: var(--bf-border-thin) solid var(--bf-surface-3);
   color: var(--bf-ink-muted);
+}
+
+/* ---------- Woodshop chrome: walnut top bar, brass nameplate, plate docks ---------- */
+.bf-topbar {
+  border-bottom: 1px solid #0c0603;
+  background: var(--bf-wood-walnut);
+  box-shadow: inset 0 1px 0 rgba(201, 151, 106, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.bf-brand {
+  padding: 3px 12px;
+  border: 1px solid #6a4a1c;
+  border-radius: 5px;
+  background: var(--bf-brass-face);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 3px rgba(0, 0, 0, 0.7);
+  color: #3a2508;
+  font-family: var(--bf-font-engraved);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.5);
+}
+.bf-crumbs__ctx {
+  font-family: var(--bf-font-engraved);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+}
+.bf-dock {
+  border-radius: var(--bf-radius);
+  background: var(--bf-plate);
+  box-shadow: var(--bf-plate-shadow);
+}
+.bf-dock__bar {
+  box-shadow: 0 1px rgba(255, 255, 255, 0.05);
+}
+.bf-move__menu {
+  border: 6px solid transparent;
+  border-radius: 14px;
+  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
+  box-shadow: 0 0 0 1px #c07a48, 0 10px 24px rgba(0, 0, 0, 0.6);
+}
+.bf-splash__card {
+  border: 10px solid transparent;
+  border-radius: 20px;
+  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
+  box-shadow: 0 0 0 1px #c07a48, 0 24px 48px rgba(0, 0, 0, 0.55);
 }

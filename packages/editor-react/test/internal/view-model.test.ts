@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCommands } from "@briarflow/authoring";
 import { createCatalog, createContextDocument, validateContext } from "@briarflow/core";
-import type { ContextDocument } from "@briarflow/core";
+import type { ContextDocument, TypeRef } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
 import { buildFlowView, canConnect } from "../../src/graph.js";
 import { initialConfig, paletteGroups, snap } from "../../src/palette.js";
@@ -98,7 +98,7 @@ describe("helpers", () => {
 });
 
 describe("ledFamily", () => {
-  const t = (name: string) => ({ kind: "primitive", name }) as const;
+  const t = (name: string) => ({ kind: "primitive", name }) as TypeRef;
 
   it("groups types by family through lists and optionals", () => {
     expect([t("text"), t("int"), t("float"), t("boolean"), t("image"), t("audio"), t("file")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data"]);
@@ -110,6 +110,6 @@ describe("ledFamily", () => {
   it("marks lists, optional or not", () => {
     expect(isListType({ kind: "list", of: t("text") })).toBe(true);
     expect(isListType({ kind: "optional", of: { kind: "list", of: t("text") } })).toBe(true);
-    expect(isListType({ kind: "list", of: t("text") }.of)).toBe(false);
+    expect(isListType(t("text"))).toBe(false);
   });
 });

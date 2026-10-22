@@ -7,7 +7,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  border: var(--bf-border-thick) solid var(--bf-ink);
+  border: var(--bf-border-thick) solid var(--bf-line);
   background: radial-gradient(ellipse at 50% 40%, #3d3227 0%, var(--bf-bench) 55%, #1a1612 100%);
 }
 .bf-canvas--empty {
@@ -40,7 +40,7 @@
   gap: var(--bf-space-1);
   padding: var(--bf-space-1);
   background: var(--bf-surface);
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
   box-shadow: var(--bf-shadow-md);
 }
 .bf-canvas__controls .react-flow__controls-button {
@@ -62,7 +62,7 @@
 }
 .bf-minimap.react-flow__minimap {
   background: var(--bf-surface);
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
   box-shadow: var(--bf-shadow-md);
 }
 .react-flow__connection-path {
@@ -765,7 +765,7 @@
   gap: var(--bf-space-2);
   padding: var(--bf-space-2);
   background: var(--bf-surface-2);
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
 }
 .bf-list__item .bf-input {
   background: var(--bf-surface);
@@ -1008,7 +1008,7 @@ button.bf-diagnostics__btn:hover {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
   background: var(--bf-bg);
 }
 .bf-run__status {
@@ -1017,7 +1017,7 @@ button.bf-diagnostics__btn:hover {
   align-items: center;
   gap: var(--bf-space-2);
   padding: var(--bf-space-2);
-  border-bottom: var(--bf-border) solid var(--bf-ink);
+  border-bottom: var(--bf-border) solid var(--bf-line);
   background: var(--bf-surface-2);
 }
 .bf-run__title {
@@ -1058,13 +1058,13 @@ button.bf-diagnostics__btn:hover {
 }
 .bf-run__outputs {
   padding: var(--bf-space-2);
-  border-top: var(--bf-border) solid var(--bf-ink);
+  border-top: var(--bf-border) solid var(--bf-line);
 }
 .bf-run__image img {
   display: block;
   max-width: 240px;
   max-height: 240px;
-  border: var(--bf-border) solid var(--bf-ink);
+  border: var(--bf-border) solid var(--bf-line);
   box-shadow: var(--bf-shadow-md);
 }
 .bf-run__gallery {
@@ -1299,7 +1299,7 @@ button.bf-diagnostics__btn:hover {
   width: 260px;
   max-height: min(420px, calc(100vh - 16px));
   background: var(--bf-surface);
-  border: var(--bf-border-thick) solid var(--bf-ink);
+  border: var(--bf-border-thick) solid var(--bf-line);
   box-shadow: var(--bf-shadow-lg);
   color: var(--bf-ink);
   font-family: var(--bf-font-body);
@@ -1517,7 +1517,7 @@ button.bf-diagnostics__btn:hover {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
   padding: 0;
-  border: var(--bf-border-heavy) solid var(--bf-ink);
+  border: var(--bf-border-heavy) solid var(--bf-line);
   background: var(--bf-surface);
   color: var(--bf-ink);
   box-shadow: 8px 8px 0 0 var(--bf-yellow);
@@ -1541,7 +1541,7 @@ button.bf-diagnostics__btn:hover {
   gap: var(--bf-space-2);
   height: 44px;
   padding: 0 var(--bf-space-3) 0 var(--bf-space-4);
-  border-bottom: var(--bf-border-thick) solid var(--bf-ink);
+  border-bottom: var(--bf-border-thick) solid var(--bf-line);
 }
 .bf-modal__title {
   margin: 0;
@@ -1799,4 +1799,47 @@ button.bf-diagnostics__btn:hover {
   padding: 8px 14px;
   color: var(--bf-plate-muted);
   font-size: 12px;
+}
+
+/* ---------- Woodshop chrome for editor views ---------- */
+.bf-canvas {
+  border-radius: var(--bf-radius);
+  box-shadow: var(--bf-plate-shadow);
+}
+.bf-modal {
+  border: 8px solid transparent;
+  border-radius: 18px;
+  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
+  box-shadow: 0 0 0 1px #c07a48, inset 0 0 0 1px var(--bf-line), 0 24px 48px rgba(0, 0, 0, 0.55);
+}
+.bf-modal::backdrop {
+  background: rgba(10, 7, 4, 0.6);
+}
+.bf-canvas__controls.react-flow__controls,
+.bf-minimap.react-flow__minimap {
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--bf-plate);
+  box-shadow: var(--bf-plate-shadow);
+}
+.bf-canvas__controls .react-flow__controls-button {
+  border: 1px solid var(--bf-line);
+  border-radius: 5px;
+  background: linear-gradient(180deg, #4a443a, #36312a);
+}
+.bf-type-picker__chip,
+.bf-add-row {
+  border-radius: 5px;
+}
+.bf-add-row {
+  border-width: 1px;
+  font-family: var(--bf-font-engraved);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.bf-add-row:hover,
+.bf-add-row:focus-visible {
+  border-color: var(--bf-brass-hi);
+  color: var(--bf-brass-hi);
 }

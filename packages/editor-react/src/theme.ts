@@ -7,19 +7,19 @@ import type { NodeColor, TypeRef } from "@briarflow/core";
 
 /** Token values (same names as the CSS custom properties without `--bf-`). */
 export const BRIAR_TOKENS = {
-  bg: "#1F1F1F",
-  surface: "#2A2A2A",
-  "surface-2": "#333333",
-  "surface-3": "#3A3A3A",
-  ink: "#F5F1E6",
-  "ink-muted": "#B3AD9F",
-  "ink-disabled": "#7A766C",
-  "ink-inverse": "#1F1F1F",
+  bg: "#1D1914",
+  surface: "#2D2A25",
+  "surface-2": "#36322B",
+  "surface-3": "#443E35",
+  ink: "#EADFCA",
+  "ink-muted": "#A99C86",
+  "ink-disabled": "#6F6656",
+  "ink-inverse": "#24170A",
   shadow: "#000000",
-  "grid-minor": "#2A2A2A",
-  "grid-major": "#3A3A3A",
-  yellow: "#FFD400",
-  "yellow-press": "#E6BF00",
+  "grid-minor": "#2A251E",
+  "grid-major": "#3A3228",
+  yellow: "#F2B84B",
+  "yellow-press": "#D99A2B",
   mint: "#A8E6CF",
   lavender: "#C3B1E1",
   peach: "#FFC8A2",
@@ -30,7 +30,7 @@ export const BRIAR_TOKENS = {
   sand: "#E8D8B0",
   coral: "#FF9E9E",
   stone: "#B8B8B8",
-  danger: "#FF7A7A",
+  danger: "#FF8A72",
 } as const;
 
 /** A token name of {@link BRIAR_TOKENS}. */
