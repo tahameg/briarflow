@@ -282,6 +282,7 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
         onNodeContextMenu={menu.onNodeContextMenu}
         onEdgeContextMenu={menu.onEdgeContextMenu}
         onSelectionContextMenu={menu.onSelectionContextMenu}
+        onConnectEnd={menu.onConnectEnd}
         {...(viewport ? { viewport } : { defaultViewport: DEFAULT_VIEWPORT, fitView: true, fitViewOptions: INITIAL_FIT })}
         onViewportChange={onViewportChange}
         deleteKeyCode={null}

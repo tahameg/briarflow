@@ -24,6 +24,8 @@ export interface ContextMenuTargets {
   edge: { flowId: string; edgeId: string };
   /** A port handle on a node. */
   port: { flowId: string; nodeId: string; port: string; side: "in" | "out" };
+  /** A wire dropped on empty canvas, dragged from `nodeId.port`; `position` is the drop point. */
+  connect: { flowId: string; position: Position; nodeId: string; port: string; side: "in" | "out" };
   /** A flow variable row. */
   variable: { flowId: string; variableId: string };
   /** A context global row. */

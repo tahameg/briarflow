@@ -84,6 +84,14 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   (`src/studio.ts`, created when missing) and served at `GET /api/studio`. The studio opens that
   target first, else the last used context, else the first one.
 
+### Drop a wire on empty canvas (2026-10-22)
+- Releasing a dragged connection on empty canvas opens a menu with only the nodes that fit:
+  inputs that accept the dragged output (or outputs that can feed the dragged input), by
+  category, generic `$T` ports under "Any type", variables/globals included. Picking one adds it
+  at the drop point already wired (one undo step). `connect.ts` (`matchConnectTargets`) resolves
+  candidate ports like the canvas does, so dynamic and variable nodes match too; menu target
+  `connect`.
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.

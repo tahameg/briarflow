@@ -294,6 +294,7 @@ Cables are bezier curves (React Flow `getBezierPath`) built from layers:
 | invalid (`edge.type_mismatch`) | core `--bf-led-media`, dashed `6 5`; a red LED-like "!" marker at the midpoint with the message on hover |
 | running (target node running) | cream sparks (`#FFF3C9`, dash `3 11`) run along the core, 14 px / 700 ms |
 | drag preview | 2.5 px brass dashed line; red over an incompatible port |
+| released on empty canvas | opens the "connect" menu: only nodes with a port that fits the dragged type (exact matches by category, generic ports under "Any type"); the pick is added at the drop point, wired |
 | implicit variable order | not drawn in v1 (planned v1.1) |
 
 ## 9. States

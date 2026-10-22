@@ -1,23 +1,26 @@
 /**
  * The canvas's right-click menus: empty canvas (add any node at the click, undo/redo, view),
- * nodes (duplicate, disconnect, frame, delete; selection-aware), edges and ports. Also the
- * keyboard entry points (`/` add menu, ContextMenu key / Shift+F10).
+ * nodes (duplicate, disconnect, frame, delete; selection-aware), edges and ports. A wire
+ * dropped on empty canvas opens the nodes that can take it. Also the keyboard entry points
+ * (`/` add menu, ContextMenu key / Shift+F10).
  */
 import { useCallback, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
-import type { Edge as RFEdge, Node as RFNode } from "@xyflow/react";
+import type { Edge as RFEdge, FinalConnectionState, Node as RFNode } from "@xyflow/react";
 import type { Command } from "@briarflow/authoring";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "@briarflow/core";
 import type { Position } from "@briarflow/core";
 import { useDispatch, useEditorStore } from "../context.js";
 import { nextName } from "../fields.js";
 import type { FlowView } from "../graph.js";
-import type { ContextMenuItem, ContextMenuTarget } from "../menu.js";
+import type { ContextMenuItem, ContextMenuTarget, ContextMenuTargets } from "../menu.js";
 import { initialConfig, paletteGroups, snap } from "../palette.js";
 import { nodeAccent } from "../theme.js";
 import { useContextMenu, useContextMenuContributor } from "./ContextMenu.js";
-import { duplicateCommands } from "../duplicate.js";
+import { duplicateCommands, randomNodeId } from "../duplicate.js";
+import { matchConnectTargets } from "../connect.js";
+import type { ConnectProbe } from "../connect.js";
 import { deleteSelection, isTypingTarget } from "./selection.js";
 
 const BUILTIN = new Set<string>([FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE]);
@@ -31,6 +34,8 @@ export interface CanvasMenu {
   onNodeContextMenu: (e: ReactMouseEvent, node: RFNode) => void;
   onEdgeContextMenu: (e: ReactMouseEvent, edge: RFEdge) => void;
   onSelectionContextMenu: (e: ReactMouseEvent, nodes: RFNode[]) => void;
+  /** A wire released on empty canvas: open the nodes that can take it. */
+  onConnectEnd: (e: MouseEvent | TouchEvent, state: FinalConnectionState) => void;
   /** Remembers the pointer so `/` opens the add menu under it. */
   onPointerMove: (e: ReactMouseEvent) => void;
   /** `"add"`: the empty-canvas menu at the pointer; `"selection"`: the selection's menu. */
@@ -98,6 +103,63 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       { id: "select-all", label: "Select all", order: 300, run: () => view && select(view.nodes.map((n) => n.id)) },
       { id: "fit", label: "Fit view", order: 300, shortcut: "F", run: () => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: 200 }) },
     );
+    return items;
+  };
+
+  const connectItems = (t: ContextMenuTargets["connect"]): ContextMenuItem[] => {
+    const s = store.getState();
+    const node = view?.byId.get(t.nodeId);
+    const from = (t.side === "out" ? node?.outputs : node?.inputs)?.find((p) => p.name === t.port);
+    if (!flowId || !s.doc || !s.catalog || !from) return [];
+    const doc = s.doc;
+    const catalog = s.catalog;
+    const flow = doc.flows.find((f) => f.id === flowId);
+    const descriptors = catalog.descriptors().filter((d) => !BUILTIN.has(d.type) && !VARIABLE_TYPES.has(d.type));
+    const probes: (ConnectProbe & { label: string; category: string; accent: string })[] = [];
+    for (const d of descriptors) {
+      const config = initialConfig(catalog.get(d.type), doc, flowId, catalog);
+      probes.push({ key: d.type, type: d.type, ...(config ? { config } : {}), label: d.title, category: d.category, accent: `var(--bf-${nodeAccent(d.color, d.category)})` });
+    }
+    const varProbe = (key: string, type: string, config: Record<string, unknown>, label: string) => probes.push({ key, type, config, label, category: "Variables", accent: "var(--bf-pink)" });
+    for (const v of flow?.variables ?? []) {
+      varProbe(`get:${v.id}`, VARIABLE_NODE_TYPES.variableGet, { variableId: v.id }, `Get ${v.name}`);
+      varProbe(`set:${v.id}`, VARIABLE_NODE_TYPES.variableSet, { variableId: v.id }, `Set ${v.name}`);
+    }
+    for (const g of doc.globals) {
+      varProbe(`gget:${g.id}`, VARIABLE_NODE_TYPES.globalGet, { globalId: g.id }, `Get ${g.name}`);
+      if (g.access === "readwrite") varProbe(`gset:${g.id}`, VARIABLE_NODE_TYPES.globalSet, { globalId: g.id }, `Set ${g.name}`);
+    }
+    const byKey = new Map(probes.map((p) => [p.key, p]));
+    const matches = matchConnectTargets(doc, flowId, catalog, from.type, t.side, probes);
+    if (matches.length === 0) {
+      return [{ id: "connect:none", label: `No node takes ${from.typeText}`, disabled: true, run: () => undefined }];
+    }
+    const at: Position = snap(t.side === "out" ? { x: t.position.x, y: t.position.y - 70 } : { x: t.position.x - 300, y: t.position.y - 70 });
+    const add = (probe: ConnectProbe, port: string) => {
+      const id = randomNodeId();
+      const edge = t.side === "out" ? { from: { node: t.nodeId, port: t.port }, to: { node: id, port } } : { from: { node: id, port }, to: { node: t.nodeId, port: t.port } };
+      const node: Command = { op: "node.add", flowId, id, type: probe.type, position: at, ...(probe.config ? { config: probe.config } : {}) };
+      const r = dispatch([node, { op: "edge.connect", flowId, ...edge }]);
+      if (r.ok) select([id]);
+      else if (dispatch(node).ok) select([id]);
+    };
+    const groups = new Map<string, ContextMenuItem[]>();
+    const generic: ContextMenuItem[] = [];
+    for (const m of matches) {
+      const p = byKey.get(m.key)!;
+      const item: ContextMenuItem = {
+        id: `connect:${m.key}`,
+        label: p.label,
+        hint: t.side === "out" ? `→ ${m.portTitle}` : `${m.portTitle} →`,
+        keywords: [p.category, p.type],
+        accent: p.accent,
+        run: () => add(p, m.port),
+      };
+      if (m.generic) generic.push({ ...item, label: `${p.label}`, keywords: [...(item.keywords ?? []), "any"] });
+      else groups.set(p.category, [...(groups.get(p.category) ?? []), item]);
+    }
+    const items: ContextMenuItem[] = [...groups].map(([category, list]) => ({ id: `connect:${category}`, label: category, order: 100, hint: String(list.length), items: list }));
+    if (generic.length > 0) items.push({ id: "connect:any", label: "Any type", order: 200, hint: String(generic.length), title: "Generic ports that take any type", items: generic });
     return items;
   };
 
@@ -221,6 +283,8 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
         return portItems(t.nodeId, t.port, t.side);
       case "edge":
         return edgeItems(t.edgeId);
+      case "connect":
+        return connectItems(t);
       default:
         return null;
     }
@@ -263,6 +327,17 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       const first = nodes[0];
       if (!flowId || !first) return;
       menu.open(e, { kind: "node", flowId, nodeId: first.id, nodeIds: nodes.map((n) => n.id) });
+    },
+    onConnectEnd: (e, state) => {
+      if (!flowId || state.isValid || state.toHandle || !state.fromHandle || !state.fromNode) return;
+      if (!(e.target instanceof Element) || !e.target.closest(".react-flow__pane")) return;
+      const pt = "changedTouches" in e ? e.changedTouches[0] : e;
+      if (!pt) return;
+      const handle = state.fromHandle.id ?? "";
+      menu.open(
+        { x: pt.clientX, y: pt.clientY, element: wrapper.current },
+        { kind: "connect", flowId, position: rf.screenToFlowPosition({ x: pt.clientX, y: pt.clientY }), nodeId: state.fromNode.id, port: handle.slice(2), side: handle.startsWith("o:") ? "out" : "in" },
+      );
     },
     onPointerMove: useCallback((e: ReactMouseEvent) => {
       pointer.current = { x: e.clientX, y: e.clientY };
