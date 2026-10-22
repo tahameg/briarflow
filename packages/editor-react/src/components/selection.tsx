@@ -33,6 +33,11 @@ export function deleteSelectionCommands(store: EditorStore, flowId: string, view
   const removed = new Set(nodes);
   const commands: Command[] = [];
   for (const edgeId of selection.edges) {
+    const line = view.execEdges.find((x) => x.id === edgeId);
+    if (line) {
+      if (!removed.has(line.source) && !removed.has(line.target)) commands.push({ op: "exec.disconnect", flowId, edgeId });
+      continue;
+    }
     const e = view.edges.find((x) => x.id === edgeId);
     if (!e || removed.has(e.source) || removed.has(e.target)) continue;
     commands.push({ op: "edge.disconnect", flowId, edgeId });

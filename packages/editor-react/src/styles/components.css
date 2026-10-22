@@ -684,7 +684,7 @@
 .bf-button__warn {
   border: 0;
   border-radius: 3px;
-  background: var(--bf-led-media);
+  background: var(--bf-led-error);
   color: #fff;
 }
 .bf-input,
@@ -710,7 +710,7 @@
 .bf-input--invalid,
 .bf-input--invalid:hover,
 .bf-field--error .bf-input {
-  box-shadow: var(--bf-slot-shadow), 0 0 0 1px var(--bf-led-media);
+  box-shadow: var(--bf-slot-shadow), 0 0 0 1px var(--bf-led-error);
 }
 .bf-input:disabled {
   border: 1px dashed #4a4238;

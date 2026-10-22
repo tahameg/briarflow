@@ -198,7 +198,8 @@ LED color is the **type family** (`ledFamily(type)`; `list<X>` and `X?` take X's
 | text | text | amber `--bf-led-text` | `--bf-wire-text` |
 | num | int, float | green | |
 | bool | boolean | yellow | |
-| media | image, audio, video, model3d | red | |
+| media | image, audio, video, model3d | magenta | |
+| error | error (a failed node's reason) | red | `--bf-wire-error` |
 | data | struct, enum, json, file | frosted white | |
 | any | unbound `$T` | warm grey | |
 
@@ -303,6 +304,19 @@ Cables are bezier curves (React Flow `getBezierPath`) built from layers:
 | drag preview | 2.5 px brass dashed line; red over an incompatible port |
 | released on empty canvas | opens the "connect" menu: only nodes with a port that fits the dragged type (exact matches by category, generic ports under "Any type"); the pick is added at the drop point, wired |
 | implicit variable order | not drawn in v1 (planned v1.1) |
+
+### Execution lines (execution.md §6)
+
+- **Execution sockets** are ivory arrow plates on the rim of the **header row**: `in` on the left,
+  `then` on the right. A plugged-in socket shows a bright core.
+- **Nodes that can fail** have an "On fail" band under the title, tinted red. It holds the red
+  `failed` socket and the red `error` data output (LED and socket).
+- **Execution lines** are heavy cream cables (`--bf-wire-exec`, 3.5 px core on an 8 px sheath).
+  - A line goes brass with a glow where the current run went.
+  - A line leaving `failed` has a red core.
+- **Pure nodes** have no execution sockets.
+- **Nodes off the line** (they never run) are dimmed to 55 % and desaturated, with a tooltip
+  saying why.
 
 ## 9. States
 

@@ -4,6 +4,10 @@
  * view layers.
  */
 import {
+  analyzeExec,
+  ERROR_OUTPUT,
+  EXEC_FAILED,
+  execPortsOf,
   FLOW_INPUT_NODE_TYPE,
   FLOW_OUTPUT_NODE_TYPE,
   VARIABLE_NODE_TYPES,
@@ -17,6 +21,7 @@ import {
 import type {
   AnyNodeDefinition,
   ContextDocument,
+  ExecPorts,
   Diagnostic,
   FlowDocument,
   NodeCatalog,
@@ -75,6 +80,14 @@ export interface NodeView {
   unknownType: boolean;
   /** A frontend node (definition `frontend`): its effect happens in the editor, not on the server. */
   frontend: boolean;
+  /** Execution ports (`in`; `then`, `failed`). Empty for pure nodes. */
+  exec: ExecPorts;
+  /** The `error` output of a node that can fail (shown on the header, not in `outputs`). */
+  errorOutput?: PortView;
+  /** Execution ports with a line plugged in. */
+  execLinked: readonly string[];
+  /** The flow has execution lines and this node is not on them (nor read by a node that is): it never runs. */
+  idle: boolean;
   definition: AnyNodeDefinition | undefined;
   instance: NodeInstance;
   position: Position;
@@ -105,6 +118,18 @@ export interface EdgeView {
   running: boolean;
 }
 
+/** One execution line on the canvas. */
+export interface ExecEdgeView {
+  id: string;
+  source: string;
+  /** `then` or `failed`. */
+  sourcePort: string;
+  target: string;
+  targetPort: string;
+  /** In the current run: execution went down this line. */
+  taken: boolean;
+}
+
 /** Everything the canvas shows for one flow. */
 export interface FlowView {
   flowId: string;
@@ -113,6 +138,10 @@ export interface FlowView {
   kindOf: NamedKindLookup;
   nodes: NodeView[];
   edges: EdgeView[];
+  /** Execution lines (empty for a flow without them). */
+  execEdges: ExecEdgeView[];
+  /** The flow has execution lines (only nodes on them run). */
+  hasLines: boolean;
   byId: ReadonlyMap<string, NodeView>;
 }
 
@@ -231,6 +260,14 @@ export function buildFlowView(
     return view;
   };
 
+  let live: ReadonlySet<string> | undefined;
+  if (flow.execEdges !== undefined) {
+    try {
+      live = analyzeExec(doc, flow, cat).live;
+    } catch {
+      live = undefined;
+    }
+  }
   const nodes: NodeView[] = flow.nodes.map((node) => {
     const def = cat.get(node.type);
     const resolved = ports?.nodes.get(node.id);
@@ -247,6 +284,11 @@ export function buildFlowView(
       variable,
       unknownType: !builtin && def === undefined,
       frontend: def?.frontend === true,
+      exec: flow.execEdges === undefined ? { inputs: [], outputs: [] } : execPortsOf(node.type, def),
+      idle: live !== undefined && !live.has(node.id),
+      execLinked: [
+        ...new Set((flow.execEdges ?? []).flatMap((e) => [...(e.from.node === node.id ? [e.from.port] : []), ...(e.to.node === node.id ? [e.to.port] : [])])),
+      ],
       definition: def,
       instance: node,
       position: node.position,
@@ -257,6 +299,11 @@ export function buildFlowView(
       warningCount: diags.filter((d) => d.severity === "warning").length,
       run: runNodes?.[node.id],
     };
+    if (def?.canFail) {
+      const i = view.outputs.findIndex((p) => p.name === ERROR_OUTPUT);
+      const [error] = i >= 0 ? view.outputs.splice(i, 1) : [];
+      if (error) view.errorOutput = error;
+    }
     const preview = node.type === "text.template" ? (node.config?.template as string | undefined) : previewOf(node);
     if (preview) view.preview = preview;
     return view;
@@ -280,7 +327,20 @@ export function buildFlowView(
     return view;
   });
 
-  return { flowId, flow, scope, kindOf, nodes, edges, byId };
+  const ran = (id: string, port: string) => {
+    const s = runNodes?.[id]?.status;
+    return port === EXEC_FAILED ? s === "failed" : s === "done" || s === "cached";
+  };
+  const execEdges: ExecEdgeView[] = (flow.execEdges ?? []).map((e) => ({
+    id: e.id,
+    source: e.from.node,
+    sourcePort: e.from.port,
+    target: e.to.node,
+    targetPort: e.to.port,
+    taken: ran(e.from.node, e.from.port) && runNodes?.[e.to.node] !== undefined,
+  }));
+
+  return { flowId, flow, scope, kindOf, nodes, edges, execEdges, hasLines: flow.execEdges !== undefined, byId };
 }
 
 /**

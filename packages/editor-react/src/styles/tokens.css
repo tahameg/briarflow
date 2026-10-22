@@ -64,14 +64,17 @@
   --bf-led-text: #ffae2b;
   --bf-led-num: #6fe04f;
   --bf-led-bool: #f2e04a;
-  --bf-led-media: #ff4b3a;
+  --bf-led-media: #ff4fa0;
+  --bf-led-error: #ff3b30;
   --bf-led-data: #ffe9c8;
   --bf-led-any: #cfc3ad;
   --bf-vfd: #6ff3d6;   /* frontend nodes and the console: a cyan VFD display */
   --bf-wire-text: #e39a2f;
   --bf-wire-num: #5fc243;
   --bf-wire-bool: #d6c63e;
-  --bf-wire-media: #e0473a;
+  --bf-wire-media: #d94a8f;
+  --bf-wire-error: #e5382d;
+  --bf-wire-exec: #efe6d2;
   --bf-wire-data: #e6d3b0;
   --bf-wire-any: #a99c86;
 

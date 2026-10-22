@@ -128,10 +128,10 @@ export function nodeAccent(color: NodeColor | null | undefined, category: string
 
 /**
  * LED color family of a port (woodshop nodes): text amber, numbers green, boolean yellow,
- * media red, structured (struct, enum, json, file) frosted white, unbound `$T` "any".
+ * media magenta, error red, structured (struct, enum, json, file) frosted white, unbound `$T` "any".
  * The CSS colors are `--bf-led-<family>`.
  */
-export type LedFamily = "text" | "num" | "bool" | "media" | "data" | "any";
+export type LedFamily = "text" | "num" | "bool" | "media" | "data" | "error" | "any";
 
 const PRIMITIVE_LEDS: Record<string, LedFamily> = {
   text: "text",
@@ -142,6 +142,7 @@ const PRIMITIVE_LEDS: Record<string, LedFamily> = {
   video: "media",
   audio: "media",
   model3d: "media",
+  error: "error",
 };
 
 /**

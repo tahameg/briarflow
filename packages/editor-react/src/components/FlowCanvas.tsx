@@ -26,11 +26,11 @@ import {
 } from "@xyflow/react";
 import type { Connection, Edge as RFEdge, EdgeChange, EdgeProps, Node as RFNode, NodeChange, NodeProps, Viewport } from "@xyflow/react";
 import type { Command } from "@briarflow/authoring";
-import { FLOW_INPUT_NODE_TYPE } from "@briarflow/core";
+import { EXEC_FAILED, FLOW_INPUT_NODE_TYPE } from "@briarflow/core";
 import type { TypeScope } from "@briarflow/core";
 import { nextName } from "../fields.js";
 import { canConnect } from "../graph.js";
-import type { EdgeView, NodeView, PortView } from "../graph.js";
+import type { EdgeView, ExecEdgeView, NodeView, PortView } from "../graph.js";
 import { useCanvasHandle, useDispatch, useEditorState, useEditorStore, useFlowId, useFlowView, useMedia } from "../context.js";
 import { NODE_CONFIG_MIME, NODE_TYPE_MIME, initialConfig, snap } from "../palette.js";
 import { formatDuration, previewValue } from "../values.js";
@@ -51,6 +51,8 @@ interface NodeData extends Record<string, unknown> {
 }
 type BriarRFNode = RFNode<NodeData, "briar">;
 type BriarRFEdge = RFEdge<{ view: EdgeView }, "briar">;
+type ExecRFEdge = RFEdge<{ line: ExecEdgeView }, "exec">;
+type AnyRFEdge = BriarRFEdge | ExecRFEdge;
 
 const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
 /** Initial fit keeps canvas text legible (design-system §11 "Canvas legibility"). */
@@ -61,6 +63,9 @@ const BUTTON_FIT = { padding: 0.15, maxZoom: 1 } as const;
 const COMPACT_BELOW_ZOOM = 0.6;
 const inHandle = (port: string) => `i:${port}`;
 const outHandle = (port: string) => `o:${port}`;
+/** Execution sockets: `x:in`, `x:then`, `x:failed`. */
+const execHandle = (port: string) => `x:${port}`;
+const isExecHandle = (handle: string | null | undefined) => (handle ?? "").startsWith("x:");
 const portOf = (handle: string | null | undefined) => (handle ?? "").slice(2);
 
 /** Props of {@link FlowCanvas}. */
@@ -89,7 +94,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
 }
 
 const nodeTypes = { briar: memo(BriarNode) };
-const edgeTypes = { briar: memo(BriarEdge) };
+const edgeTypes = { briar: memo(BriarEdge), exec: memo(ExecEdge) };
 
 function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: FlowCanvasProps) {
   const store = useEditorStore();
@@ -145,9 +150,21 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
     });
   }, [view, flowId, dragPos, measured, selectedNodes, runActive]);
 
-  const edges = useMemo<BriarRFEdge[]>(() => {
+  const edges = useMemo<AnyRFEdge[]>(() => {
     if (!view) return [];
-    return view.edges.map((e) => ({
+    const lines: ExecRFEdge[] = view.execEdges.map((e) => ({
+      id: e.id,
+      type: "exec",
+      source: e.source,
+      target: e.target,
+      sourceHandle: execHandle(e.sourcePort),
+      targetHandle: execHandle(e.targetPort),
+      data: { line: e },
+      selected: selectedEdges.has(e.id),
+      zIndex: 1,
+      ariaLabel: `Execution line ${e.source}.${e.sourcePort} to ${e.target}`,
+    }));
+    const wires: BriarRFEdge[] = view.edges.map((e) => ({
       id: e.id,
       type: "briar",
       source: e.source,
@@ -158,6 +175,7 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
       selected: selectedEdges.has(e.id),
       ariaLabel: `Edge ${e.source}.${e.sourcePort} to ${e.target}.${e.targetPort}`,
     }));
+    return [...wires, ...lines];
   }, [view, selectedEdges]);
 
   const onNodesChange = useCallback(
@@ -186,7 +204,7 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
   );
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange<BriarRFEdge>[]) => {
+    (changes: EdgeChange<AnyRFEdge>[]) => {
       const add: string[] = [];
       const remove: string[] = [];
       for (const c of changes) if (c.type === "select") (c.selected ? add : remove).push(c.id);
@@ -212,8 +230,11 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
   );
 
   const isValidConnection = useCallback(
-    (c: Connection | BriarRFEdge) => {
+    (c: Connection | AnyRFEdge) => {
       if (!view) return false;
+      const lineFrom = isExecHandle(c.sourceHandle);
+      if (lineFrom !== isExecHandle(c.targetHandle)) return false;
+      if (lineFrom) return c.source !== c.target;
       return canConnect(view, { node: c.source, port: portOf(c.sourceHandle) }, { node: c.target, port: portOf(c.targetHandle) });
     },
     [view],
@@ -222,7 +243,9 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
   const onConnect = useCallback(
     (c: Connection) => {
       if (!flowId) return;
-      dispatch({ op: "edge.connect", flowId, from: { node: c.source, port: portOf(c.sourceHandle) }, to: { node: c.target, port: portOf(c.targetHandle) } });
+      const from = { node: c.source, port: portOf(c.sourceHandle) };
+      const to = { node: c.target, port: portOf(c.targetHandle) };
+      dispatch(isExecHandle(c.sourceHandle) ? { op: "exec.connect", flowId, from, to } : { op: "edge.connect", flowId, from, to });
     },
     [dispatch, flowId],
   );
@@ -269,7 +292,7 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
 
   return (
     <div className={["bf-canvas", className].filter(Boolean).join(" ")} ref={wrapper} onDragOver={onDragOver} onDrop={onDrop} onPointerMove={menu.onPointerMove}>
-      <ReactFlow<BriarRFNode, BriarRFEdge>
+      <ReactFlow<BriarRFNode, AnyRFEdge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -369,6 +392,7 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
     view.builtin && "bf-node--builtin",
     view.variable && "bf-node--variable",
     view.frontend && "bf-node--frontend",
+    view.idle && "bf-node--idle",
     selected && "bf-node--selected",
     running && "bf-node--running",
     view.errorCount > 0 && "bf-node--error",
@@ -379,10 +403,23 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
     .join(" ");
   const failure = view.run?.status === "failed" ? (view.run.error?.message ?? "The node failed.") : undefined;
   const icon = medalIcon({ builtin: view.builtin ? (view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output") : undefined, variable: view.variable, category: view.definition?.category });
+  const linked = new Set(view.execLinked);
+  const execSocket = (port: string, type: "source" | "target") => (
+    <Handle
+      type={type}
+      position={type === "target" ? HandlePosition.Left : HandlePosition.Right}
+      id={execHandle(port)}
+      className={`bf-handle bf-xsocket${linked.has(port) ? " bf-xsocket--plugged" : ""}${port === EXEC_FAILED ? " bf-xsocket--failed" : ""}`}
+      aria-label={port === "in" ? "execution in" : `execution ${port}`}
+      title={port === "in" ? "Execution in" : port === EXEC_FAILED ? "Runs when this node fails" : "Runs next"}
+    />
+  );
   return (
-    <div className={classes}>
+    <div className={classes} title={failure ?? (view.idle ? "Not on the execution line: this node does not run." : undefined)}>
       <div className="bf-node__plate">
         <header className="bf-node__header">
+          {view.exec.inputs.includes("in") ? execSocket("in", "target") : null}
+          {view.exec.outputs.includes("then") ? execSocket("then", "source") : null}
           <NodeMedal icon={icon} />
           <span className="bf-node__titles">
             <span className="bf-node__title">{view.title}</span>
@@ -411,6 +448,22 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
             <PilotLamp state={status?.state} />
           </span>
         </header>
+        {view.exec.outputs.includes(EXEC_FAILED) ? (
+          <div className="bf-node__fail">
+            <div className="bf-node__row bf-node__row--out bf-node__row--failline">
+              <span className="bf-node__label">On fail</span>
+              {execSocket(EXEC_FAILED, "source")}
+            </div>
+            {view.errorOutput ? (
+              <div className="bf-node__row bf-node__row--out" title="error: why the node failed (only on the fail line)">
+                <span className="bf-node__otype">error</span>
+                <span className="bf-node__label">Error</span>
+                <Led family="error" state={outputLed(view.errorOutput)} />
+                <Handle type="source" position={HandlePosition.Right} id={outHandle(view.errorOutput.name)} className={socketClass(view.errorOutput)} style={socketStyle(view.errorOutput)} aria-label="output error" />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {running && view.run?.progress !== undefined ? <VuMeter progress={view.run.progress} /> : null}
         <div className="bf-node__body">
           {view.builtin ? <SignatureRows dir={view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output"} ports={view.type === FLOW_INPUT_NODE_TYPE ? view.outputs : view.inputs} flowId={flowId} scope={scope} /> : null}
@@ -573,7 +626,7 @@ function BriarEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const v = data?.view;
   const invalid = v?.invalid;
-  const core = invalid ? "var(--bf-led-media)" : `var(--bf-wire-${v?.family ?? "any"})`;
+  const core = invalid ? "var(--bf-led-error)" : `var(--bf-wire-${v?.family ?? "any"})`;
   const style: CSSProperties = { stroke: core, strokeWidth: 2.5 };
   if (invalid) style.strokeDasharray = "6 5";
   return (
@@ -588,6 +641,20 @@ function BriarEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
           </div>
         </EdgeLabelRenderer>
       ) : null}
+    </>
+  );
+}
+
+/** An execution line: a heavy cream cable; brass while the run went down it, red from a fail line. */
+function ExecEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected, id }: EdgeProps<ExecRFEdge>) {
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const line = data?.line;
+  const failed = line?.sourcePort === EXEC_FAILED;
+  const classes = ["bf-xedge", failed && "bf-xedge--failed", line?.taken && "bf-xedge--taken"].filter(Boolean).join(" ");
+  return (
+    <>
+      <path d={path} className={selected ? "bf-xedge__sheath bf-edge__sheath--selected" : "bf-xedge__sheath"} />
+      <BaseEdge id={id} path={path} className={classes} interactionWidth={18} />
     </>
   );
 }

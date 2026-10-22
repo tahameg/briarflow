@@ -37,7 +37,8 @@ export interface GhostWire {
   to: XYPosition;
   /** Dragged from an output (`"out"`) or an input. */
   side: "in" | "out";
-  family: LedFamily;
+  /** Cable color: a data family, or `exec` for an execution line. */
+  family: LedFamily | "exec";
 }
 
 /** Handlers for `<ReactFlow>` plus keyboard openers. */
@@ -121,10 +122,50 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     return items;
   };
 
+  /** An execution line dropped on empty canvas: every node that sits on a line, added already connected. */
+  const lineItems = (t: ContextMenuTargets["connect"]): ContextMenuItem[] => {
+    const s = store.getState();
+    if (!flowId || !s.doc || !s.catalog) return [];
+    const at: Position = snap(t.side === "out" ? { x: t.position.x, y: t.position.y - 26 } : { x: t.position.x - 300, y: t.position.y - 26 });
+    const add = (type: string, config?: Record<string, unknown>) => {
+      const id = randomNodeId();
+      const link: Command =
+        t.side === "out"
+          ? { op: "exec.connect", flowId, from: { node: t.nodeId, port: t.port }, to: { node: id, port: "in" } }
+          : { op: "exec.connect", flowId, from: { node: id, port: "then" }, to: { node: t.nodeId, port: "in" } };
+      const r = dispatch([{ op: "node.add", flowId, id, type, position: at, ...(config ? { config } : {}) }, link]);
+      if (r.ok) select([id]);
+    };
+    const catalog = s.catalog;
+    const onLine = catalog.descriptors().filter((d) => !d.pure && !BUILTIN.has(d.type) && !VARIABLE_TYPES.has(d.type));
+    const items: ContextMenuItem[] = paletteGroups(onLine).map((g) => ({
+      id: `line:${g.category}`,
+      label: g.category,
+      order: 100,
+      hint: String(g.nodes.length),
+      items: g.nodes.map((d) => ({
+        id: `line:${d.type}`,
+        label: d.title,
+        hint: d.canFail ? `${d.type} · can fail` : d.type,
+        keywords: [d.category, d.description],
+        accent: d.frontend ? "var(--bf-vfd)" : `var(--bf-${nodeAccent(d.color, d.category)})`,
+        run: () => add(d.type, initialConfig(catalog.get(d.type), s.doc!, flowId, catalog)),
+      })),
+    }));
+    const sets: ContextMenuItem[] = [];
+    for (const v of view?.flow.variables ?? []) sets.push({ id: `line:set:${v.id}`, label: `Set ${v.name}`, accent: "var(--bf-pink)", run: () => add(VARIABLE_NODE_TYPES.variableSet, { variableId: v.id }) });
+    for (const g of s.doc.globals) {
+      if (g.access === "readwrite") sets.push({ id: `line:gset:${g.id}`, label: `Set ${g.name}`, hint: "global", accent: "var(--bf-pink)", run: () => add(VARIABLE_NODE_TYPES.globalSet, { globalId: g.id }) });
+    }
+    if (sets.length > 0) items.push({ id: "line:variables", label: "Variables", order: 150, hint: String(sets.length), items: sets });
+    return items;
+  };
+
   const connectItems = (t: ContextMenuTargets["connect"]): ContextMenuItem[] => {
+    if (t.line) return lineItems(t);
     const s = store.getState();
     const node = view?.byId.get(t.nodeId);
-    const from = (t.side === "out" ? node?.outputs : node?.inputs)?.find((p) => p.name === t.port);
+    const from = (t.side === "out" ? [...(node?.outputs ?? []), ...(node?.errorOutput ? [node.errorOutput] : [])] : node?.inputs)?.find((p) => p.name === t.port);
     if (!flowId || !s.doc || !s.catalog || !from) return [];
     const doc = s.doc;
     const catalog = s.catalog;
@@ -231,10 +272,24 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     return items;
   };
 
-  const portItems = (nodeId: string, port: string, side: "in" | "out"): ContextMenuItem[] => {
+  const portItems = (nodeId: string, port: string, side: "in" | "out", line = false): ContextMenuItem[] => {
     if (!flowId || !view) return [];
     const node = view.byId.get(nodeId);
     if (!node) return [];
+    if (line) {
+      const lines = view.execEdges.filter((e) => (side === "in" ? e.target === nodeId : e.source === nodeId && e.sourcePort === port));
+      const items: ContextMenuItem[] = [];
+      if (lines.length > 0) {
+        items.push({
+          id: "port:disconnect",
+          label: lines.length > 1 ? `Disconnect execution (${lines.length})` : "Disconnect execution",
+          order: 50,
+          group: "port",
+          run: () => dispatch(lines.map<Command>((e) => ({ op: "exec.disconnect", flowId, edgeId: e.id }))),
+        });
+      }
+      return [...items, ...nodeItems([nodeId])];
+    }
     const items: ContextMenuItem[] = [];
     const edges = view.edges.filter((e) => (side === "in" ? e.target === nodeId && e.targetPort === port : e.source === nodeId && e.sourcePort === port));
     if (edges.length > 0) {
@@ -265,6 +320,18 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
   };
 
   const edgeItems = (edgeId: string): ContextMenuItem[] => {
+    const line = view?.execEdges.find((x) => x.id === edgeId);
+    if (line && flowId) {
+      const goLine = (id: string) => {
+        select([id]);
+        frame([id]);
+      };
+      return [
+        { id: "edge:source", label: `Go to ${view?.byId.get(line.source)?.title ?? "source"}`, hint: line.sourcePort, order: 800, run: () => goLine(line.source) },
+        { id: "edge:target", label: `Go to ${view?.byId.get(line.target)?.title ?? "target"}`, order: 800, run: () => goLine(line.target) },
+        { id: "edge:delete", label: "Delete execution line", order: 900, shortcut: "Del", danger: true, run: () => dispatch({ op: "exec.disconnect", flowId, edgeId }) },
+      ];
+    }
     const e = view?.edges.find((x) => x.id === edgeId);
     if (!e || !flowId) return [];
     const go = (id: string) => {
@@ -295,7 +362,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       case "node":
         return nodeItems(t.nodeIds);
       case "port":
-        return portItems(t.nodeId, t.port, t.side);
+        return portItems(t.nodeId, t.port, t.side, t.line === true);
       case "edge":
         return edgeItems(t.edgeId);
       case "connect":
@@ -327,7 +394,10 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       const handle = e.target instanceof Element ? e.target.closest<HTMLElement>(".react-flow__handle") : null;
       const handleId = handle?.dataset.handleid;
       if (handleId) {
-        menu.open(e, { kind: "port", flowId, nodeId: node.id, port: handleId.slice(2), side: handleId.startsWith("i:") ? "in" : "out" });
+        const line = handleId.startsWith("x:");
+        const port = handleId.slice(2);
+        const side = handleId.startsWith("i:") || handleId === "x:in" ? "in" : "out";
+        menu.open(e, line ? { kind: "port", flowId, nodeId: node.id, port, side, line: true } : { kind: "port", flowId, nodeId: node.id, port, side });
         return;
       }
       const target = selectionTarget(node.id);
@@ -349,15 +419,17 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       const pt = "changedTouches" in e ? e.changedTouches[0] : e;
       if (!pt) return;
       const handle = state.fromHandle.id ?? "";
-      const side = handle.startsWith("o:") ? "out" : "in";
+      const line = handle.startsWith("x:");
+      const side = handle.startsWith("o:") || (line && handle !== "x:in") ? "out" : "in";
       const port = handle.slice(2);
       const to = rf.screenToFlowPosition({ x: pt.clientX, y: pt.clientY });
-      const fromPort = (side === "out" ? view?.byId.get(state.fromNode.id)?.outputs : view?.byId.get(state.fromNode.id)?.inputs)?.find((p) => p.name === port);
-      const wire: GhostWire = { from: state.from, to, side, family: fromPort?.led ?? "any" };
+      const fromNode = view?.byId.get(state.fromNode.id);
+      const fromPort = (side === "out" ? [...(fromNode?.outputs ?? []), ...(fromNode?.errorOutput ? [fromNode.errorOutput] : [])] : fromNode?.inputs)?.find((p) => p.name === port);
+      const wire: GhostWire = { from: state.from, to, side, family: line ? "exec" : (fromPort?.led ?? "any") };
       setGhost(wire);
       const opened = menu.open(
         { x: pt.clientX, y: pt.clientY, element: wrapper.current },
-        { kind: "connect", flowId, position: to, nodeId: state.fromNode.id, port, side },
+        line ? { kind: "connect", flowId, position: to, nodeId: state.fromNode.id, port, side, line: true } : { kind: "connect", flowId, position: to, nodeId: state.fromNode.id, port, side },
         undefined,
         { onClose: () => setGhost((g) => (g === wire ? undefined : g)) },
       );

@@ -22,10 +22,13 @@ export interface ContextMenuTargets {
   /** A node. `nodeIds` is what the menu acts on: the selection when the node is part of it. */
   node: { flowId: string; nodeId: string; nodeIds: readonly string[] };
   edge: { flowId: string; edgeId: string };
-  /** A port handle on a node. */
-  port: { flowId: string; nodeId: string; port: string; side: "in" | "out" };
-  /** A wire dropped on empty canvas, dragged from `nodeId.port`; `position` is the drop point. */
-  connect: { flowId: string; position: Position; nodeId: string; port: string; side: "in" | "out" };
+  /** A port handle on a node. `line`: an execution socket (`in`, `then`, `failed`). */
+  port: { flowId: string; nodeId: string; port: string; side: "in" | "out"; line?: boolean };
+  /**
+   * A wire dropped on empty canvas, dragged from `nodeId.port`; `position` is the drop point.
+   * `line`: it is an execution line (port `then` / `failed` / `in`).
+   */
+  connect: { flowId: string; position: Position; nodeId: string; port: string; side: "in" | "out"; line?: boolean };
   /** A flow variable row. */
   variable: { flowId: string; variableId: string };
   /** A context global row. */

@@ -105,6 +105,31 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - Look: frontend nodes have an ebonized frame with a cyan "STUDIO" display badge; the console is a
   cyan VFD screen (`--bf-vfd`); the add menu marks them "· studio".
 
+### Execution lines (2026-10-23)
+- Spec: `docs/specs/execution.md`. An execution line, separate from data wires, decides what runs:
+  - Input sends `then`; Output takes `in`; other nodes take `in` and send `then`.
+  - `pure: true` nodes have no line and run when a running node reads them.
+  - `canFail: true` nodes also send `failed` and get an `error` output (new `error` primitive);
+    Break error reads its code, message and node.
+  - Nodes off the line never run and raise no errors.
+  - A handled failure (failed line connected) continues there and the run can succeed.
+- Core: `execEdges`, `execPortsOf`, `analyzeExec`, `autoExecEdges`, new `exec.*` diagnostics.
+- Authoring: `exec.connect` / `exec.disconnect` / `flow.exec.enable` / `flow.exec.set`. New flows start
+  with Input → Output.
+- Runtime: walks the line, pulls pure nodes, `run.output_not_reached`. Flows without lines still run
+  data-driven.
+- Facade: `flow.line()`, `onFailure()`, `wireExecution()`.
+- Packs: std helpers are pure; mock / Anthropic / Python nodes `canFail`.
+- Editor:
+  - Older flows are wired on load (`flow.exec.enable`, no undo step).
+  - Execution sockets sit on the header; the red "on fail" band holds the failed line and the
+    error output.
+  - Lines are heavy cream cables, brass where the run went, red from a fail line.
+  - Nodes off the line are dimmed.
+  - Dropping a line on empty canvas offers the nodes that sit on a line.
+  - Media LEDs moved to magenta; red now means error.
+- Flow control nodes (branch, switch, loops, concurrency) are the next kind; not built.
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.

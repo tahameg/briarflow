@@ -71,7 +71,7 @@
   stroke-dasharray: 6 5;
 }
 .react-flow__connection.invalid .react-flow__connection-path {
-  stroke: var(--bf-led-media);
+  stroke: var(--bf-led-error);
 }
 .react-flow__selection,
 .react-flow__nodesselection-rect {
@@ -340,7 +340,7 @@
   outline: 1px solid var(--bf-brass-hi);
 }
 .bf-node .bf-input--invalid {
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--bf-led-media);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--bf-led-error);
 }
 .bf-node .bf-value-note {
   color: var(--bf-plate-muted);
@@ -521,14 +521,22 @@
   --offl: #5d5730;
   --glow: rgba(242, 224, 74, 0.33);
 }
-.bf-led--media,
-.bf-pilot--err {
+.bf-led--media {
   --c: var(--bf-led-media);
+  --cl: #ffc6e2;
+  --cd: #8a1252;
+  --off: #3b1a2a;
+  --offl: #62304a;
+  --glow: rgba(255, 79, 160, 0.4);
+}
+.bf-led--error,
+.bf-pilot--err {
+  --c: var(--bf-led-error);
   --cl: #ffc0b2;
   --cd: #8a130a;
   --off: #3b1a16;
   --offl: #62302a;
-  --glow: rgba(255, 75, 58, 0.4);
+  --glow: rgba(255, 59, 48, 0.45);
 }
 .bf-led--data {
   --c: var(--bf-led-data);
@@ -568,7 +576,7 @@
   box-shadow: 0 0 5px rgba(255, 174, 43, 0.6);
 }
 .bf-vu__seg--r {
-  background: var(--bf-led-media);
+  background: var(--bf-led-error);
   box-shadow: 0 0 5px rgba(255, 75, 58, 0.6);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -668,7 +676,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--bf-led-media);
+  background: var(--bf-led-error);
   box-shadow: 0 0 0 2px #0e0c0a, 0 0 10px rgba(255, 75, 58, 0.6);
   color: #fff;
   font-family: var(--bf-font-engraved);
@@ -1954,4 +1962,94 @@ button.bf-diagnostics__btn:hover {
 }
 .bf-console__empty {
   color: rgba(111, 243, 214, 0.55);
+}
+
+/* ---------- Execution lines (docs/specs/execution.md) ---------- */
+.bf-node__header {
+  position: relative;
+}
+/* Execution sockets: ivory arrow plates on the rim; a bright core when a line is plugged in. */
+.bf-canvas .react-flow__handle.bf-xsocket {
+  width: 16px;
+  height: 18px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, #f7eedb, #c9b994);
+  clip-path: polygon(0 0, 58% 0, 100% 50%, 58% 100%, 0 100%);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+}
+.bf-canvas .react-flow__handle.bf-xsocket::after {
+  content: "";
+  position: absolute;
+  inset: 4px 5px 4px 3px;
+  background: #1a140e;
+  clip-path: polygon(0 0, 50% 0, 100% 50%, 50% 100%, 0 100%);
+}
+.bf-canvas .react-flow__handle.bf-xsocket--plugged::after {
+  background: radial-gradient(circle at 30% 50%, #fff, #ffe9b0 60%, #e0b45a);
+}
+.bf-canvas .react-flow__handle-left.bf-xsocket {
+  left: -7px;
+}
+.bf-canvas .react-flow__handle-right.bf-xsocket {
+  right: -9px;
+}
+.bf-canvas .react-flow__handle.bf-xsocket--failed {
+  background: linear-gradient(180deg, #ffb0a4, #c2392d);
+}
+.bf-canvas .react-flow__handle.bf-xsocket:hover,
+.bf-canvas .react-flow__handle.bf-xsocket.valid {
+  filter: drop-shadow(0 0 5px rgba(255, 207, 110, 0.9));
+}
+/* The "on fail" band: the failed line and the red error output, right under the title. */
+.bf-node__fail {
+  padding: 2px 0;
+  border-bottom: 1px solid var(--bf-line);
+  background: linear-gradient(90deg, rgba(255, 59, 48, 0.03), rgba(255, 59, 48, 0.12));
+}
+.bf-node__fail .bf-node__row {
+  min-height: 28px;
+}
+.bf-node__row--failline .bf-node__label {
+  color: #ff9d8f;
+  font-family: var(--bf-font-engraved);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.bf-node__fail .bf-node__otype {
+  color: #ff9d8f;
+}
+/* Execution line cables: heavier and brighter than data wires; brass where the run went. */
+.bf-xedge__sheath {
+  fill: none;
+  stroke: #1d140d;
+  stroke-width: 8;
+  stroke-linecap: round;
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+.bf-xedge {
+  fill: none;
+  stroke: var(--bf-wire-exec);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+.bf-xedge--failed {
+  stroke: var(--bf-wire-error);
+}
+.bf-xedge--taken {
+  stroke: var(--bf-brass-hi);
+  filter: drop-shadow(0 0 4px rgba(255, 207, 110, 0.8));
+}
+.react-flow__edge:hover .bf-xedge__sheath {
+  stroke: #3a2a1c;
+}
+/* Not on the execution line: it never runs. */
+.bf-node--idle {
+  opacity: 0.55;
+  filter: saturate(0.45);
 }

@@ -223,6 +223,9 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
         sync: syncState(),
         history: historyState(),
       });
+      // Flows made before execution lines get wired once (saved like any edit).
+      const unwired = doc.flows.filter((f) => f.execEdges === undefined).map((f) => ({ op: "flow.exec.enable" as const, flowId: f.id }));
+      if (unwired.length > 0) dispatchBatch(unwired);
     } catch (error) {
       if (disposed || gen !== generation) return;
       set({
@@ -255,7 +258,8 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     const r = run(state.doc, commands);
     if (!r.ok || !r.changed) return r;
     let entry: Entry | undefined;
-    if (!commands.every((c) => c.op === "flow.setViewport")) {
+    // Viewport saves and auto-wiring of execution lines on load are not user edits: no undo step.
+    if (!commands.every((c) => c.op === "flow.setViewport" || c.op === "flow.exec.enable")) {
       entry = { commands: r.resolved, inverse: r.inverse };
       undoStack.push(entry);
       if (undoStack.length > historyLimit) undoStack.splice(0, undoStack.length - historyLimit);
