@@ -350,7 +350,7 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
   - inactive: muted text, LED off
   - active: pressed in (dark `#1D1A16` recess with an inner shadow), brass text, LED lit
   - no underlines and no separators
-- **Tree / list selection:** a faint amber wash with a 2 px brass bar on the left.
+- **List selection:** a faint amber wash with a 2 px brass bar on the left.
 - **Badge:** a dark recess with pastel tone text (`--bf-badge-bg` is used as the text color).
 - **Dialog / modal / move menu / splash:**
   - a plate inside a briar frame (6–10 px wood border, `#C07A48` outer line)
@@ -373,7 +373,7 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [BRIARFLOW] Woodshop demo / [Bench ▾] [TYPES] [GLOBALS]     rev 5 · saved [UNDO][REDO][⚠0][▶ RUN] │ walnut top bar, 48 px
+│ [BRIARFLOW] [Demo ▾][+] / [Bench ▾][+] [TYPES] [GLOBALS]  rev 5 · saved [UNDO][REDO][⚠0][▶ RUN] │ walnut top bar, 48 px
 ├────────────┬──────────────────────────────────────────────────────────────┬──────────────────┤
 │ CONTEXTS   │ ╭ bench canvas ──────────────────────────────────────────────╮ │ INSPECTOR        │
 │ ▾ Demo     │ │   ╭INPUT╮        ╭TEXT TEMPLATE╮       ╭MOCK LLM╮          │ │ flow / selection │
@@ -386,16 +386,24 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
 └────────────┴──────────────────────────────────────────────────────────────┴──────────────────┘
 ```
 
-- **Dockable panels** (`apps/studio/src/dock.tsx`): contexts, variables, inspector, run and
-  problems, in left / right (stacked, collapsible) and bottom (tabs) zones.
+- **Context and flow switchers** in the top bar (`Switcher.tsx`), not a panel. Each one is a
+  dropdown followed by a `+`.
+  - `+` turns into a name field: Enter creates the item and opens it, Esc cancels.
+  - Right-click the dropdown for New, Rename (inline), Duplicate (flows), Reload list
+    (contexts) and Delete (with a confirmation).
+  - With no contexts, the bar shows only a brass `+ Add context` button.
+  - The server can choose what opens first: `BRIAR_STUDIO_CONTEXT` / `BRIAR_STUDIO_FLOW` (id or
+    name, created when missing), served at `GET /api/studio`. That target beats the last-used
+    context kept in localStorage.
+- **Dockable panels** (`apps/studio/src/dock.tsx`): variables, inspector, run and problems, in left / right (stacked, collapsible) and bottom (tabs) zones.
   - Move a panel by dragging its title or tab, or from its right-click menu.
   - The layout is stored in localStorage and normalized when loaded.
-  - The default puts contexts and variables on the left, inspector on the right, and run and
-    problems at the bottom.
+  - The default puts variables on the left, inspector on the right, and run and problems at
+    the bottom.
 - **There is no node palette panel.** Right-click the empty canvas, or press `/`, for the add
   menu: every node by category, variable/global GET/SET, and a search box.
 - **Context menus everywhere:** canvas, node, port, edge, variable / global / signature /
-  struct field / enum value / type rows, dock panels, and the contexts/flows tree.
+  struct field / enum value / type rows, dock panels, and the context / flow switchers.
   - The browser menu is suppressed everywhere except text fields.
   - The menus are extensible: `ContextMenuTargets` declaration merging, `useContextMenuContributor`.
 - **Globals and Types** open as briar-framed modals from the top bar.
@@ -408,7 +416,7 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
   The top bar carries a count badge that opens it.
 - **Top bar:**
   - walnut strip with a brass BRIARFLOW nameplate
-  - context crumb (engraved) and flow switcher
+  - context and flow switchers
   - TYPES / GLOBALS buttons
   - revision + save state
   - undo / redo, problems badge, brass RUN button

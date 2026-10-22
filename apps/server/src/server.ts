@@ -1,7 +1,8 @@
 /**
  * Builds and starts the Briarflow server from a {@link ServerConfig}: SQLite contexts and
  * filesystem media under the data dir, std + mock packs, optional Python and provider packs,
- * the REST + SSE API, `/health`, and the studio UI with SPA fallback.
+ * the REST + SSE API, `/health`, the studio start target (`/api/studio`) and the studio UI with
+ * SPA fallback.
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -14,6 +15,7 @@ import { createBriar, envSecrets, type Briar } from "briarflow";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { isLoopback, type ServerConfig } from "./config.js";
 import { loadProviderPacks } from "./providers.js";
+import { ensureStudioStart } from "./studio.js";
 
 /** A running server app. */
 export interface RunningServer {
@@ -71,6 +73,8 @@ export async function startServer(config: ServerConfig, logger: Logger): Promise
     logger,
   });
   app.get("/health", (c) => c.text("ok"));
+  const studioStart = await ensureStudioStart(briar, config.studioStart, logger);
+  app.get("/api/studio", (c) => c.json(studioStart));
 
   if (config.studioDir !== undefined && existsSync(join(config.studioDir, "index.html"))) {
     const root = relative(process.cwd(), resolve(config.studioDir)) || ".";

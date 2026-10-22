@@ -71,99 +71,6 @@
   padding: var(--bf-space-2) var(--bf-space-3);
 }
 
-/* ---------- Contexts tree ---------- */
-.bf-tree {
-  margin: 0;
-  padding: var(--bf-space-1) 0;
-  list-style: none;
-}
-.bf-tree__flows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.bf-tree__row {
-  display: flex;
-  align-items: center;
-  gap: var(--bf-space-2);
-  width: 100%;
-  min-height: 28px;
-  padding: 0 var(--bf-space-3);
-  border: 0;
-  background: transparent;
-  color: var(--bf-ink);
-  text-align: left;
-  cursor: pointer;
-}
-.bf-tree__row:hover {
-  background: var(--bf-surface-2);
-}
-.bf-tree__row--open {
-  font-weight: 700;
-}
-.bf-tree__row--flow {
-  padding-left: calc(var(--bf-space-3) + 22px);
-}
-.bf-tree__row--current {
-  color: var(--bf-yellow);
-  background: var(--bf-surface-3);
-  box-shadow: inset 2px 0 0 0 var(--bf-brass-hi);
-}
-.bf-tree__row:focus-visible {
-  outline-offset: -3px;
-}
-/* A row plus its ✎ / × actions, shown on hover, focus and for the active row (design-system §11). */
-.bf-tree__item {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.bf-tree__item > .bf-tree__row {
-  flex: 1;
-  min-width: 0;
-}
-.bf-tree__item:has(> .bf-tree__row--current) {
-  background: linear-gradient(90deg, rgba(255, 174, 43, 0.12), rgba(255, 174, 43, 0.02));
-  box-shadow: inset 2px 0 0 0 var(--bf-brass-hi);
-}
-.bf-tree__item > .bf-tree__row--current {
-  background: transparent;
-  box-shadow: none;
-}
-.bf-tree__actions {
-  display: inline-flex;
-  flex: none;
-  gap: 2px;
-  padding-right: var(--bf-space-1);
-  visibility: hidden;
-}
-.bf-tree__item:hover .bf-tree__actions,
-.bf-tree__item:focus-within .bf-tree__actions,
-.bf-tree__item--active .bf-tree__actions {
-  visibility: visible;
-}
-.bf-button.bf-row-edit:hover,
-.bf-button.bf-row-edit:focus-visible {
-  border-color: var(--bf-ink-muted);
-  color: var(--bf-ink);
-}
-.bf-tree__item--editing {
-  padding: 2px var(--bf-space-3);
-}
-.bf-tree__rename {
-  width: 100%;
-}
-.bf-tree__new {
-  padding: 2px var(--bf-space-3) 4px calc(var(--bf-space-3) + 22px);
-}
-.bf-tree__note {
-  margin: 0;
-  padding: 2px var(--bf-space-3) 2px calc(var(--bf-space-3) + 22px);
-  font-size: var(--bf-text-sm);
-  color: var(--bf-ink-muted);
-}
-
-/* ---------- Center: canvas + dock ---------- */
 .bf-center {
   display: grid;
   grid-template-rows: minmax(0, 65fr) minmax(0, 35fr);
@@ -415,4 +322,45 @@
   border-radius: 10px;
   background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
   box-shadow: 0 0 0 1px #c07a48, 0 24px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- Context / flow switchers (Switcher.tsx) ---------- */
+.bf-switcher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.bf-switcher__select {
+  width: auto;
+  min-width: 150px;
+  max-width: 240px;
+  height: 28px;
+}
+.bf-switcher__name {
+  width: 200px;
+  height: 28px;
+}
+.bf-button.bf-switcher__add {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-family: var(--bf-font-code);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+.bf-switcher__error {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--bf-z-popover);
+  max-width: 320px;
+  padding: 6px 9px;
+  border: 1px solid #7a2a22;
+  border-radius: 4px;
+  background: #2a1513;
+  color: #ffb3a6;
+  font-size: 12px;
+  white-space: normal;
 }

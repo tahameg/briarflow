@@ -13,7 +13,13 @@ describe("loadConfig", () => {
       python: undefined,
       mock: true,
       providerKeys: { anthropic: false },
+      studioStart: {},
     });
+  });
+
+  it("reads the studio start context and flow", () => {
+    expect(loadConfig({ BRIAR_STUDIO_CONTEXT: "Marketing", BRIAR_STUDIO_FLOW: "Portrait" }).studioStart).toEqual({ context: "Marketing", flow: "Portrait" });
+    expect(() => loadConfig({ BRIAR_STUDIO_FLOW: "Portrait" })).toThrow(/BRIAR_STUDIO_CONTEXT/);
   });
 
   it("reads every variable", () => {

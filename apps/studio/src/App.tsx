@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clientBackend, createEditorStore } from "@briarflow/editor";
 import type { EditorStore } from "@briarflow/editor";
 import type { ContextSummary } from "@briarflow/core";
 import { Button, EditorProvider } from "@briarflow/editor-react";
 import { mockPack } from "@briarflow/nodes-mock";
 import { stdPack } from "@briarflow/nodes-std";
-import { API_BASE, client, useContexts } from "./client";
+import { API_BASE, client, fetchStudioStart, useContexts } from "./client";
+import type { StudioStart } from "./client";
 import { Workspace } from "./Workspace";
 
 const LAST_CONTEXT_KEY = "briarflow.studio.context";
@@ -29,25 +30,40 @@ function writeLast(id: string): void {
   }
 }
 
-/** Studio root: connects to the server, picks a context, binds the editor store. */
+/**
+ * Studio root: connects to the server, picks a context (the server's start target, else the
+ * last used, else the first), binds the editor store.
+ */
 export function App() {
   const { state, reload } = useContexts();
+  const [start, setStart] = useState<StudioStart | undefined>(undefined);
   const [contextId, setContextId] = useState<string | undefined>(undefined);
   const [store, setStore] = useState<EditorStore | undefined>(undefined);
+  // The start flow applies once, to the first store of the start context.
+  const startFlow = useRef<{ contextId: string; flowId: string } | undefined>(undefined);
 
   const contexts: ContextSummary[] = state.status === "ready" ? state.contexts : [];
 
-  // Choose the last used (or first) context once the list is there.
   useEffect(() => {
-    if (state.status !== "ready" || contextId !== undefined) return;
+    const abort = new AbortController();
+    void fetchStudioStart(abort.signal).then((s) => !abort.signal.aborted && setStart(s));
+    return () => abort.abort();
+  }, []);
+
+  useEffect(() => {
+    if (state.status !== "ready" || start === undefined || contextId !== undefined) return;
     const last = readLast();
-    const pick = state.contexts.find((c) => c.id === last) ?? state.contexts[0];
-    if (pick) setContextId(pick.id);
-  }, [state, contextId]);
+    const pick = state.contexts.find((c) => c.id === start.contextId) ?? state.contexts.find((c) => c.id === last) ?? state.contexts[0];
+    if (!pick) return;
+    if (pick.id === start.contextId && start.flowId) startFlow.current = { contextId: pick.id, flowId: start.flowId };
+    setContextId(pick.id);
+  }, [state, start, contextId]);
 
   useEffect(() => {
     if (!contextId) return;
-    const s = createEditorStore({ backend, contextId, localPacks: [stdPack, mockPack] });
+    const flowId = startFlow.current?.contextId === contextId ? startFlow.current.flowId : undefined;
+    startFlow.current = undefined;
+    const s = createEditorStore({ backend, contextId, localPacks: [stdPack, mockPack], ...(flowId ? { flowId } : {}) });
     setStore(s);
     writeLast(contextId);
     return () => {

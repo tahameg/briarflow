@@ -86,6 +86,8 @@ Requires Node ≥ 20.19. Python nodes need Python ≥ 3.10 (see the Python guide
 | `BRIAR_DATA_DIR` | `./data` relative to the working dir (`/data` in Docker) | `briarflow.db` (SQLite) and `media/` |
 | `BRIAR_CORS_ORIGIN` | `http://localhost:5173,http://127.0.0.1:5173` | Comma list of allowed origins, or `off` |
 | `BRIAR_STUDIO_DIR` | `apps/studio/dist` | Built studio to serve at `/` (`off` to disable) |
+| `BRIAR_STUDIO_CONTEXT` | — | Context the studio opens first, by id or name; created at startup when missing |
+| `BRIAR_STUDIO_FLOW` | — | Flow of that context to open first, by id or name; created when missing (needs `BRIAR_STUDIO_CONTEXT`) |
 | `BRIAR_MOCK_NODES` | `true` | Offer the mock pack (fake LLM / image / 3D nodes) |
 | `BRIAR_PYTHON_WORKER_URL`, `BRIAR_PYTHON_WORKER_TOKEN` | — | Load node packs from a Python worker |
 | `ANTHROPIC_API_KEY` | — | Enables the `anthropic` pack (Claude nodes) |

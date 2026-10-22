@@ -21,6 +21,11 @@ export interface ServerConfig {
   mock: boolean;
   /** Secret names (env vars) that enable the optional provider packs. */
   providerKeys: { anthropic: boolean };
+  /**
+   * What the studio opens first: a context and optionally a flow, each by id or name
+   * (`BRIAR_STUDIO_CONTEXT`, `BRIAR_STUDIO_FLOW`). Missing ones are created at startup.
+   */
+  studioStart: { context?: string; flow?: string };
 }
 
 /** A malformed environment variable. */
@@ -70,6 +75,11 @@ export function loadConfig(env: Env, defaults: { defaultStudioDir?: string } = {
   const pythonUrl = nonEmpty(env, "BRIAR_PYTHON_WORKER_URL");
   const pythonToken = nonEmpty(env, "BRIAR_PYTHON_WORKER_TOKEN");
   const studioRaw = nonEmpty(env, "BRIAR_STUDIO_DIR");
+  const startContext = nonEmpty(env, "BRIAR_STUDIO_CONTEXT");
+  const startFlow = nonEmpty(env, "BRIAR_STUDIO_FLOW");
+  if (startFlow !== undefined && startContext === undefined) {
+    throw new ConfigError("BRIAR_STUDIO_FLOW", startFlow, "also set BRIAR_STUDIO_CONTEXT to the context that holds the flow.");
+  }
 
   return {
     port,
@@ -80,6 +90,7 @@ export function loadConfig(env: Env, defaults: { defaultStudioDir?: string } = {
     python: pythonUrl === undefined ? undefined : pythonToken === undefined ? { url: pythonUrl } : { url: pythonUrl, token: pythonToken },
     mock: parseBool(env, "BRIAR_MOCK_NODES", true),
     providerKeys: { anthropic: nonEmpty(env, "ANTHROPIC_API_KEY") !== undefined },
+    studioStart: { ...(startContext !== undefined ? { context: startContext } : {}), ...(startFlow !== undefined ? { flow: startFlow } : {}) },
   };
 }
 

@@ -76,6 +76,14 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   nameplate, plate panels/docks, brass primary buttons, recessed inputs, LED checkboxes, engraved tabs,
   briar-framed modals and menus. `docs/specs/design-system.md` rewritten as v2 "Briar Woodshop".
 
+### Top-bar switchers + studio start target (2026-10-22)
+- The Contexts panel is gone. The top bar has context and flow switchers (`apps/studio/src/Switcher.tsx`):
+  a dropdown + `+` (inline name field), and right-click for new / rename / duplicate / reload / delete.
+  With no contexts, only `+ Add context` shows. Stored dock layouts drop the old panel (`normalizeLayout`).
+- `apps/server`: `BRIAR_STUDIO_CONTEXT` / `BRIAR_STUDIO_FLOW` (id or name) are ensured at startup
+  (`src/studio.ts`, created when missing) and served at `GET /api/studio`. The studio opens that
+  target first, else the last used context, else the first one.
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.

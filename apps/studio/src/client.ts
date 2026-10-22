@@ -11,6 +11,27 @@ export const API_BASE: string = (import.meta.env.VITE_BRIAR_API as string | unde
 
 export const client: BriarClient = createBriarClient({ baseUrl: API_BASE });
 
+/** What the server wants the studio to open first (`BRIAR_STUDIO_CONTEXT` / `BRIAR_STUDIO_FLOW`). */
+export interface StudioStart {
+  contextId?: string;
+  flowId?: string;
+}
+
+/** Reads `GET /api/studio` next to the API base; `{}` when the server has no start target. */
+export async function fetchStudioStart(signal?: AbortSignal): Promise<StudioStart> {
+  try {
+    const res = await fetch(`${API_BASE.replace(/\/v1\/?$/, "")}/studio`, signal ? { signal } : {});
+    if (!res.ok) return {};
+    const body = (await res.json()) as StudioStart;
+    return {
+      ...(typeof body.contextId === "string" ? { contextId: body.contextId } : {}),
+      ...(typeof body.flowId === "string" ? { flowId: body.flowId } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
 /** Connection state of the context list. */
 export type ContextsState =
   | { status: "loading" }

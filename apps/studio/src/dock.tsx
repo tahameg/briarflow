@@ -18,7 +18,7 @@ declare module "@briarflow/editor-react" {
 
 export type Zone = "left" | "right" | "bottom";
 export const ZONES: readonly Zone[] = ["left", "right", "bottom"];
-export const PANEL_IDS = ["contexts", "variables", "inspector", "run", "problems"] as const;
+export const PANEL_IDS = ["variables", "inspector", "run", "problems"] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 
 export interface DockLayout {
@@ -29,7 +29,7 @@ export interface DockLayout {
 }
 
 export const DEFAULT_LAYOUT: DockLayout = {
-  zones: { left: ["contexts", "variables"], right: ["inspector"], bottom: ["run", "problems"] },
+  zones: { left: ["variables"], right: ["inspector"], bottom: ["run", "problems"] },
   collapsed: [],
   bottomTab: "run",
 };
