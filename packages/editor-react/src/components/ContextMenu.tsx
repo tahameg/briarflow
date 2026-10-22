@@ -17,14 +17,20 @@ export type ContextMenuAnchor =
   | { clientX: number; clientY: number; target: EventTarget | null; preventDefault(): void; stopPropagation(): void }
   | { x: number; y: number; element?: Element | null };
 
+/** Extra options of {@link ContextMenuApi.open}. */
+export interface ContextMenuOpenOptions {
+  onClose?: () => void;
+}
+
 /** Returned by {@link useContextMenu}. */
 export interface ContextMenuApi {
   /**
    * Opens the menu for `target` with the contributors' items plus `local` items (entries only
    * the caller can run, such as "Rename" of an inline field). Returns false, and leaves the
-   * event alone, when no item applies.
+   * event alone, when no item applies. `options.onClose` runs once when this menu goes away
+   * (an item ran, Escape, a click outside, or another menu replaced it).
    */
-  open(anchor: ContextMenuAnchor, target: ContextMenuTarget, local?: readonly ContextMenuItem[]): boolean;
+  open(anchor: ContextMenuAnchor, target: ContextMenuTarget, local?: readonly ContextMenuItem[], options?: ContextMenuOpenOptions): boolean;
   close(): void;
 }
 
@@ -55,6 +61,7 @@ interface OpenState {
   target: ContextMenuTarget;
   container: Element;
   restoreFocus: Element | null;
+  onClose?: () => void;
 }
 
 /**
@@ -80,7 +87,7 @@ export function ContextMenuProvider({ children, contributors, transform, suppres
           registered.current = registered.current.filter((c) => c !== contributor);
         };
       },
-      open(anchor, target, local) {
+      open(anchor, target, local, options) {
         const all = [...registered.current, ...(props.current.contributors ?? [])];
         let items = collectItems(all, target, local);
         if (props.current.transform) items = props.current.transform(items, target);
@@ -99,13 +106,20 @@ export function ContextMenuProvider({ children, contributors, transform, suppres
           y = anchor.y;
           from = anchor.element ?? null;
         }
-        setMenu({ x, y, items, target, container: from?.closest("dialog") ?? document.body, restoreFocus: document.activeElement });
+        setMenu({ x, y, items, target, container: from?.closest("dialog") ?? document.body, restoreFocus: document.activeElement, ...(options?.onClose ? { onClose: options.onClose } : {}) });
         return true;
       },
       close: () => setMenu(undefined),
     }),
     [],
   );
+
+  // Tell the previous menu it went away (not a cleanup: StrictMode re-runs effects on mount).
+  const shown = useRef<OpenState | undefined>(undefined);
+  useEffect(() => {
+    if (shown.current && shown.current !== menu) shown.current.onClose?.();
+    shown.current = menu;
+  }, [menu]);
 
   useEffect(() => {
     if (!suppressBrowserMenu) return;

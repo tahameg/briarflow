@@ -91,6 +91,8 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   at the drop point already wired (one undo step). `connect.ts` (`matchConnectTargets`) resolves
   candidate ports like the canvas does, so dynamic and variable nodes match too; menu target
   `connect`.
+- The dropped wire stays on screen (dashed cable to a brass dot at the drop point) until a pick or
+  a click outside closes the menu (`ContextMenuApi.open(…, { onClose })`).
 
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).

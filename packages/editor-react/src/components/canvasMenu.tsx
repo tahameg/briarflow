@@ -4,13 +4,14 @@
  * dropped on empty canvas opens the nodes that can take it. Also the keyboard entry points
  * (`/` add menu, ContextMenu key / Shift+F10).
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
-import type { Edge as RFEdge, FinalConnectionState, Node as RFNode } from "@xyflow/react";
+import type { Edge as RFEdge, FinalConnectionState, Node as RFNode, XYPosition } from "@xyflow/react";
 import type { Command } from "@briarflow/authoring";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "@briarflow/core";
 import type { Position } from "@briarflow/core";
+import type { LedFamily } from "../theme.js";
 import { useDispatch, useEditorStore } from "../context.js";
 import { nextName } from "../fields.js";
 import type { FlowView } from "../graph.js";
@@ -28,6 +29,17 @@ const VARIABLE_TYPES = new Set<string>(Object.values(VARIABLE_NODE_TYPES));
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
 
+/** A dropped wire kept on screen while its "connect" menu is open (flow coordinates). */
+export interface GhostWire {
+  /** The handle it was dragged from. */
+  from: XYPosition;
+  /** The drop point. */
+  to: XYPosition;
+  /** Dragged from an output (`"out"`) or an input. */
+  side: "in" | "out";
+  family: LedFamily;
+}
+
 /** Handlers for `<ReactFlow>` plus keyboard openers. */
 export interface CanvasMenu {
   onPaneContextMenu: (e: ReactMouseEvent | MouseEvent) => void;
@@ -36,6 +48,8 @@ export interface CanvasMenu {
   onSelectionContextMenu: (e: ReactMouseEvent, nodes: RFNode[]) => void;
   /** A wire released on empty canvas: open the nodes that can take it. */
   onConnectEnd: (e: MouseEvent | TouchEvent, state: FinalConnectionState) => void;
+  /** The dropped wire while its menu is open. */
+  ghost: GhostWire | undefined;
   /** Remembers the pointer so `/` opens the add menu under it. */
   onPointerMove: (e: ReactMouseEvent) => void;
   /** `"add"`: the empty-canvas menu at the pointer; `"selection"`: the selection's menu. */
@@ -49,6 +63,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
   const rf = useReactFlow();
   const menu = useContextMenu();
   const pointer = useRef<{ x: number; y: number } | undefined>(undefined);
+  const [ghost, setGhost] = useState<GhostWire | undefined>(undefined);
 
   const select = (nodes: string[], edges: string[] = []) => store.select({ nodes, edges }, "replace");
   const frame = (ids: readonly string[]) => void rf.fitView({ nodes: ids.map((id) => ({ id })), padding: 0.3, maxZoom: 1, duration: 200 });
@@ -334,11 +349,21 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       const pt = "changedTouches" in e ? e.changedTouches[0] : e;
       if (!pt) return;
       const handle = state.fromHandle.id ?? "";
-      menu.open(
+      const side = handle.startsWith("o:") ? "out" : "in";
+      const port = handle.slice(2);
+      const to = rf.screenToFlowPosition({ x: pt.clientX, y: pt.clientY });
+      const fromPort = (side === "out" ? view?.byId.get(state.fromNode.id)?.outputs : view?.byId.get(state.fromNode.id)?.inputs)?.find((p) => p.name === port);
+      const wire: GhostWire = { from: state.from, to, side, family: fromPort?.led ?? "any" };
+      setGhost(wire);
+      const opened = menu.open(
         { x: pt.clientX, y: pt.clientY, element: wrapper.current },
-        { kind: "connect", flowId, position: rf.screenToFlowPosition({ x: pt.clientX, y: pt.clientY }), nodeId: state.fromNode.id, port: handle.slice(2), side: handle.startsWith("o:") ? "out" : "in" },
+        { kind: "connect", flowId, position: to, nodeId: state.fromNode.id, port, side },
+        undefined,
+        { onClose: () => setGhost((g) => (g === wire ? undefined : g)) },
       );
+      if (!opened) setGhost(undefined);
     },
+    ghost,
     onPointerMove: useCallback((e: ReactMouseEvent) => {
       pointer.current = { x: e.clientX, y: e.clientY };
     }, []),

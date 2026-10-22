@@ -62,7 +62,7 @@ export type { FieldRowProps } from "./components/FieldRow.js";
 export { deleteSelection, deleteSelectionCommands, isTypingTarget } from "./components/selection.js";
 export { duplicateCommands } from "./duplicate.js";
 export { ContextMenuProvider, useContextMenu, useContextMenuContributor, useHasContextMenu } from "./components/ContextMenu.js";
-export type { ContextMenuAnchor, ContextMenuApi, ContextMenuProviderProps } from "./components/ContextMenu.js";
+export type { ContextMenuAnchor, ContextMenuApi, ContextMenuOpenOptions, ContextMenuProviderProps } from "./components/ContextMenu.js";
 export { collectItems, mergeItems, searchItems } from "./menu.js";
 export type { ContextMenuContributor, ContextMenuItem, ContextMenuTarget, ContextMenuTargets, ContextMenuTransform, MenuSearchHit } from "./menu.js";
 export {

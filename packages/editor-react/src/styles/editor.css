@@ -641,6 +641,26 @@
     stroke-dashoffset: -14;
   }
 }
+/* A dropped wire waiting for its "connect" menu pick. */
+.bf-ghost-wire {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.bf-ghost-wire__core {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 6 5;
+}
+.bf-ghost-wire__end {
+  fill: var(--bf-brass-hi);
+  stroke: #1d140d;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(255, 207, 110, 0.7));
+}
 .bf-edge__warning {
   position: absolute;
   display: grid;

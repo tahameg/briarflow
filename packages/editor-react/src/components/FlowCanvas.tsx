@@ -22,6 +22,7 @@ import {
   useReactFlow,
   useStore as useFlowStore,
   useUpdateNodeInternals,
+  ViewportPortal,
 } from "@xyflow/react";
 import type { Connection, Edge as RFEdge, EdgeChange, EdgeProps, Node as RFNode, NodeChange, NodeProps, Viewport } from "@xyflow/react";
 import type { Command } from "@briarflow/authoring";
@@ -39,6 +40,7 @@ import type { DotState } from "./ui.js";
 import { ValueEditor } from "./ValueEditor.js";
 import { useEditorShortcuts } from "./shortcuts.js";
 import { useCanvasMenu } from "./canvasMenu.js";
+import type { GhostWire } from "./canvasMenu.js";
 import { Led, NodeMedal, PilotLamp, VuMeter, inputLed, medalIcon, outputLed } from "./nodeParts.js";
 
 interface NodeData extends Record<string, unknown> {
@@ -306,6 +308,7 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
             ▦
           </ControlButton>
         </Controls>
+        {menu.ghost ? <GhostWirePath wire={menu.ghost} /> : null}
         {showMap ? <MiniMap className="bf-minimap" pannable zoomable nodeColor={() => "#9a4a22"} maskColor="rgba(0,0,0,0.6)" /> : null}
       </ReactFlow>
     </div>
@@ -544,6 +547,21 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
 }
 
 // ---- edge -----------------------------------------------------------------------------------
+
+/** The dropped wire while the "connect" menu is open: a cable from the handle to the drop point. */
+function GhostWirePath({ wire }: { wire: GhostWire }) {
+  const [a, b] = wire.side === "out" ? [wire.from, wire.to] : [wire.to, wire.from];
+  const [path] = getBezierPath({ sourceX: a.x, sourceY: a.y, sourcePosition: HandlePosition.Right, targetX: b.x, targetY: b.y, targetPosition: HandlePosition.Left });
+  return (
+    <ViewportPortal>
+      <svg className="bf-ghost-wire" aria-hidden="true">
+        <path d={path} className="bf-edge__sheath" />
+        <path d={path} className="bf-ghost-wire__core" style={{ stroke: `var(--bf-wire-${wire.family})` }} />
+        <circle cx={wire.to.x} cy={wire.to.y} r={5} className="bf-ghost-wire__end" />
+      </svg>
+    </ViewportPortal>
+  );
+}
 
 function BriarEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<BriarRFEdge>) {
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
