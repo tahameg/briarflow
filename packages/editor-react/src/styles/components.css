@@ -690,7 +690,7 @@
 .bf-input,
 .bf-input:hover {
   border: 0;
-  border-radius: 5px;
+  border-radius: 3px;
   background-color: var(--bf-slot);
   box-shadow: var(--bf-slot-shadow);
 }
@@ -778,14 +778,92 @@
 }
 .bf-stepper,
 .bf-icon-btn {
-  border-radius: 5px;
+  border-radius: 3px;
 }
 .bf-dialog {
   border: 8px solid transparent;
-  border-radius: 18px;
+  border-radius: 10px;
   background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
   box-shadow: 0 0 0 1px #c07a48, inset 0 0 0 1px var(--bf-line), 0 24px 48px rgba(0, 0, 0, 0.55);
 }
 .bf-dialog::backdrop {
   background: rgba(10, 7, 4, 0.6);
+}
+
+/*
+ * Panel headers: a raised strip with an engraved title and a small pilot LED that lights
+ * while the panel has focus. Tabs are radio band selectors: the active one is pressed in
+ * with its LED lit.
+ */
+.bf-panel__bar,
+.bf-dock__bar {
+  height: 34px;
+  border-bottom: 1px solid var(--bf-line);
+  border-radius: calc(var(--bf-radius) - 1px) calc(var(--bf-radius) - 1px) 0 0;
+  background: linear-gradient(180deg, #3b362f 0%, #2f2b26 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.bf-panel--active .bf-panel__bar {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.bf-panel__bar .bf-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d8c7a8;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.bf-panel__bar .bf-panel__title::before,
+.bf-tab::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6b4c26, #3d2a14 70%);
+  box-shadow: 0 0 0 1.5px #0e0c0a, 0 0 0 2.5px #4a4137;
+}
+.bf-panel:focus-within .bf-panel__bar .bf-panel__title::before,
+.bf-panel--active .bf-panel__bar .bf-panel__title::before,
+.bf-tab--active::before {
+  background: radial-gradient(circle at 35% 30%, #fff 0, #ffe1a1 25%, var(--bf-led-text) 60%, #8f4c00 100%);
+  box-shadow: 0 0 0 1.5px #0e0c0a, 0 0 0 2.5px #4a4137, 0 0 6px var(--bf-led-text);
+}
+.bf-tabs {
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+.bf-dock__bar .bf-tabs {
+  height: 100%;
+}
+.bf-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--bf-ink-muted);
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+.bf-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--bf-ink);
+}
+.bf-tab--active,
+.bf-tab--active:hover {
+  background: #1d1a16;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--bf-brass-hi);
+}
+.bf-tab:focus-visible {
+  outline: 1px solid var(--bf-brass-hi);
+  outline-offset: 1px;
 }

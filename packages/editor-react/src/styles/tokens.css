@@ -113,8 +113,8 @@
   --bf-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.55);
   --bf-shadow-yellow: 0 0 0 1px var(--bf-brass-hi), 0 0 14px rgba(255, 184, 74, 0.35);
 
-  --bf-radius: 12px;
-  --bf-radius-sm: 6px;
+  --bf-radius: 6px;
+  --bf-radius-sm: 4px;
   --bf-duration: 80ms;
 
   --bf-z-canvas: 0;

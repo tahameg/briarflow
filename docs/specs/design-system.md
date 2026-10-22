@@ -150,19 +150,18 @@ The minimum size anywhere is 10.5 px, used only for engraved captions and node t
   --bf-shadow-md: 0 4px 10px rgba(0,0,0,.45);
   --bf-shadow-lg: 0 10px 24px rgba(0,0,0,.55);
   --bf-shadow-yellow: 0 0 0 1px var(--bf-brass-hi), 0 0 14px rgba(255,184,74,.35);
-  --bf-radius: 12px;     /* panels, docks, canvas */
-  --bf-radius-sm: 6px;   /* buttons, toggles */
+  --bf-radius: 6px;      /* panels, docks, canvas */
+  --bf-radius-sm: 4px;   /* buttons, toggles */
 }
 ```
 
-- **Radii by layer:**
-  - node frame 22 px, node plate 13 px
-  - dialog / modal frame 18 px
-  - menu frame 15 px
-  - panel 12 px
-  - button 6 px
-  - slot 5 px
-  - badge 4 px
+- **Radii by layer** (kept small; large radii made dense chrome look soft and broke title bars and tabs):
+  - node frame 12 px, node plate 4 px
+  - dialog / modal / splash frame 10 px
+  - menu frame 9 px
+  - panel 6 px
+  - button 4 px
+  - slot, badge, tab 3 px
 - **Borders** are 1 px `--bf-line` grooves with a 1 px light line beneath (`0 1px rgba(255,255,255,.05)`).
   Do not use cream borders.
 - **Press:** buttons move down 1 px and their shadow turns inset. With `prefers-reduced-motion`,
@@ -176,7 +175,7 @@ The minimum size anywhere is 10.5 px, used only for engraved captions and node t
   Flow `Background` line layers.
   - Minor lines every 24 px (`--bf-bench-grid-minor`), major every 120 px (`--bf-bench-grid-major`).
   - Nodes snap to 12 px.
-- **Framing:** the canvas is a 12 px-radius plate with the plate shadow.
+- **Framing:** the canvas is a 6 px-radius plate with the plate shadow.
 - **Controls and minimap:** small plates with dark kicked buttons.
 
 ## 6. Ports: brass sockets and LEDs
@@ -228,8 +227,8 @@ map. Ports on the canvas use the LED families instead.
 ## 7. Node anatomy
 
 ```
-  ╭──────────────────────────────────────────────╮  briar frame, 10 px, 22 px radius
-  │ ╭──────────────────────────────────────────╮ │  matte plate, 13 px radius
+  ╭──────────────────────────────────────────────╮  briar frame, 10 px, 12 px radius
+  │ ╭──────────────────────────────────────────╮ │  matte plate, 4 px radius
   │ │ (◎) TEXT TEMPLATE            [1MS]  (●)  │ │  medal · engraved title · badge · pilot lamp
   │ │     text.template                        │ │  type line (code 10.5, muted)
   │ │ ▮▮▮▮▮▮▮▯▯▯▯▯                             │ │  VU strip (only while running with progress)
@@ -339,10 +338,19 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
   - inline inputs stay transparent until hover or focus
 - **Checkbox:** a 14 px amber LED (§7 boolean).
 - **Toggle:** a recessed track; the "on" option is brass.
-- **Panel / dock:** plate background, 12 px radius, plate shadow. The 36 px title bar has an
-  engraved title and a groove underneath. The active panel gets a 2 px brass underline.
-- **Tabs:** engraved labels with grooves between them. The active tab is brass text with a 2 px
-  brass underline and a faint amber wash.
+- **Panel / dock:** plate background, 6 px radius, plate shadow.
+- **Panel header:** a 34 px raised strip (`#3B362F` → `#2F2B26`, light top bevel, groove
+  underneath). From left to right:
+  - collapse caret
+  - a 6 px pilot LED: dark normally, lit amber while focus is inside the panel
+  - engraved title (14 px, letter-spacing .16em, cream `#D8C7A8`, cut-in text shadow)
+  - actions on the right
+- **Tabs** are radio band selectors in the header strip:
+  - 24 px high, 3 px radius, each with its own 6 px LED
+  - inactive: muted text, LED off
+  - active: pressed in (dark `#1D1A16` recess with an inner shadow), brass text, LED lit
+  - no underlines and no separators
+- **Tree / list selection:** a faint amber wash with a 2 px brass bar on the left.
 - **Badge:** a dark recess with pastel tone text (`--bf-badge-bg` is used as the text color).
 - **Dialog / modal / move menu / splash:**
   - a plate inside a briar frame (6–10 px wood border, `#C07A48` outer line)
