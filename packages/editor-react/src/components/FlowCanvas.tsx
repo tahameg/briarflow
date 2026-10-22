@@ -368,6 +368,7 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
     compact && "bf-node--compact",
     view.builtin && "bf-node--builtin",
     view.variable && "bf-node--variable",
+    view.frontend && "bf-node--frontend",
     selected && "bf-node--selected",
     running && "bf-node--running",
     view.errorCount > 0 && "bf-node--error",
@@ -387,6 +388,11 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
             <span className="bf-node__title">{view.title}</span>
             {!view.builtin && !view.variable && (view.unknownType || view.typeTitle !== view.title) ? <span className="bf-node__type">{view.unknownType ? `${view.type} (unknown)` : view.typeTitle}</span> : null}
           </span>
+          {view.frontend ? (
+            <span className="bf-node__ui" title="Frontend node: it runs in the studio, not on the server">
+              Studio
+            </span>
+          ) : null}
           <span className="bf-node__status">
             {view.errorCount > 0 ? (
               <Badge tone="danger" title={view.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("\n")}>

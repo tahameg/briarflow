@@ -88,9 +88,9 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       items: g.nodes.map((d) => ({
         id: `add:${d.type}`,
         label: d.title,
-        hint: d.type,
-        keywords: [d.category, d.description],
-        accent: `var(--bf-${nodeAccent(d.color, d.category)})`,
+        hint: d.frontend ? `${d.type} · studio` : d.type,
+        keywords: [d.category, d.description, ...(d.frontend ? ["frontend", "studio"] : [])],
+        accent: d.frontend ? "var(--bf-vfd)" : `var(--bf-${nodeAccent(d.color, d.category)})`,
         ...(d.description ? { title: d.description } : {}),
         run: () => addNode(d.type, position),
       })),

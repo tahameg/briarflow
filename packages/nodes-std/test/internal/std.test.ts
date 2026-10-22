@@ -42,7 +42,7 @@ async function call(def: unknown, inputs: Record<string, unknown>, config: Recor
 
 describe("stdPack", () => {
   it("is pack briar with the std namespaces and every §9 node except the core built-ins", () => {
-    expect(stdPack).toMatchObject({ name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert"] });
+    expect(stdPack).toMatchObject({ name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug"] });
     expect(stdPack.types.map((t) => t.id)).toEqual(["briar.RoundingMode"]);
     expect(stdPack.nodes.map((n) => n.type).sort()).toEqual(
       [
@@ -62,6 +62,7 @@ describe("stdPack", () => {
         "convert.parseInt",
         "convert.parseFloat",
         "convert.floatToInt",
+        "debug.print",
       ].sort(),
     );
     const catalog = createCatalog([stdPack]);

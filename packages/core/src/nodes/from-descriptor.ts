@@ -77,6 +77,7 @@ export function definitionFromDescriptor(d: NodeDescriptor): AnyNodeDefinition {
     retry: cloneJson(d.retry),
     ...(d.concurrency === null ? {} : { concurrency: d.concurrency }),
     ...(d.deprecated === null ? {} : { deprecated: d.deprecated }),
+    ...(d.frontend === true ? { frontend: true as const } : {}),
     run() {
       throw new NodeError(
         "node.descriptor_only",

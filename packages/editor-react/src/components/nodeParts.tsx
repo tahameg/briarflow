@@ -60,6 +60,7 @@ const ICONS: Record<string, ReactNode> = {
   list: <path d="M6 4h7M6 8h7M6 12h7M3 4h0M3 8h0M3 12h0" />,
   data: <path d="M5.5 2.5c-1.5 0-2 .8-2 2v1.5c0 1-.5 2-1.5 2 1 0 1.5 1 1.5 2v1.5c0 1.2.5 2 2 2M10.5 2.5c1.5 0 2 .8 2 2v1.5c0 1 .5 2 1.5 2-1 0-1.5 1-1.5 2v1.5c0 1.2-.5 2-2 2" />,
   convert: <path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13" />,
+  debug: <path d="M2.5 4.5 6 8l-3.5 3.5M8.5 12h5" />,
   variable: <path d="M3 3.5h10v9H3zM6.5 3.5v9" />,
   input: <path d="M2 8h8M7 5l3 3-3 3M13.5 3v10" />,
   output: <path d="M2.5 3v10M6 8h8M11 5l3 3-3 3" />,

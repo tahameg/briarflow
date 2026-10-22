@@ -67,6 +67,7 @@
   --bf-led-media: #ff4b3a;
   --bf-led-data: #ffe9c8;
   --bf-led-any: #cfc3ad;
+  --bf-vfd: #6ff3d6;   /* frontend nodes and the console: a cyan VFD display */
   --bf-wire-text: #e39a2f;
   --bf-wire-num: #5fc243;
   --bf-wire-bool: #d6c63e;

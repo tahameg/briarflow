@@ -9,6 +9,8 @@ import { BriarError, createCatalogFromDescriptors, createIdGenerator, serializeE
 import type { ContextDocument, Diagnostic, NodeCatalog, Run, Viewport } from "@briarflow/core";
 import { isCommandRejection, isRevisionConflict } from "./backend.js";
 import { completeRun, reduceRunEvent } from "./run-state.js";
+import { CONSOLE_LIMIT, DEFAULT_FRONTEND_NODES } from "./frontend.js";
+import type { ConsoleLine } from "./frontend.js";
 import type { RunState } from "./run-state.js";
 import type {
   EditorListener,
@@ -79,8 +81,11 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     selection: EMPTY_SELECTION,
     viewports: {},
     run: undefined,
+    console: [],
     notices: [],
   };
+  const frontendNodes = options.frontendNodes ?? DEFAULT_FRONTEND_NODES;
+  let consoleId = 0;
   const listeners = new Set<EditorListener>();
 
   let confirmed: ContextDocument | undefined;
@@ -514,7 +519,11 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
       for await (const event of r.events()) {
         if (!live()) return;
         const current = state.run;
-        if (current) set({ run: reduceRunEvent(current, event) });
+        if (!current) continue;
+        const next = reduceRunEvent(current, event);
+        if (next === current) continue;
+        set({ run: next });
+        if (event.type === "node.completed") runFrontendNode(r.id, event.nodeId);
       }
     } catch {
       // Stream lost: the result below still settles.
@@ -527,6 +536,41 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
 
   function cancelRun(reason?: string): void {
     currentRun?.cancel(reason);
+  }
+
+  function runFrontendNode(runId: string | undefined, nodeId: string): void {
+    const flow = state.doc?.flows.find((f) => f.nodes.some((n) => n.id === nodeId));
+    const node = flow?.nodes.find((n) => n.id === nodeId);
+    const def = node ? state.catalog?.get(node.type) : undefined;
+    const handler = node && def?.frontend ? frontendNodes[node.type] : undefined;
+    if (!flow || !node || !def || !handler) return;
+    const inputs: Record<string, unknown> = {};
+    for (const [name, spec] of Object.entries(def.inputs)) {
+      const edge = flow.edges.find((e) => e.to.node === nodeId && e.to.port === name);
+      if (edge) {
+        const source = state.run?.nodes[edge.from.node]?.outputs;
+        if (source && Object.prototype.hasOwnProperty.call(source, edge.from.port)) inputs[name] = source[edge.from.port];
+      } else if (node.values && Object.prototype.hasOwnProperty.call(node.values, name)) {
+        inputs[name] = node.values[name];
+      } else if (typeof spec === "object" && spec !== null && "default" in spec) {
+        inputs[name] = (spec as { default?: unknown }).default;
+      }
+    }
+    const title = node.title?.trim() || def?.title || node.type;
+    const print = (text: string) => {
+      const line: ConsoleLine = { id: ++consoleId, at: clock().toISOString(), runId, nodeId, title, text: String(text) };
+      const lines = [...state.console, line];
+      set({ console: lines.length > CONSOLE_LIMIT ? lines.slice(lines.length - CONSOLE_LIMIT) : lines });
+    };
+    try {
+      handler({ runId, nodeId, title, inputs, print });
+    } catch (err) {
+      print(`(frontend node failed: ${messageOf(err)})`);
+    }
+  }
+
+  function clearConsole(): void {
+    set({ console: [] });
   }
 
   function clearRun(): void {
@@ -577,6 +621,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     startRun,
     cancelRun,
     clearRun,
+    clearConsole,
     dismissNotice,
     dispose,
   };

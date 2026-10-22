@@ -246,6 +246,13 @@ map. Ports on the canvas use the LED families instead.
   ╰──────────────────────────────────────────────╯
 ```
 
+- **Frontend nodes** (definition `frontend: true`, e.g. Print) run in the studio, not on the
+  server, and look different:
+  - an ebonized, near-black frame with a faint cyan rim
+  - a small "STUDIO" display badge in the header (cyan VFD text in a dark glass window,
+    `--bf-vfd #6FF3D6`)
+  - an add-menu hint "· studio" and a cyan accent dot
+  - Cyan means "this happens on your screen". It is reserved for frontend nodes and the Console.
 - **Size:** width 260–380 px (variables min 200). Rows are 34 px. The header is at least 52 px.
 - **Frame by kind:** briar for working nodes, walnut for `briar.input` / `briar.output`, maple for
   variable GET/SET. Built-in nodes cannot be deleted (no delete action is shown).
@@ -396,13 +403,16 @@ Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black 
   - The server can choose what opens first: `BRIAR_STUDIO_CONTEXT` / `BRIAR_STUDIO_FLOW` (id or
     name, created when missing), served at `GET /api/studio`. That target beats the last-used
     context kept in localStorage.
-- **Dockable panels** (`apps/studio/src/dock.tsx`): variables, inspector, run and problems, in left / right (stacked, collapsible) and bottom (tabs) zones.
+- **Dockable panels** (`apps/studio/src/dock.tsx`): variables, inspector, run, console and problems, in left / right (stacked, collapsible) and bottom (tabs) zones.
   - Move a panel by dragging its title or tab, or from its right-click menu.
   - The layout is stored in localStorage and normalized when loaded.
-  - The default puts variables on the left, inspector on the right, and run and problems at
-    the bottom.
+  - The default puts variables on the left, inspector on the right, and run, console and
+    problems at the bottom.
 - **There is no node palette panel.** Right-click the empty canvas, or press `/`, for the add
   menu: every node by category, variable/global GET/SET, and a search box.
+- **Console** (bottom tab, `ConsolePanel`): a cyan VFD screen showing what frontend nodes
+  printed (time, node, text). Click a node name to select it. Clear empties it; it follows new
+  lines while scrolled to the bottom.
 - **Context menus everywhere:** canvas, node, port, edge, variable / global / signature /
   struct field / enum value / type rows, dock panels, and the context / flow switchers.
   - The browser menu is suppressed everywhere except text fields.

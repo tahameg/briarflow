@@ -73,6 +73,8 @@ export interface NodeView {
   variable: boolean;
   /** No catalog entry for the type. */
   unknownType: boolean;
+  /** A frontend node (definition `frontend`): its effect happens in the editor, not on the server. */
+  frontend: boolean;
   definition: AnyNodeDefinition | undefined;
   instance: NodeInstance;
   position: Position;
@@ -244,6 +246,7 @@ export function buildFlowView(
       builtin,
       variable,
       unknownType: !builtin && def === undefined,
+      frontend: def?.frontend === true,
       definition: def,
       instance: node,
       position: node.position,

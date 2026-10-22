@@ -94,6 +94,17 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - The dropped wire stays on screen (dashed cable to a brass dot at the drop point) until a pick or
   a click outside closes the menu (`ContextMenuApi.open(…, { onClose })`).
 
+### Frontend nodes + Print + Console (2026-10-22)
+- Node definitions can be `frontend: true` (core `defineNode`, descriptors carry `frontend`): their
+  effect happens in the viewer. The engine runs them as no-ops; when one completes in a run, the
+  editor store rebuilds its inputs (wired → source output from this run, else typed value, else
+  default) and calls its handler (`frontendNodes` option, `DEFAULT_FRONTEND_NODES`).
+- `debug.print` (std pack, namespace `debug`): `text` + `browserConsole` (default false), no
+  outputs. Writes to the store console (`state.console`, `clearConsole()`, capped at 500) and,
+  with `browserConsole`, to `console.log`. editor-react `ConsolePanel`; studio "Console" dock tab.
+- Look: frontend nodes have an ebonized frame with a cyan "STUDIO" display badge; the console is a
+  cyan VFD screen (`--bf-vfd`); the add menu marks them "· studio".
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.

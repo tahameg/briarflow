@@ -1,7 +1,7 @@
 /**
  * Studio main screen (design-system.md §11): top bar with the context and flow switchers
  * (Types and Globals open modals), canvas, and dockable panels (variables, inspector, run,
- * problems) in the left, right and bottom zones (`dock.tsx`). Nodes are added from the
+ * console, problems) in the left, right and bottom zones (`dock.tsx`). Nodes are added from the
  * canvas's right-click menu.
  */
 import { Suspense, lazy, useState } from "react";
@@ -12,6 +12,7 @@ import { Switcher } from "./Switcher.js";
 import {
   Button,
   ConfirmDialog,
+  ConsolePanel,
   DiagnosticsList,
   EditorToasts,
   EmptyState,
@@ -116,6 +117,7 @@ function usePanels(props: WorkspaceProps, dock: DockApi): Record<PanelId, PanelD
     variables: { title: hasStore ? <VariablesTitle /> : "Variables", name: "Variables", body: hasStore ? <VariablesPanel /> : none("Open a context to edit its variables.") },
     inspector: { title: "Inspector", name: "Inspector", body: hasStore ? <Inspector /> : none("Nothing selected.") },
     run: { title: "Run", name: "Run", body: hasStore ? <RunPanel onOpenProblems={() => dock.reveal("problems")} /> : none("Open a context to run its flows.") },
+    console: { title: hasStore ? <ConsoleTitle /> : "Console", name: "Console", body: hasStore ? <ConsolePanel /> : none("Open a context to see what its flows print.") },
     problems: { title: hasStore ? <ProblemsTitle /> : "Problems", name: "Problems", body: hasStore ? <DiagnosticsList emptyText="No problems." /> : none("No context open.") },
   };
 }
@@ -129,6 +131,11 @@ function VariablesTitle() {
   ) : (
     <>Variables</>
   );
+}
+
+function ConsoleTitle() {
+  const count = useEditorState((s) => s.console.length);
+  return <>Console{count > 0 ? ` ${count}` : ""}</>;
 }
 
 function ProblemsTitle() {

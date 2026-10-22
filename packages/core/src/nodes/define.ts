@@ -157,6 +157,13 @@ export interface NodeDefinitionInput<
   concurrency?: number;
   /** Palette message; the node still runs. */
   deprecated?: string;
+  /**
+   * A frontend node: its effect happens in the viewer (the studio), not on the server, e.g.
+   * printing to the studio console. The engine runs it like any node (its `run` is usually
+   * a no-op); when it completes, the viewer rebuilds its inputs from the run (wired sources'
+   * outputs, typed values, defaults) and does the work. Editors mark these nodes.
+   */
+  frontend?: boolean;
   /** Pure, synchronous, deterministic. Replaces static ports when present. */
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   /** The work. Returning a missing, ill-typed or undeclared output is a compile error. */
@@ -185,6 +192,8 @@ export interface NodeDefinition<I extends PortMap = PortMap, O extends PortMap =
   readonly retry: RetryPolicy;
   readonly concurrency?: number;
   readonly deprecated?: string;
+  /** Set (true) on frontend nodes only; see {@link NodeDefinitionInput.frontend}. */
+  readonly frontend?: true;
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   run(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): MaybePromise<NodeOutputs<O>>;
 }
@@ -241,6 +250,7 @@ export function defineNode<
   }
   if (input.color !== undefined && !NODE_COLORS.includes(input.color)) fail(`color must be one of ${NODE_COLORS.join(", ")}.`);
   if (input.cache !== undefined && typeof input.cache !== "boolean") fail("cache must be true or false.");
+  if (input.frontend !== undefined && typeof input.frontend !== "boolean") fail("frontend must be true or false.");
   const timeoutMs = input.timeoutMs ?? 300_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) fail("timeoutMs must be a whole number >= 0 (0 = no timeout).");
   if (input.concurrency !== undefined && (!Number.isSafeInteger(input.concurrency) || input.concurrency < 1)) {
@@ -270,6 +280,7 @@ export function defineNode<
   if (input.color !== undefined) (out as { color?: NodeColor }).color = input.color;
   if (input.concurrency !== undefined) (out as { concurrency?: number }).concurrency = input.concurrency;
   if (input.deprecated !== undefined) (out as { deprecated?: string }).deprecated = input.deprecated;
+  if (input.frontend === true) (out as { frontend?: true }).frontend = true;
   if (input.resolvePorts !== undefined) out.resolvePorts = input.resolvePorts;
   return out;
 }

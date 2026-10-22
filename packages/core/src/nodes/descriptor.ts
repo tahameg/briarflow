@@ -55,6 +55,8 @@ export interface NodeDescriptor {
   retry: RetryPolicy;
   concurrency: number | null;
   deprecated: string | null;
+  /** Present (true) on frontend nodes only: their effect happens in the viewer. */
+  frontend?: true;
 }
 
 /**
@@ -96,6 +98,7 @@ export function toNodeDescriptor(def: AnyNodeDefinition, pack: Pick<NodePack, "n
     retry: cloneJson(def.retry),
     concurrency: def.concurrency ?? null,
     deprecated: def.deprecated ?? null,
+    ...(def.frontend ? { frontend: true as const } : {}),
   };
 }
 

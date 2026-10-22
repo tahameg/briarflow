@@ -47,6 +47,8 @@ export type { SignatureEditorProps, VariablesPanelProps } from "./components/Var
 export { Inspector } from "./components/Inspector.js";
 export type { InspectorProps } from "./components/Inspector.js";
 export { RunPanel, rejectionDiagnostics, runBlockedHint, useFlowErrorCount } from "./components/RunPanel.js";
+export { ConsolePanel } from "./components/ConsolePanel.js";
+export type { ConsolePanelProps } from "./components/ConsolePanel.js";
 export type { RunPanelProps } from "./components/RunPanel.js";
 export { DiagnosticsList, filterDiagnostics } from "./components/DiagnosticsList.js";
 export type { DiagnosticsListProps } from "./components/DiagnosticsList.js";

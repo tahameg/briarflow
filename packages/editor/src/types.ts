@@ -6,6 +6,7 @@ import type { NodeTypesInfo } from "@briarflow/client";
 import type { Clock, ContextDocument, Diagnostic, IdGenerator, NodeCatalog, NodePack, Run, Viewport } from "@briarflow/core";
 import type { EditorBackend } from "./backend.js";
 import type { RunState } from "./run-state.js";
+import type { ConsoleLine, FrontendNodeHandler } from "./frontend.js";
 
 /** Lifecycle of the store's document. */
 export type EditorStatus = "loading" | "ready" | "reloading" | "error";
@@ -84,6 +85,8 @@ export interface EditorState {
   /** Live canvas viewports by flow id (persisted to the document debounced). */
   readonly viewports: Readonly<Record<string, Viewport>>;
   readonly run: RunState | undefined;
+  /** Lines written by frontend nodes (`debug.print`), oldest first, capped. */
+  readonly console: readonly ConsoleLine[];
   readonly notices: readonly EditorNotice[];
 }
 
@@ -112,6 +115,8 @@ export interface EditorStoreOptions {
   autoLoad?: boolean;
   /** Replaces `applyCommands` (tests, instrumentation). */
   applier?: CommandApplier;
+  /** Handlers of frontend node types, by type. Default: `DEFAULT_FRONTEND_NODES` (`debug.print`). */
+  frontendNodes?: Readonly<Record<string, FrontendNodeHandler>>;
 }
 
 /** Options of {@link EditorStore.startRun}. */
@@ -163,6 +168,8 @@ export interface EditorStore {
   /** Cancels the current run (no-op when none or finished). */
   cancelRun(reason?: string): void;
   clearRun(): void;
+  /** Empties the console. */
+  clearConsole(): void;
   dismissNotice(id: number): void;
   /** Stops syncing, timers and run tracking. */
   dispose(): void;

@@ -3,13 +3,14 @@
  * behaviour (through `runNode` from @briarflow/testing), toText rules and templates.
  */
 import { describe, expect, it } from "vitest";
-import { createCatalog, isBriarError, type ContextDocument, type PortError } from "@briarflow/core";
+import { createCatalog, isBriarError, toNodeDescriptor, type ContextDocument, type PortError } from "@briarflow/core";
 import {
   constant,
   convertFloatToInt,
   convertParseFloat,
   convertParseInt,
   convertToText,
+  debugPrint,
   globalGet,
   globalSet,
   listGet,
@@ -64,8 +65,8 @@ describe("stdPack", () => {
     expect(RoundingMode.decl.members.map((m) => m.value)).toEqual(["round", "floor", "ceil", "trunc"]);
   });
 
-  it("is pack briar 1.0.0 with namespaces briar, text, list, convert and type briar.RoundingMode", () => {
-    expect(stdPack).toMatchObject({ kind: "nodePack", name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert"] });
+  it("is pack briar 1.0.0 with namespaces briar, text, list, convert, debug and type briar.RoundingMode", () => {
+    expect(stdPack).toMatchObject({ kind: "nodePack", name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug"] });
     expect(stdPack.types).toEqual([expect.objectContaining({ kind: "enum", id: "briar.RoundingMode", name: "RoundingMode" })]);
   });
 
@@ -83,6 +84,7 @@ describe("stdPack", () => {
         "convert.parseFloat",
         "convert.parseInt",
         "convert.toText",
+        "debug.print",
         "list.get",
         "list.length",
         "list.make",
@@ -146,8 +148,19 @@ describeNodePack(stdPack, {
     "convert.parseInt": [{ inputs: { text: " 42 " }, outputs: { value: 42 } }],
     "convert.parseFloat": [{ inputs: { text: "1e3" }, outputs: { value: 1000 } }],
     "convert.floatToInt": [{ inputs: { value: 2.5 }, outputs: { value: 3 } }],
+    "debug.print": [{ inputs: { text: "hello" }, outputs: {} }],
   },
 });
+
+describe("debug.print", () => {
+  it("is a frontend node that does nothing on the server", async () => {
+    expect(debugPrint.frontend).toBe(true);
+    expect(toNodeDescriptor(debugPrint, stdPack).frontend).toBe(true);
+    const r = await runNode(debugPrint, { text: "hi\nthere", browserConsole: true });
+    expect(r.outputs).toEqual({});
+  });
+});
+
 
 describe("valueToText (toText rules)", () => {
   it.each([

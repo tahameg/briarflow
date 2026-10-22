@@ -13,6 +13,7 @@
 import { definePack, type NodePack } from "@briarflow/core";
 import { convertFloatToInt, convertParseFloat, convertParseInt, convertToText, RoundingMode } from "./convert.js";
 import { constant, structBreak, structMake } from "./data.js";
+import { debugPrint } from "./debug.js";
 import { listGet, listLength, listMake } from "./list.js";
 import { textJoin, textTemplate } from "./text.js";
 import { globalGet, globalSet, variableGet, variableSet } from "./variables.js";
@@ -21,6 +22,7 @@ export const PACKAGE_NAME = "@briarflow/nodes-std";
 
 export { convertFloatToInt, convertParseFloat, convertParseInt, convertToText, RoundingMode } from "./convert.js";
 export { constant, structBreak, structMake } from "./data.js";
+export { debugPrint } from "./debug.js";
 export { listGet, listLength, listMake } from "./list.js";
 export { textJoin, textTemplate } from "./text.js";
 export { renderTemplate, templatePlaceholders, valueToText } from "./text-utils.js";
@@ -40,7 +42,7 @@ export const stdPack: NodePack = definePack({
   version: "1.0.0",
   title: "Briarflow standard nodes",
   description: "Variables, structs, constants, text, lists and conversions.",
-  namespaces: ["text", "list", "convert"],
+  namespaces: ["text", "list", "convert", "debug"],
   types: [RoundingMode],
   nodes: [
     variableGet,
@@ -59,5 +61,6 @@ export const stdPack: NodePack = definePack({
     convertParseInt,
     convertParseFloat,
     convertFloatToInt,
+    debugPrint,
   ],
 });
