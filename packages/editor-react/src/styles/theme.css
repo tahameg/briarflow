@@ -1,6 +1,6 @@
 /*
  * @briarflow/editor-react/theme.css — everything the editor components need: React Flow base
- * styles, Briar Brutal tokens, the component kit and the editor views.
+ * styles, Briar Woodshop tokens, the component kit and the editor views.
  */
 @import "@xyflow/react/dist/base.css";
 @import "./tokens.css";

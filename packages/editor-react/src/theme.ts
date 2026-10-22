@@ -1,5 +1,5 @@
 /**
- * Briar Brutal theme in TypeScript (docs/specs/design-system.md): token values, the
+ * Briar Woodshop theme in TypeScript (docs/specs/design-system.md): token values, the
  * type → port color/shape map (§6) and node header colors (§7). The CSS tokens in
  * `styles/tokens.css` carry the same names.
  */

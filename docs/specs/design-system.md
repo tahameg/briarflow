@@ -1,219 +1,266 @@
-# Spec: Design system ("Briar Brutal")
+# Spec: Design system ("Briar Woodshop")
 
-Status: draft v1 (phase 0; reviewed against the phase-7 build 2026-10-21, see §12). Owner: ux-designer. Used by `apps/studio` and
-`@briarflow/editor-react` (phase 7). Tokens ship as a CSS file
-(`@briarflow/editor-react/theme.css`) and as a TS object (`briarTheme`) with the same names.
+Status: v2 (2026-10-22). Replaces v1 "Briar Brutal" (square, thick cream borders, hard offset
+shadows, yellow). Owner: ux-designer. Used by `apps/studio` and `@briarflow/editor-react`.
+Tokens ship as CSS (`@briarflow/editor-react/theme.css`, `styles/tokens.css`) and partly as a TS
+object (`briarTheme`, `BRIAR_TOKENS`) with the same names. Reference canvas with the node, state
+and parts boards: https://claude.ai/artifact/BziNuowaHk2gUFYHLBPriD.
 
-Principles: **flat, heavy, honest.** Square corners, thick borders, hard offset shadows,
-monospace headings, a visible grid. Yellow means "you / now / primary". Pastels mean
-"kind" (type colors) or "state". Never a gradient, never a blur.
+The name comes from briar, the burl wood tobacco pipes are carved from. Principles: **made by
+hand, lit from inside.**
+- **Wood frames, matte plates.** Things you build with (nodes, menus, dialogs, the top bar) sit
+  in a wooden frame. Working surfaces (panels, node faces) are a dark matte plate. The frame
+  says what kind of thing it is; the plate holds the content.
+- **Radio lights.** State is shown the way an '80s / '90s radio shows it: 3 mm LEDs in black
+  bezels, a pilot lamp, a VU strip, a backlit dial window. A light that is on means something
+  is connected or happening.
+- **Brass for "you / now / primary".** Brass replaces v1 yellow: primary buttons, selection,
+  focus, the active tab.
+- **Engraved, not printed.** Titles and labels look cut into the plate: condensed uppercase
+  with wide letter-spacing.
+- Gradients, soft shadows and glows are allowed, but only to imitate a material (wood grain,
+  brass, a lit LED, a recessed slot). No decorative gradient washes.
 
 ## 1. Color tokens
 
 ```css
 :root {
-  /* base */
-  --bf-bg:            #1F1F1F;   /* app + canvas background */
-  --bf-surface:       #2A2A2A;   /* panels, node bodies */
-  --bf-surface-2:     #333333;   /* inputs, hovered rows, node header (default) */
-  --bf-surface-3:     #3A3A3A;   /* pressed, active tab */
-  --bf-ink:           #F5F1E6;   /* primary text, borders on dark */
-  --bf-ink-muted:     #B3AD9F;   /* secondary text, placeholders */
-  --bf-ink-disabled:  #7A766C;   /* disabled text (not required to meet AA) */
-  --bf-ink-inverse:   #1F1F1F;   /* text on yellow and pastels */
-  --bf-shadow:        #000000;   /* hard shadows */
-  --bf-grid-minor:    #2A2A2A;
-  --bf-grid-major:    #3A3A3A;
+  /* base: warm dark workshop */
+  --bf-bg:            #1D1914;   /* app background (body uses a radial bench gradient over it) */
+  --bf-surface:       #2D2A25;   /* plate base, panels */
+  --bf-surface-2:     #36322B;   /* hovered rows */
+  --bf-surface-3:     #443E35;   /* pressed */
+  --bf-ink:           #EADFCA;   /* primary text (cream) */
+  --bf-ink-muted:     #A99C86;   /* secondary text */
+  --bf-ink-disabled:  #6F6656;   /* disabled text (exempt from AA) */
+  --bf-ink-inverse:   #24170A;   /* text on brass and pastels */
+  --bf-shadow:        #000000;
+  --bf-line:          #100D0A;   /* 1 px grooves: panel borders, dividers, title bars */
 
-  /* brand */
-  --bf-yellow:        #FFD400;   /* primary, selection, focus */
-  --bf-yellow-press:  #E6BF00;
+  /* brass (was "yellow" in v1; the token names stay) */
+  --bf-yellow:        #F2B84B;   /* accent text, selection, links */
+  --bf-yellow-press:  #D99A2B;
+  --bf-brass:         #C49A4E;   /* hover rings */
+  --bf-brass-hi:      #FFCF6E;   /* focus, selection outline, active tab, drag line */
+  --bf-brass-face:    linear-gradient(180deg, #F6DC95, #D4A24C 55%, #A97627);  /* buttons, nameplate */
 
-  /* pastels */
-  --bf-mint:          #A8E6CF;
-  --bf-lavender:      #C3B1E1;
-  --bf-peach:         #FFC8A2;
-  --bf-sky:           #A0D2EB;
-  --bf-pink:          #FFB3C6;
-  /* extended pastels (type map only) */
-  --bf-lime:          #D4F0A0;
-  --bf-aqua:          #9EE6E0;
-  --bf-sand:          #E8D8B0;
-  --bf-coral:         #FF9E9E;
-  --bf-stone:         #B8B8B8;
+  /* materials */
+  --bf-plate:         linear-gradient(150deg, #38342E 0%, #2D2A25 35%, #24211D 100%);
+  --bf-plate-shadow:  0 0 0 1px rgba(208,152,91,.18), inset 0 1px 2px rgba(255,255,255,.08), 0 8px 20px rgba(0,0,0,.4);
+  --bf-plate-ink:     #EADFCA;   --bf-plate-muted: #A99C86;   --bf-plate-value: #F3C776;
+  --bf-slot:          #15120F;   /* recessed input */
+  --bf-slot-shadow:   inset 0 2px 3px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.06);
+  /* --bf-wood-briar (reddish burl, flame grain) and --bf-wood-walnut (dark, straight grain):
+     layered gradients, see tokens.css */
+  --bf-bench:         #262019;   /* canvas */
+  --bf-bench-grid-minor: rgba(180,161,132,.07);
+  --bf-bench-grid-major: rgba(180,161,132,.13);
+
+  /* LEDs (port families, §6) and cable cores (§8) */
+  --bf-led-text: #FFAE2B;  --bf-led-num: #6FE04F;  --bf-led-bool: #F2E04A;
+  --bf-led-media: #FF4B3A; --bf-led-data: #FFE9C8; --bf-led-any: #CFC3AD;
+  --bf-wire-text: #E39A2F; --bf-wire-num: #5FC243; --bf-wire-bool: #D6C63E;
+  --bf-wire-media: #E0473A; --bf-wire-data: #E6D3B0; --bf-wire-any: #A99C86;
+
+  /* pastels: badge text tones, type chips in panels, menu accent dots */
+  --bf-mint: #A8E6CF; --bf-lavender: #C3B1E1; --bf-peach: #FFC8A2; --bf-sky: #A0D2EB; --bf-pink: #FFB3C6;
+  --bf-lime: #D4F0A0; --bf-aqua: #9EE6E0; --bf-sand: #E8D8B0; --bf-coral: #FF9E9E; --bf-stone: #B8B8B8;
 
   /* status */
-  --bf-danger:        #FF7A7A;   /* errors (text and borders) */
-  --bf-status-running: var(--bf-sky);
-  --bf-status-done:    var(--bf-mint);
-  --bf-status-cached:  var(--bf-lavender);
-  --bf-status-error:   var(--bf-danger);
-  --bf-status-skipped: var(--bf-stone);
-  --bf-status-warning: var(--bf-peach);
-  --bf-status-queued:  var(--bf-ink-muted);
+  --bf-danger:        #FF8A72;
+  --bf-status-running: var(--bf-sky);  --bf-status-done: var(--bf-mint);  --bf-status-cached: var(--bf-lavender);
+  --bf-status-error: var(--bf-danger); --bf-status-skipped: var(--bf-stone); --bf-status-warning: var(--bf-peach);
+  --bf-status-queued: var(--bf-ink-muted);
 }
 ```
 
-Only a dark theme in v1 (see OPEN_QUESTIONS Q-DS-1).
+The wood gradients are written out in `tokens.css`. Briar is the frame for **working nodes**,
+**menus** and **dialogs**. Walnut is the frame for the **flow Input/Output nodes** and the
+**top bar**. Maple (light, node CSS only) is the frame for **variable GET/SET nodes**.
+
+Only a dark theme (Q-DS-1).
 
 ## 2. Contrast (WCAG 2.1 AA)
 
-AA needs ≥ 4.5:1 for normal text, ≥ 3:1 for large text (≥ 18.66 px bold / 24 px) and UI
-component boundaries. Ratios computed with the WCAG relative-luminance formula.
+AA needs ≥ 4.5:1 for normal text and ≥ 3:1 for large text and UI boundaries.
 
 | Foreground | Background | Ratio | Use | AA |
 |---|---|---|---|---|
-| ink `#F5F1E6` | bg `#1F1F1F` | 14.60 | body text on canvas | ✓ |
-| ink `#F5F1E6` | surface `#2A2A2A` | 12.72 | panel text | ✓ |
-| ink `#F5F1E6` | surface-2 `#333333` | 11.20 | inputs | ✓ |
-| ink `#F5F1E6` | surface-3 `#3A3A3A` | 10.08 | active tab | ✓ |
-| ink-muted `#B3AD9F` | bg `#1F1F1F` | 7.37 | secondary text | ✓ |
-| ink-muted `#B3AD9F` | surface `#2A2A2A` | 6.42 | descriptions, placeholders | ✓ |
-| ink-muted `#B3AD9F` | surface-2 `#333333` | 5.65 | placeholders in inputs | ✓ |
-| yellow `#FFD400` | bg `#1F1F1F` | 11.51 | headings, links, selected labels | ✓ |
-| yellow `#FFD400` | surface `#2A2A2A` | 10.03 | | ✓ |
-| yellow `#FFD400` | surface-2 `#333333` | 8.83 | | ✓ |
-| ink-inverse `#1F1F1F` | yellow `#FFD400` | 11.51 | primary button | ✓ |
-| ink-inverse `#1F1F1F` | mint `#A8E6CF` | 11.68 | badges, node headers | ✓ |
-| ink-inverse `#1F1F1F` | lavender `#C3B1E1` | 8.40 | | ✓ |
-| ink-inverse `#1F1F1F` | peach `#FFC8A2` | 11.02 | | ✓ |
-| ink-inverse `#1F1F1F` | sky `#A0D2EB` | 10.14 | | ✓ |
-| ink-inverse `#1F1F1F` | pink `#FFB3C6` | 9.82 | | ✓ |
-| ink-inverse `#1F1F1F` | lime `#D4F0A0` | 13.16 | | ✓ |
-| ink-inverse `#1F1F1F` | aqua `#9EE6E0` | 11.65 | | ✓ |
-| ink-inverse `#1F1F1F` | sand `#E8D8B0` | 11.68 | | ✓ |
-| ink-inverse `#1F1F1F` | coral `#FF9E9E` | 8.35 | | ✓ |
-| ink-inverse `#1F1F1F` | stone `#B8B8B8` | 8.31 | | ✓ |
-| ink-inverse `#1F1F1F` | danger `#FF7A7A` | 6.53 | error badge | ✓ |
-| mint / lavender / peach / sky / pink as text | surface `#2A2A2A` | 10.17 / 7.31 / 9.59 / 8.83 / 8.55 | type names in panels | ✓ |
-| lime / aqua / sand / coral / stone as text | surface `#2A2A2A` | 11.46 / 10.15 / 10.17 / 7.27 / 7.24 | | ✓ |
-| danger `#FF7A7A` | surface `#2A2A2A` | 5.68 | error messages | ✓ |
-| danger `#FF7A7A` | bg `#1F1F1F` | 6.53 | | ✓ |
-| ink-disabled `#7A766C` | surface `#2A2A2A` | 3.17 | disabled only (exempt) | n/a |
+| ink `#EADFCA` | bg `#1D1914` | 13.24 | body text | ✓ |
+| ink | surface `#2D2A25` | 10.82 | panel / plate text | ✓ |
+| ink | surface-2 `#36322B` | 9.65 | hovered rows | ✓ |
+| ink | slot `#15120F` | 14.14 | input text | ✓ |
+| ink | walnut `#4A2F1D` (lightest band) | 9.27 | top bar text | ✓ |
+| ink-muted `#A99C86` | surface | 5.30 | secondary text, node type line | ✓ |
+| ink-muted | surface-2 | 4.72 | | ✓ |
+| ink-muted | slot | 6.92 | | ✓ |
+| placeholder `#8F826D` | slot | 4.96 | placeholders | ✓ |
+| plate-value `#F3C776` | slot | 11.77 | values in node slots | ✓ |
+| brass `#F2B84B` / brass-hi `#FFCF6E` | surface | 7.98 / 9.80 | accent text, active tab | ✓ |
+| ink-inverse `#2A1A06` | brass face (mid `#D4A24C` / top `#F6DC95`) | 7.26 / 12.48 | primary button, nameplate | ✓ |
+| dial text `#2A1A08` | dial window `#E9BD6C`–`#F6DFA6` | 9.57–12.82 | node preview | ✓ |
+| danger `#FF8A72` | surface | 6.21 | error text | ✓ |
+| failure tag `#FFB3A6` | tag `#2A1513` | 10.08 | node run error | ✓ |
+| badge tones (mint / peach / danger) | badge `#1A1613` | 12.74 / 11.31 / 8.96 | engraved badges | ✓ |
+| filled danger `#FFE3DD` | `#9C3023` (gradient mid) | 6.04 | confirm delete | ✓ |
+| LED colors (text / num / bool / data / any) | surface | 7.72 / 8.47 / 10.57 / 12.07 / 8.21 | non-text indicators | ✓ (3:1) |
+| LED media `#FF4B3A` | surface | 4.30 | non-text indicator | ✓ (3:1) |
+| ink-disabled `#6F6656` | surface | 2.53 | disabled only | exempt |
 
-Rules: text on a pastel or yellow is **always** `--bf-ink-inverse`. Never put ink text on a
-pastel. Non-text: grid lines (`#3A3A3A` on `#1F1F1F`, 1.45) are decorative and exempt;
-borders that identify controls use ink (14.6) or yellow (11.5).
+Rules:
+- Text on brass, pastels or the dial window is always dark (`--bf-ink-inverse`).
+- Do not put ink-muted on surface-3: it falls below 4.5.
+- LED color is never the only cue. The row label, the tooltip and the inspector name the type.
+  Lists also get a different LED shape (bar).
 
 ## 3. Typography
 
 ```css
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Space+Grotesk:wght@400;500;700&display=swap");
 :root {
-  --bf-font-display: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  --bf-font-body:    "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --bf-font-code:    "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
-
-  --bf-text-xs: 11px;  --bf-text-sm: 12px;  --bf-text-md: 14px;
-  --bf-text-lg: 16px;  --bf-text-xl: 20px;  --bf-text-2xl: 28px;
-  --bf-leading: 1.4;   --bf-leading-tight: 1.15;
+  --bf-font-display:  "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;  /* titles, tabs, buttons */
+  --bf-font-engraved: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;  /* node titles, badges, captions */
+  --bf-font-body:     "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bf-font-plate:    "Barlow", system-ui, sans-serif;                            /* text on nodes and menus */
+  --bf-font-code:     "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 ```
+The studio self-hosts the fonts with `@fontsource` (Barlow 400/500, Barlow Condensed 500/600,
+JetBrains Mono). An app embedding `editor-react` loads them itself; the stacks fall back cleanly.
 
 | Role | Font | Size / weight | Case |
 |---|---|---|---|
-| App title, panel titles | display | 16 / 800 | UPPERCASE, letter-spacing 0.04em |
-| Node title | display | 13 / 600 | as typed |
-| Port labels | body | 12 / 500 | as typed |
-| Type names, ids, values, event log | code | 12 / 400 | as typed |
+| Nameplate (BRIARFLOW) | engraved | 16 / 600, letter-spacing .22em | UPPERCASE |
+| Panel titles, tabs | engraved | 15–16 / 600, letter-spacing .12em | UPPERCASE |
+| Buttons | engraved | 13–14 / 600, letter-spacing .1em | UPPERCASE |
+| Node title | engraved | 17 / 600, letter-spacing .05em | UPPERCASE |
+| Node captions ("Run failed"), badges | engraved | 10.5–12 / 600, letter-spacing .08–.16em | UPPERCASE |
+| Port labels, menu items | plate / body | 13.5–14 / 400 | as typed |
+| Types, ids, values, event log | code | 11–12 / 400 | as typed |
 | Body, forms | body | 14 / 400 | sentence case |
-| Big empty-state headline | display | 28 / 800 | UPPERCASE |
 
-Minimum size anywhere: 11 px (ids and badges only).
+The minimum size anywhere is 10.5 px, used only for engraved captions and node type lines.
 
 ## 4. Spacing, borders, shadows, radius, motion
 
 ```css
 :root {
-  --bf-space-0: 0; --bf-space-1: 4px; --bf-space-2: 8px; --bf-space-3: 12px;
-  --bf-space-4: 16px; --bf-space-5: 24px; --bf-space-6: 32px; --bf-space-7: 48px; --bf-space-8: 64px;
-
-  --bf-border-thin: 1px;     /* dividers inside panels */
-  --bf-border: 2px;          /* inputs, buttons, ports */
-  --bf-border-thick: 3px;    /* nodes, panels, dialogs */
-  --bf-border-heavy: 4px;    /* selected node, focused dialog */
-
-  --bf-shadow-sm: 2px 2px 0 0 var(--bf-shadow);
-  --bf-shadow-md: 4px 4px 0 0 var(--bf-shadow);
-  --bf-shadow-lg: 6px 6px 0 0 var(--bf-shadow);
-  --bf-shadow-yellow: 4px 4px 0 0 var(--bf-yellow);
-
-  --bf-radius: 0;            /* everything is square */
-  --bf-duration: 80ms;       /* only for press offset and color; no easing curves beyond linear */
-  --bf-z-canvas: 0; --bf-z-panel: 10; --bf-z-popover: 100; --bf-z-dialog: 1000; --bf-z-toast: 2000;
+  --bf-space-1: 4px; --bf-space-2: 8px; --bf-space-3: 12px; --bf-space-4: 16px; /* unchanged scale */
+  --bf-border-thin: 1px; --bf-border: 1px; --bf-border-thick: 1px; --bf-border-heavy: 2px;
+  --bf-shadow-sm: 0 1px 2px rgba(0,0,0,.55);
+  --bf-shadow-md: 0 4px 10px rgba(0,0,0,.45);
+  --bf-shadow-lg: 0 10px 24px rgba(0,0,0,.55);
+  --bf-shadow-yellow: 0 0 0 1px var(--bf-brass-hi), 0 0 14px rgba(255,184,74,.35);
+  --bf-radius: 12px;     /* panels, docks, canvas */
+  --bf-radius-sm: 6px;   /* buttons, toggles */
 }
 ```
 
-- **Press effect:** buttons and nodes move `translate(2px,2px)` and the shadow shrinks by 2 px
-  on `:active`. Respect `prefers-reduced-motion` (no translate, color change only).
-- **Focus:** `outline: 3px solid var(--bf-yellow); outline-offset: 2px;` on every
-  interactive element (`:focus-visible`). Never remove focus outlines.
+- **Radii by layer:**
+  - node frame 22 px, node plate 13 px
+  - dialog / modal frame 18 px
+  - menu frame 15 px
+  - panel 12 px
+  - button 6 px
+  - slot 5 px
+  - badge 4 px
+- **Borders** are 1 px `--bf-line` grooves with a 1 px light line beneath (`0 1px rgba(255,255,255,.05)`).
+  Do not use cream borders.
+- **Press:** buttons move down 1 px and their shadow turns inset. With `prefers-reduced-motion`,
+  LED pulse/blink and cable sparks stop.
+- **Focus:** `outline: 1px solid var(--bf-brass-hi)` on fields, `3px` on canvas items
+  (`:focus-visible`). Never remove focus outlines.
 
-## 5. Canvas grid
+## 5. Canvas (the bench)
 
-```css
-.bf-canvas {
-  background-color: var(--bf-bg);
-  background-image:
-    linear-gradient(var(--bf-grid-major) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bf-grid-major) 1px, transparent 1px),
-    linear-gradient(var(--bf-grid-minor) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bf-grid-minor) 1px, transparent 1px);
-  background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
-}
-```
-Grid unit 24 px (major every 5). Node positions snap to 12 px (half cell). With React Flow use
-the `Background` component with the same sizes/colors (two layers). Grid scales with zoom.
+- **Background:** warm radial gradient (`#3D3227` → `--bf-bench` → `#1A1612`) with two React
+  Flow `Background` line layers.
+  - Minor lines every 24 px (`--bf-bench-grid-minor`), major every 120 px (`--bf-bench-grid-major`).
+  - Nodes snap to 12 px.
+- **Framing:** the canvas is a 12 px-radius plate with the plate shadow.
+- **Controls and minimap:** small plates with dark kicked buttons.
 
-## 6. Type → port color map
+## 6. Ports: brass sockets and LEDs
 
-Ports encode **kind by color** and **shape by container**:
+Every port row has two parts:
 
-| Type | Token | Port shape |
+- A **brass socket** (18 px) set into the wooden rim.
+  - Its center sits 6 px in from the node's outer edge: inputs on the left rim, outputs on the right.
+  - Empty, it shows a dark hole. With a cable plugged in (`links > 0`), the hole shows the
+    cable's core color.
+  - Hover / compatible drop target: a brass ring with a glow. An incompatible target gets a red ring.
+- A **3 mm LED** in a black bezel, between the socket and the label.
+  - Input row: `socket · LED · label · value`.
+  - Output row: `type · label · LED · socket`.
+
+LED color is the **type family** (`ledFamily(type)`; `list<X>` and `X?` take X's family):
+
+| Family | Types | LED | Cable core |
+|---|---|---|---|
+| text | text | amber `--bf-led-text` | `--bf-wire-text` |
+| num | int, float | green | |
+| bool | boolean | yellow | |
+| media | image, audio, video, model3d | red | |
+| data | struct, enum, json, file | frosted white | |
+| any | unbound `$T` | warm grey | |
+
+LED **shape**: a 10 px dot for a single value, a 16×6 bar for a list (`isListType`).
+
+LED **state** (`inputLed` / `outputLed` in `nodeParts.tsx`):
+
+| State | Meaning | Look |
 |---|---|---|
-| text | `--bf-mint` | filled square 12 px |
-| int | `--bf-sky` | filled square |
-| float | `--bf-aqua` | filled square |
-| boolean | `--bf-lime` | filled square |
-| image | `--bf-peach` | filled square |
-| video | `--bf-coral` | filled square |
-| audio | `--bf-pink` | filled square |
-| model3d | `--bf-sand` | filled square |
-| file | `--bf-stone` | filled square |
-| struct (any) | `--bf-lavender` | filled square |
-| enum (any) | `--bf-lavender` | filled **diamond** (square rotated 45°) |
-| `list<X>` | color of X | **hollow** square, 3 px border in X's color, small `≡` glyph on hover |
-| `X?` | color of X | X's shape with a **dashed** 2 px ink outline |
-| unbound `$T` | `--bf-ink` | hollow square, dashed ink border |
+| off | nothing wired, no value | tinted dark dome |
+| dim | an input with a typed-in constant | color at ~60 % brightness, no glow |
+| on | a cable is plugged in (input wired, output used) | bright dome, 6 + 14 px glow |
+| pulse | data flowing: wired input of a running node | `on`, brightness pulses at 1.1 s |
 
-Every port also has a 2 px `--bf-shadow` border so it stands out on any surface. Color is never
-the only cue: the port tooltip and the inspector show the type name (`list<Character?>`).
-Edges take the color of their **source port** type.
+Type shapes in panels and pickers (type chips, `.bf-port` markers) keep the v1 pastel map:
 
-`briarTheme.typeColor(typeRef): string` implements this map so all components agree.
+| Type | Pastel | Shape |
+|---|---|---|
+| text / int / float / boolean | mint / sky / aqua / lime | square |
+| image / video / audio / model3d / file | peach / coral / pink / sand / stone | square |
+| struct / enum | lavender | square / diamond |
+
+Lists get a hollow marker, optionals a dashed outline. `briarTheme.typeStyle` implements this
+map. Ports on the canvas use the LED families instead.
 
 ## 7. Node anatomy
 
 ```
- ┌──────────────────────────────────────────┐  3px ink border, shadow-md
- │▌TEXT TEMPLATE                  ● ⟳ 0.4  │  header: surface-2, 4px left strip in category color,
- ├──────────────────────────────────────────┤  title in display 13/600, status dot + badge right
- │ ■ name        ←  Break.name              │  connected input: label + source (muted, code font)
- │ ■ style       [ anime            ▾ ]     │  unconnected input: constant widget inline
- │ ◇ mood        [ calm             ▾ ]     │
- │                                text ■ ──┼─▶ outputs right-aligned
- ├──────────────────────────────────────────┤
- │ Draw {name} in {style} style             │  config preview (optional, muted, 2 lines max)
- └──────────────────────────────────────────┘
+  ╭──────────────────────────────────────────────╮  briar frame, 10 px, 22 px radius
+  │ ╭──────────────────────────────────────────╮ │  matte plate, 13 px radius
+  │ │ (◎) TEXT TEMPLATE            [1MS]  (●)  │ │  medal · engraved title · badge · pilot lamp
+  │ │     text.template                        │ │  type line (code 10.5, muted)
+  │ │ ▮▮▮▮▮▮▮▯▯▯▯▯                             │ │  VU strip (only while running with progress)
+  │ ├──────────────────────────────────────────┤ │
+  ◉─┼─● count          ← Input.count           │ │  socket on rim · LED · label · source
+  ◉─┼─◐ template      [ Write {topic}… ]      │ │  unconnected: recessed slot
+  │ │                         text  Text  ●───┼─◉  outputs right-aligned
+  │ │ ┌──────────────────────────────────────┐ │ │
+  │ │ │ Write {count} lines about {topic}.   │ │ │  dial window: backlit cream glass
+  │ │ └──────────────────────────────────────┘ │ │
+  │ │ ┌ RUN FAILED ──────────────────────────┐ │ │  failure tag (only when the run failed)
+  │ │ │ photo.heic could not be decoded…     │ │ │
+  │ │ ✕                                    ✕ │ │  two slotted screws, bottom corners
+  │ ╰──────────────────────────────────────────╯ │
+  ╰──────────────────────────────────────────────╯
 ```
 
-- Width: min 220 px, max 360 px; grows with the longest constant widget. Rows 28 px.
-- Ports sit on the border line (half outside). Inputs left, outputs right.
-- Header strip color: definition `color`, else by category (Text=mint, Image=peach,
-  AI=lavender, Data=sky, Flow=yellow for `briar.input`/`briar.output`, Variables=pink).
-- `briar.input`/`briar.output` have a yellow header (ink-inverse text) and cannot be deleted
-  (no delete action shown).
-- Variable get/set nodes are compact (one row): `GET count` / `SET count`, pink header.
+- **Size:** width 260–380 px (variables min 200). Rows are 34 px. The header is at least 52 px.
+- **Frame by kind:** briar for working nodes, walnut for `briar.input` / `briar.output`, maple for
+  variable GET/SET. Built-in nodes cannot be deleted (no delete action is shown).
+- **Medal:** a 24 px brass disc with a category icon (`medalIcon`): text, ai, image, list, data,
+  convert, variable, input, output. Unknown categories get a plain dot.
+- **Pilot lamp** (12 px) shows the run state (§9).
+- **Badges** are engraved chips in a dark recess with pastel text: duration, `CACHED`,
+  `FAILED`, `SKIPPED`, `n warn`, `n errors`.
+- **Dial window** holds the config preview (template text, up to ~4 lines) in dark code type on
+  warm cream glass.
+- **Failure tag** sits under the dial with a red border, a "RUN FAILED" caption and the error
+  message (`role="alert"`).
+- **Input/Output signature rows:** `× name [type ▾] [ ]`, plus an LED and socket. The type chip
+  is a dark recess. "+ INPUT" / "+ OUTPUT" is a dashed engraved button.
 
 ### Constant value widgets (unconnected inputs)
 
@@ -222,9 +269,9 @@ Edges take the color of their **source port** type.
 | text | single-line input; `multiline` → 3-row textarea that grows to 8 rows; `widget:"password"` masks |
 | int | number input with − / + steppers (step 1), clamps to min/max on blur |
 | float | number input (step 0.1), `widget:"slider"` when both min and max are set |
-| boolean | square checkbox 16 px, yellow check on ink-inverse |
+| boolean | LED checkbox 14 px: dark amber dome when off, lit amber with glow when checked |
 | enum | select showing labels |
-| media | **v1:** a chip (thumbnail for image, icon + name for others, mime + size, × to clear) plus a secondary `CHOOSE FILE` button; the chip/button area is also a drop target (yellow dashed 2 px border while dragging a file over it). *Later:* 64 px drop zone "Drop file or click". |
+| media | **v1:** a chip (thumbnail for image, icon + name for others, mime + size, × to clear) plus a secondary `CHOOSE FILE` button; the chip/button area is also a drop target (brass dashed 1 px border while dragging a file over it). *Later:* 64 px drop zone "Drop file or click". |
 | struct | **v1:** on the node a read-only preview `{…}` / `{ name, style }`; in the inspector and run form a JSON textarea (code font) **prefilled with a skeleton** built from the struct's fields (defaults, else `""` / `0` / `false` / `null` / `[]`), pretty-printed on blur, parse errors shown below in danger with line:col. *Later:* button `Edit Character…` opening a form popover. |
 | list | **v1:** preview `3 items` / `empty` on the node; JSON textarea (prefilled `[]`) in inspector and run form, same error rules as struct. *Later:* list editor popover (add / remove / reorder). |
 | optional | small "set" checkbox before the inner widget; unchecked = `null` (muted "none") |
@@ -233,133 +280,140 @@ Edges take the color of their **source port** type.
 Connected input: the widget is hidden and replaced by `← <source node>.<port>`; a stored
 constant is kept and shown as a ghost value in the inspector ("used when disconnected").
 
-## 8. Edges
+## 8. Edges: cables
+
+Cables are bezier curves (React Flow `getBezierPath`) built from layers:
+- a dark cloth **sheath**: 6 px `#1D140D`, with a drop shadow
+- a 2.5 px **core** in the source port's family color (`--bf-wire-*`)
+- a spark layer while running
 
 | State | Style |
 |---|---|
-| default | 3 px solid, source type color, orthogonal step path (React Flow `smoothstep` with radius 0) |
-| hover | 4 px, ink 1 px outline |
-| selected | 4 px **yellow**, plus a 2 px ink outline |
-| invalid (`edge.type_mismatch`) | 3 px `--bf-danger`, dashed `6 4`, a ⚠ marker at the midpoint with the message on hover |
-| running (target node running) | animated dash (`stroke-dasharray: 8 6`, moves 14 px / 400 ms), source color |
-| implicit variable order | 1 px ink-muted dotted, visible only when a get/set node is selected. **Not drawn in v1** (REQ-25); planned for v1.1. |
-| drag preview | 3 px yellow dashed; turns `--bf-danger` over an incompatible port, compatible ports glow (yellow 2 px ring) |
+| default | sheath + core |
+| hover | sheath lightens to `#3A2A1C` |
+| selected | sheath turns brass (`--bf-brass-hi`, 7 px) |
+| invalid (`edge.type_mismatch`) | core `--bf-led-media`, dashed `6 5`; a red LED-like "!" marker at the midpoint with the message on hover |
+| running (target node running) | cream sparks (`#FFF3C9`, dash `3 11`) run along the core, 14 px / 700 ms |
+| drag preview | 2.5 px brass dashed line; red over an incompatible port |
+| implicit variable order | not drawn in v1 (planned v1.1) |
 
 ## 9. States
 
-| State | Node | Port / control |
+| State | Node | Control |
 |---|---|---|
-| hover | shadow-lg, header surface-3 | port grows to 14 px |
-| focus (keyboard) | yellow outline 3 px offset 2 px | same |
-| selected | border-heavy **yellow**, shadow-yellow | — |
-| error (validation or run) | border `--bf-danger`, ⚠ badge in header (count), messages in inspector | invalid constant: input border danger + message below |
-| warning | ⚠ badge peach | |
-| queued (run) | status dot ink-muted hollow | |
-| running | status dot sky, pulsing 1 s (no pulse with reduced motion); progress bar 3 px sky under the header; badge with fraction | |
-| retrying | badge `retry 2/3` peach | |
-| cached | status dot lavender + badge `CACHED` | |
-| done | status dot mint, badge `0.8s` duration | |
-| failed | status dot danger, header text danger on hover tooltip with error message | |
-| skipped | whole node 50% opacity, badge `SKIPPED` stone | |
-| disabled control | ink-disabled text, dashed border | |
+| focus (keyboard) | 3 px brass outline | 1 px brass outline |
+| selected | 2 px brass outline 1 px outside the frame, warm glow | — |
+| error (validation) | thin red ring around the plate; `n errors` badge; messages in inspector and PROBLEMS | invalid slot: red ring |
+| warning | `n warn` badge (peach text) | |
+| queued (run) | pilot lamp amber, dim | |
+| running | pilot lamp amber, **blinking** 0.9 s; VU strip under the header; wired input LEDs pulse; cables into it spark | |
+| retrying | badge `retry 2` (peach) | |
+| cached | pilot lamp green; badge `CACHED` | |
+| done | pilot lamp green; badge with duration | |
+| failed | pilot lamp red; badge `FAILED`; title in danger tone; failure tag with the message | |
+| skipped | node at 50 % opacity, desaturated; badge `SKIPPED` | |
+| disabled control | — | ink-disabled text, dashed 1 px border, no shadow |
 
-Status dots are 10 px squares (not circles).
+The VU strip has 12 segments. They light from the left in proportion to progress: the first 9
+green, the next 2 amber, the last red.
+
+Status dots outside the canvas (run log, PROBLEMS) are 10 px circles in a black bezel.
 
 ## 10. Components (studio + editor-react)
 
-- **Button primary:** yellow bg, ink-inverse text, 2 px `--bf-shadow` border, shadow-md,
-  display font 13/600 uppercase; hover → `--bf-yellow-press`. Secondary: surface-2 bg, ink
-  text, ink border. Danger: danger border + text; filled danger on confirm dialogs.
-- **Input:** surface-2 bg, 2 px ink-muted border, focus → yellow outline; height 32 px.
-- **Panel:** surface bg, 3 px ink border, title bar 36 px with display uppercase title and
-  a 3 px yellow underline when active.
-- **Badge:** pastel bg, ink-inverse text, 11 px code font, 2 px padding, 1 px shadow border.
-- **Toast:** surface, 3 px border in status color, shadow-lg, bottom-right.
-- **Icons:** lucide, 16 px, stroke 2.
-- **Ghost button** (borderless text button): only for low-stakes inline actions *inside a row*
-  (`COPY`). Any action in a toolbar, top bar or panel footer (`UNDO`, `REDO`, `GET`, `SET`,
-  `CLEAR`, `CHOOSE FILE`) is a **secondary** button, so enabled and disabled differ by more than
-  the border: enabled = solid ink border + shadow-sm; disabled = dashed ink-disabled border, no
-  shadow. A borderless enabled control next to a bordered disabled one reads backwards.
-- **Add buttons** (`+ CONTEXT`, `+ INPUT`, `+ MEMBER`, …) beside a name field stay disabled
-  (dashed) while the field is empty; pressing Enter in the field triggers them.
-- **Row delete (×):** hit target ≥ 24×24 px, icon 12 px, danger color on hover only.
-- **Empty states:** a muted one-line sentence that says what to do (`No runs yet — press RUN
-  or Ctrl+Enter.`), never a blank box.
+- **Primary button:**
+  - brass face, dark ink (`#2A1A06`), 1 px `#6A4A1C` border, light top bevel, faint glow
+  - hover: lighter brass
+- **Secondary button:**
+  - dark kicked plate (`#4A443A` → `#36312A`), 1 px groove, top bevel, engraved label
+- **Danger button:** dark red plate, salmon text. The filled danger button on confirm dialogs is
+  a red gradient with pale text.
+- **Ghost button** (borderless): only for inline row actions (`COPY`). Toolbar, top bar and
+  footer actions stay secondary buttons, so their enabled and disabled looks differ by more than
+  a border.
+- **Disabled:** dashed 1 px `#4A4238` border, flat dark fill, no shadow.
+- **Input:**
+  - a recessed slot: `--bf-slot` with an inner shadow and no border
+  - focus: 1 px brass outline
+  - invalid: 1 px red ring
+  - inline inputs stay transparent until hover or focus
+- **Checkbox:** a 14 px amber LED (§7 boolean).
+- **Toggle:** a recessed track; the "on" option is brass.
+- **Panel / dock:** plate background, 12 px radius, plate shadow. The 36 px title bar has an
+  engraved title and a groove underneath. The active panel gets a 2 px brass underline.
+- **Tabs:** engraved labels with grooves between them. The active tab is brass text with a 2 px
+  brass underline and a faint amber wash.
+- **Badge:** a dark recess with pastel tone text (`--bf-badge-bg` is used as the text color).
+- **Dialog / modal / move menu / splash:**
+  - a plate inside a briar frame (6–10 px wood border, `#C07A48` outer line)
+  - dim warm backdrop
+- **Context menu:**
+  - a plate inside a 6 px briar frame
+  - 32 px items
+  - active item: amber wash and a 2 px amber bar
+  - node and variable entries carry a small LED dot in their accent
+  - search is a recessed slot
+  - grooves as separators
+- **Add rows** (`+ VARIABLE`, `+ INPUT`, …): a dashed 1 px rounded box with an engraved label,
+  brass on hover. Disabled while the name field is empty; Enter triggers them.
+- **Row delete (×):** hit target ≥ 24×24 px, danger tone on hover only.
+- **Empty states:** one muted sentence that says what to do (`No runs yet — press RUN or
+  Ctrl+Enter.`).
+- **Icons:** inline stroke SVG, 1.6–1.7 px stroke, round caps.
 
 ## 11. Studio layout
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────────────────┐
-│ BRIARFLOW ▌ Marketing ▾  /  Portrait ▾          rev 13 · saved        [▶ RUN] [⋯]          │ 48px top bar
-├──────────────┬────────────────────────────────────────────────────────────┬───────────────┤
-│ CONTEXTS     │ ┌canvas (grid)───────────────────────────────────────────┐ │ INSPECTOR      │
-│ ▸ Marketing  │ │                                                        │ │ Text template  │
-│   ▸ Portrait │ │  ┌INPUT──────┐      ┌BREAK Character┐    ┌TEXT TEMPLATE┐│ │ id n_tpl       │
-│   ▸ Banner   │ │  │ character■├─────▶■value   name ■├───▶■name         ││ │ Template       │
-│ ▸ Support    │ │  └───────────┘      │        style◇├───▶■style   text■├┼▶│ [Draw {name}…] │
-│ [+ CONTEXT]  │ │                     └──────────────┘    └─────────────┘│ │ Inputs …       │
-│──────────────│ │                                       ┌OUTPUT────┐     │ │                │
-│ NODES        │ │                                    ──▶■prompt     │     │ │                │
-│ [search…  ]  │ │                                       └──────────┘     │ │                │
-│ ▾ Text       │ │                                         [− 100% +] [⤢] │ │                │
-│   Template   │ └────────────────────────────────────────────────────────┘ │                │
-│   Join       ├────────────────────────────────────────────────────────────┤                │
-│ ▾ AI (mock)  │ TYPES │ VARIABLES │ RUN                                    │                │
-│   LLM        │ ┌──────────────────────────────────────────────────────────┐│                │
-│   Image      │ │ RUN run_7  ● running  2/5 nodes   [CANCEL]               ││                │
-│ ▾ Data       │ │ inputs { character: {…} }                                ││                │
-│   Make struct│ │ 10:00:00.120  node.started   Break Character             ││                │
-│   Constant   │ │ 10:00:00.140  node.completed Break Character  20ms       ││                │
-│              │ │ 10:00:00.141  node.started   Text template               ││                │
-│              │ └──────────────────────────────────────────────────────────┘│                │
-└──────────────┴────────────────────────────────────────────────────────────┴───────────────┘
-   260px left                    flexible center (canvas 65% / dock 35%)          320px right
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [BRIARFLOW] Woodshop demo / [Bench ▾] [TYPES] [GLOBALS]     rev 5 · saved [UNDO][REDO][⚠0][▶ RUN] │ walnut top bar, 48 px
+├────────────┬──────────────────────────────────────────────────────────────┬──────────────────┤
+│ CONTEXTS   │ ╭ bench canvas ──────────────────────────────────────────────╮ │ INSPECTOR        │
+│ ▾ Demo     │ │   ╭INPUT╮        ╭TEXT TEMPLATE╮       ╭MOCK LLM╮          │ │ flow / selection │
+│   Bench    │ │   │ topic ●◉═══◉● topic       │       │        │  ╭OUTPUT╮│ │ details          │
+│ [+ FLOW]   │ │   ╰─────╯        ╰─────────────╯═════◉╰────────╯══◉       ││ │                  │
+│────────────│ │                                                            │ │                  │
+│ VARIABLES  │ ╰────────────────────────────────────────────────────────────╯ │                  │
+│ ...        │ ╭ RUN │ PROBLEMS 0 ──────────────────────────────────────────╮ │                  │
+│            │ │ inputs form · run status · event log                       │ │                  │
+└────────────┴──────────────────────────────────────────────────────────────┴──────────────────┘
 ```
 
-Panels:
-- **Left rail** (260 px; **fixed width in v1**, resizable 200–400 later): Contexts tree
-  (contexts → flows; create, rename, delete — v1 may use row actions instead of a context
-  menu: on hover/selection a row shows `✎` (inline rename, Enter saves, Esc cancels) and `×`
-  (confirm dialog naming what is deleted; deleting a context also says how many flows go).
-  The contexts section takes the height it needs (max 40 % of the rail) and the palette
-  gets the rest) above the **Node palette** (search by title/type/category, grouped
-  by category, drag onto canvas or press Enter to add at viewport center).
-- **Canvas** (center): flow editor. Minimap off by default (toggle).
-- **Bottom dock** (center, resizable, collapsible) with tabs TYPES, VARIABLES, RUN,
-  **PROBLEMS** (tab label carries the count, `PROBLEMS 2`, in danger when any error):
-  - **TYPES**: global types and this flow's local types in two sections; struct editor
-    (fields table: name, type picker with shorthand + autocomplete, default, description);
-    enum editor (members, labels); "Move to global/local" action; usage count per type.
-  - **VARIABLES**: globals (name, type, access toggle readonly/readwrite, value widget) and
-    flow variables (name, type, public/private toggle, default). **v1:** `GET` / `SET`
-    secondary buttons per variable add the node at the viewport center, selected (`SET` is
-    disabled for readonly globals, tooltip says why). *Later:* drag a variable onto the
-    canvas → menu "Get / Set".
-  - **RUN**: inputs form generated from the signature (same widgets as constants), RUN button,
-    current run status, outputs (rendered: text, image thumbnails, JSON for structs),
-    public variables, global writes, and the **event log** (code font, one line per event,
-    filter by node, click a line → selects the node). Past runs in a dropdown.
-- **Inspector** (right, 320 px): selection details — title, id (copyable), config fields,
-  all input constants (same widgets), diagnostics for the selection; for edges: types of both
-  ends; with nothing selected: flow name, description, signature editor (inputs/outputs).
-- **Top bar**: context and flow switchers, revision + save state (`saved`, `saving…`,
-  `conflict — reload`), Run button (yellow), overflow menu (export JSON, duplicate flow).
-  - **PROBLEMS**: all diagnostics of the flow, errors first, each row: severity badge
-    (aligned to the first text line, not stretched), message, code (muted, code font),
-    target name; click → selects and frames the node/edge. Empty: `No problems.`
-- **Diagnostics**: a count badge in the top bar (danger bg when any error, peach when only
-  warnings) opens the PROBLEMS tab.
+- **Dockable panels** (`apps/studio/src/dock.tsx`): contexts, variables, inspector, run and
+  problems, in left / right (stacked, collapsible) and bottom (tabs) zones.
+  - Move a panel by dragging its title or tab, or from its right-click menu.
+  - The layout is stored in localStorage and normalized when loaded.
+  - The default puts contexts and variables on the left, inspector on the right, and run and
+    problems at the bottom.
+- **There is no node palette panel.** Right-click the empty canvas, or press `/`, for the add
+  menu: every node by category, variable/global GET/SET, and a search box.
+- **Context menus everywhere:** canvas, node, port, edge, variable / global / signature /
+  struct field / enum value / type rows, dock panels, and the contexts/flows tree.
+  - The browser menu is suppressed everywhere except text fields.
+  - The menus are extensible: `ContextMenuTargets` declaration merging, `useContextMenuContributor`.
+- **Globals and Types** open as briar-framed modals from the top bar.
+- **Variables panel:** flow variables. The grip drags a GET node onto the canvas.
+- **Inspector** (right): the selection (title, id, config, input constants, diagnostics). With
+  nothing selected it shows the flow name, description and signature editor.
+- **RUN:** an inputs form generated from the signature, RUN / CANCEL / CLEAR, run status,
+  outputs, and an event log (code font, filter by node).
+- **PROBLEMS:** diagnostics with errors first. Clicking a row selects and frames the target.
+  The top bar carries a count badge that opens it.
+- **Top bar:**
+  - walnut strip with a brass BRIARFLOW nameplate
+  - context crumb (engraved) and flow switcher
+  - TYPES / GLOBALS buttons
+  - revision + save state
+  - undo / redo, problems badge, brass RUN button
 
 Keyboard: `Space+drag` pan, `Ctrl/Cmd+Z` / `Shift+Ctrl/Cmd+Z` undo/redo, `Delete` remove,
-`/` focus palette search, `Ctrl/Cmd+Enter` run, `F` frame selection.
+`/` add-node menu under the pointer, `Ctrl/Cmd+D` duplicate, `Shift+F10` / ContextMenu key selection menu, `Ctrl/Cmd+Enter` run, `F` frame selection.
 
 Minimum supported viewport: 1280×720. Below 1024 px the right inspector becomes an overlay.
 
 **Canvas legibility:** text on the canvas must never render below 9 px on screen. Initial
 fit (`fitView`) uses `minZoom 0.85, maxZoom 1` (pan to the flow's top-left if it does not
 fit); the **fit** control uses `maxZoom 1`. Below zoom 0.6 the node body switches to a
-compact rendering (title + ports, no labels/widgets/preview) instead of unreadable text.
+compact rendering (title, LEDs and sockets; no types/widgets/preview/tags) instead of unreadable text.
 
 ## 12. v1 implementation review (REQ-25, 2026-10-21)
 

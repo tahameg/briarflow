@@ -1,7 +1,7 @@
 /**
  * @briarflow/editor-react — React 19 views over `@briarflow/editor` (docs/ARCHITECTURE.md §7.3):
  * a React Flow canvas, node palette, types / variables / run panels, inspector and diagnostics,
- * styled with the Briar Brutal design system. All editing goes through store commands.
+ * styled with the Briar Woodshop design system. All editing goes through store commands.
  * Right-click menus are extensible: wrap the app in `<ContextMenuProvider>` and add entries
  * per target with `contributors` or `useContextMenuContributor`.
  *

@@ -1,5 +1,5 @@
 /*
- * Briar design tokens (woodshop look; names from the Briar Brutal spec) (docs/specs/design-system.md §1, §3, §4).
+ * Briar Woodshop design tokens (docs/specs/design-system.md §1, §3, §4).
  * Shipped by @briarflow/editor-react (single source; the studio imports it). Fonts are loaded by the host page (Google Fonts, per spec §3; see OPEN_QUESTIONS Q-DS-2).
  * Only a dark theme in v1 (Q-DS-1).
  */

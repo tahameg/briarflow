@@ -1,5 +1,5 @@
 /**
- * Component kit of the Briar Brutal design system (design-system.md §9–§10): buttons, panels,
+ * Component kit of the Briar Woodshop design system (design-system.md §9–§10): buttons, panels,
  * tabs, fields, badges, port markers, type chips, status dots. Styles: `styles/components.css`.
  */
 import { useEffect, useId, useRef, useState } from "react";

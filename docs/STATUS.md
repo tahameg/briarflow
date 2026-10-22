@@ -74,7 +74,7 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - Studio chrome in the same language: tokens retuned (warm plate surfaces, brass `--bf-yellow`,
   1px dark `--bf-line` grooves, soft shadows, 12px radius, Barlow fonts); walnut top bar with a brass
   nameplate, plate panels/docks, brass primary buttons, recessed inputs, LED checkboxes, engraved tabs,
-  briar-framed modals and menus. design-system.md (still "Briar Brutal") needs a rewrite.
+  briar-framed modals and menus. `docs/specs/design-system.md` rewritten as v2 "Briar Woodshop".
 
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
