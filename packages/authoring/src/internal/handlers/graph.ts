@@ -178,11 +178,17 @@ export function removeNodes(ctx: Ctx, flowId: string, nodeIds: ReadonlySet<strin
   flow.edges.forEach((e, i) => {
     if (nodeIds.has(e.from.node) || nodeIds.has(e.to.node)) inverse.push(edgeConnectCommand(flowId, e, i));
   });
-  putFlow(ctx, {
+  const touches = (e: { from: { node: string }; to: { node: string } }) => nodeIds.has(e.from.node) || nodeIds.has(e.to.node);
+  flow.execEdges?.forEach((e, i) => {
+    if (touches(e)) inverse.push({ op: "exec.connect", flowId, id: e.id, from: { ...e.from }, to: { ...e.to }, index: i });
+  });
+  const next: FlowDocument = {
     ...flow,
     nodes: flow.nodes.filter((n) => !nodeIds.has(n.id)),
     edges: flow.edges.filter((e) => !nodeIds.has(e.from.node) && !nodeIds.has(e.to.node)),
-  });
+  };
+  if (flow.execEdges !== undefined) next.execEdges = flow.execEdges.filter((e) => !touches(e));
+  putFlow(ctx, next);
   return inverse;
 }
 

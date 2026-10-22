@@ -53,6 +53,7 @@ describe("stdPack", () => {
         "briar.struct.make",
         "briar.struct.break",
         "briar.constant",
+        "briar.error.break",
         "text.template",
         "text.join",
         "list.make",

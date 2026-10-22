@@ -62,6 +62,7 @@ export type {
   MediaConstraints,
   MediaMeta,
   MediaPrimitiveName,
+  ErrorValue,
   MediaRef,
   NamedTypeRef,
   NumberConstraints,
@@ -120,6 +121,7 @@ export {
 export type {
   ContextDocument,
   Edge,
+  ExecEdge,
   EnumDecl,
   EnumMember,
   FieldDecl,
@@ -135,6 +137,10 @@ export type {
   Viewport,
 } from "./documents/model.js";
 export { createContextDocument, createFlowDocument, findFlow, findNode } from "./documents/factories.js";
+export { ERROR_OUTPUT, EXEC_FAILED, EXEC_IN, EXEC_THEN, execPortsOf, isExecNode } from "./nodes/exec-ports.js";
+export type { ExecPorts } from "./nodes/exec-ports.js";
+export { analyzeExec, autoExecEdges } from "./validation/exec.js";
+export type { ExecAnalysis } from "./validation/exec.js";
 export type { CreateContextOptions, CreateFlowOptions } from "./documents/factories.js";
 export { deserializeContext, serializeContext } from "./serialization/serialize.js";
 

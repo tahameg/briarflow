@@ -14,6 +14,9 @@ import {
 } from "@briarflow/authoring";
 import {
   BriarError,
+  EXEC_FAILED,
+  EXEC_IN,
+  EXEC_THEN,
   FLOW_INPUT_NODE_TYPE,
   FLOW_OUTPUT_NODE_TYPE,
   VARIABLE_NODE_TYPES,
@@ -278,6 +281,20 @@ export interface FlowHandle {
   connect(from: PortRef, to: PortRef): string;
   /** Removes the edge into an input port. */
   disconnect(to: PortRef): void;
+  /**
+   * Wires an execution line through `nodes` in order (each one's `then` to the next one's
+   * `in`). Use `flow.input` / `flow.output` for the ends.
+   *
+   * @example
+   * ```ts
+   * flow.line(flow.input, llm, print, flow.output);
+   * ```
+   */
+  line(...nodes: readonly (NodeHandle | string)[]): FlowHandle;
+  /** Wires `node`'s `failed` line to `next` (the node must be able to fail). */
+  onFailure(node: NodeHandle | string, next: NodeHandle | string): FlowHandle;
+  /** Replaces every execution line with Input → each execution node in data order → Output. */
+  wireExecution(): FlowHandle;
   /** Runs the handle's current document (unsaved edits included). Global writes go to the stored context. */
   run(inputs?: Record<string, unknown>, options?: Omit<BriarRunOptions, "context">): Promise<BriarRun>;
 }
@@ -604,6 +621,28 @@ class FlowHandleImpl implements FlowHandle {
   disconnect(to: PortRef): void {
     checkPortRef(to, "to");
     this.context.apply({ op: "edge.disconnect", flowId: this.id, to: { node: to.node, port: to.port } });
+  }
+
+  line(...nodes: readonly (NodeHandle | string)[]): FlowHandle {
+    const ids = nodes.map((n) => (typeof n === "string" ? n : n.id));
+    const commands = ids.slice(1).map<Command>((to, i) => ({ op: "exec.connect", flowId: this.id, from: { node: ids[i] as string, port: EXEC_THEN }, to: { node: to, port: EXEC_IN } }));
+    if (commands.length > 0) this.context.apply(commands);
+    return this;
+  }
+
+  onFailure(node: NodeHandle | string, next: NodeHandle | string): FlowHandle {
+    const from = typeof node === "string" ? node : node.id;
+    const to = typeof next === "string" ? next : next.id;
+    this.context.apply({ op: "exec.connect", flowId: this.id, from: { node: from, port: EXEC_FAILED }, to: { node: to, port: EXEC_IN } });
+    return this;
+  }
+
+  wireExecution(): FlowHandle {
+    this.context.apply([
+      { op: "flow.exec.set", flowId: this.id, edges: null },
+      { op: "flow.exec.enable", flowId: this.id },
+    ]);
+    return this;
   }
 
   run(inputs?: Record<string, unknown>, options: Omit<BriarRunOptions, "context"> = {}): Promise<BriarRun> {

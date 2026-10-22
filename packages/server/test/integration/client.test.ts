@@ -34,12 +34,16 @@ const PORTRAIT: Command[] = [
   { op: "edge.connect", flowId: "flow_p", from: { node: "n_llm", port: "text" }, to: { node: "n_img", port: "prompt" } },
   { op: "edge.connect", flowId: "flow_p", from: { node: "n_llm", port: "text" }, to: { node: "n_out", port: "description" } },
   { op: "edge.connect", flowId: "flow_p", from: { node: "n_img", port: "image" }, to: { node: "n_out", port: "image" } },
+  { op: "flow.exec.set", flowId: "flow_p", edges: null },
+  { op: "flow.exec.enable", flowId: "flow_p" },
   { op: "flow.create", id: "flow_d", name: "Slow", inputNodeId: "n_din", outputNodeId: "n_dout" },
   { op: "flow.output.add", flowId: "flow_d", name: "value", type: "text" },
   { op: "flow.input.add", flowId: "flow_d", name: "value", type: "text" },
   { op: "node.add", flowId: "flow_d", id: "n_delay", type: "mock.delay", values: { ms: 150 }, position: { x: 200, y: 0 } },
   { op: "edge.connect", flowId: "flow_d", from: { node: "n_din", port: "value" }, to: { node: "n_delay", port: "value" } },
   { op: "edge.connect", flowId: "flow_d", from: { node: "n_delay", port: "value" }, to: { node: "n_dout", port: "value" } },
+  { op: "flow.exec.set", flowId: "flow_d", edges: null },
+  { op: "flow.exec.enable", flowId: "flow_d" },
 ];
 
 let briar: Briar;

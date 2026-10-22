@@ -165,6 +165,8 @@ describe("restore", () => {
     const d = ok(empty(), [
       { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_c", name: "C", fields: [{ name: "age", type: "int" }] },
       { op: "flow.create", id: "flow_p", name: "P" },
+      // Without execution lines every node is checked (on a line, an unused node is not).
+      { op: "flow.exec.set", flowId: "flow_p", edges: null },
       { op: "node.add", flowId: "flow_p", id: "n_make", type: "briar.struct.make", position: { x: 0, y: 0 }, config: { typeId: "ty_c" }, values: { age: -1 } },
       { op: "type.field.setType", typeId: "ty_c", field: "age", type: { kind: "primitive", name: "int", constraints: { min: 0 } } },
     ]).doc;

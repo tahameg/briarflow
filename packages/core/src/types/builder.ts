@@ -9,6 +9,7 @@ import { TYPE_VAR_NAME_PATTERN } from "../util/names.js";
 import { constraintMessage, constraintProblems } from "./constraints.js";
 import { parseType } from "./shorthand.js";
 import type {
+  ErrorValue,
   ImageConstraints,
   MediaConstraints,
   MediaRef,
@@ -136,6 +137,8 @@ export interface TypeBuilder {
   model3d(constraints?: MediaConstraints): TypeSpec<MediaRef>;
   /** `file` media (any mime). */
   file(constraints?: MediaConstraints): TypeSpec<MediaRef>;
+  /** Why a node failed (`{ code, message, nodeId?, node?, details? }`). */
+  error(): TypeSpec<ErrorValue>;
   /** `list<item>`. Values are readonly arrays. @example `t.list(t.image(), { maxItems: 4 })` */
   list<V>(item: TypeSpec<V>, options?: ListOptions): TypeSpec<readonly V[]>;
   /** `item?` — the value or `null`. Optional of optional throws `type.syntax`. */
@@ -180,6 +183,7 @@ export const t: TypeBuilder = {
   audio: (constraints) => primitive<MediaRef>("audio", constraints),
   model3d: (constraints) => primitive<MediaRef>("model3d", constraints),
   file: (constraints) => primitive<MediaRef>("file", constraints),
+  error: () => primitive<ErrorValue>("error", undefined),
   list<V>(item: TypeSpec<V>, options: ListOptions = {}): TypeSpec<readonly V[]> {
     return checked<readonly V[]>({ kind: "list", of: item.ref, ...withoutUndefined(options) }, "t.list()");
   },

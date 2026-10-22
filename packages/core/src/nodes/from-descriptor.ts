@@ -78,6 +78,8 @@ export function definitionFromDescriptor(d: NodeDescriptor): AnyNodeDefinition {
     ...(d.concurrency === null ? {} : { concurrency: d.concurrency }),
     ...(d.deprecated === null ? {} : { deprecated: d.deprecated }),
     ...(d.frontend === true ? { frontend: true as const } : {}),
+    ...(d.pure === true ? { pure: true as const } : {}),
+    ...(d.canFail === true ? { canFail: true as const } : {}),
     run() {
       throw new NodeError(
         "node.descriptor_only",

@@ -8,6 +8,7 @@ import { modelConfig, nodeSettings, promptInputs, sendClaude, textOf, usageOf, U
 export function claudeMessage(options: AnthropicPackOptions) {
   return defineNode({
     type: "anthropic.message",
+    canFail: true,
     title: "Claude message",
     description: "Sends a prompt (and optional system text) to Claude and returns the reply text.",
     ...nodeSettings,

@@ -452,6 +452,8 @@ export function manifestToPack(manifest: PythonManifest, connection: Connection,
         retry: desc.retry,
         ...(typeof desc.concurrency === "number" ? { concurrency: desc.concurrency } : {}),
         ...(desc.deprecated ? { deprecated: desc.deprecated } : {}),
+        // Python nodes call out to a worker: they can fail, so they get a failed line.
+        ...(desc.outputs.some((o) => o.name === "error") ? {} : { canFail: true }),
         run: (args) => runtime.execute(desc, args),
       });
       return def as unknown as AnyNodeDefinition;

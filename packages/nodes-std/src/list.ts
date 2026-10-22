@@ -6,6 +6,7 @@ import { cfg, defineNode, t, type PortMap } from "@briarflow/core";
 /** `list.make`: `item1 … itemN` (N = `config.count`, 0–32) → `list<$T>`. */
 export const listMake = defineNode({
   type: "list.make",
+  pure: true,
   title: "Make list",
   category: "List",
   icon: "list",
@@ -28,6 +29,7 @@ export const listMake = defineNode({
 /** `list.length`: number of items. */
 export const listLength = defineNode({
   type: "list.length",
+  pure: true,
   title: "List length",
   category: "List",
   icon: "list",
@@ -41,6 +43,7 @@ export const listLength = defineNode({
 /** `list.get`: item at `index`; negative counts from the end; out of range → `null`. */
 export const listGet = defineNode({
   type: "list.get",
+  pure: true,
   title: "Get item",
   category: "List",
   icon: "list",

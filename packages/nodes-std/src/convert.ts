@@ -12,6 +12,7 @@ export const RoundingMode = defineEnum("RoundingMode", ["round", "floor", "ceil"
 /** `convert.toText`: any value → text (toText rules). */
 export const convertToText = defineNode({
   type: "convert.toText",
+  pure: true,
   title: "To text",
   category: "Convert",
   icon: "type",
@@ -35,6 +36,7 @@ function invalidNumber(text: string, what: string): NodeError {
 /** `convert.parseInt`: trimmed decimal whole number; invalid → `convert.invalid_number`. */
 export const convertParseInt = defineNode({
   type: "convert.parseInt",
+  pure: true,
   title: "Parse whole number",
   category: "Convert",
   icon: "hash",
@@ -53,6 +55,7 @@ export const convertParseInt = defineNode({
 /** `convert.parseFloat`: trimmed decimal number; invalid → `convert.invalid_number`. */
 export const convertParseFloat = defineNode({
   type: "convert.parseFloat",
+  pure: true,
   title: "Parse number",
   category: "Convert",
   icon: "hash",
@@ -84,6 +87,7 @@ function roundNumber(value: number, mode: string): number {
 /** `convert.floatToInt`: rounds with `briar.RoundingMode` (default `round`, half away from zero). */
 export const convertFloatToInt = defineNode({
   type: "convert.floatToInt",
+  pure: true,
   title: "Float to int",
   category: "Convert",
   icon: "hash",

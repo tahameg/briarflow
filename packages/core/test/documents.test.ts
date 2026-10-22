@@ -104,6 +104,7 @@ describe("createFlowDocument", () => {
         { id: "n_2", type: "briar.output", position: { x: 640, y: 0 } },
       ],
       edges: [],
+      execEdges: [{ id: "x_1", from: { node: "n_1", port: "then" }, to: { node: "n_2", port: "in" } }],
     });
   });
 

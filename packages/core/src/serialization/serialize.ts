@@ -195,6 +195,7 @@ const flow = fields({
   variables: req(arrayOf(variable)),
   nodes: req(arrayOf(node)),
   edges: req(arrayOf(edge)),
+  execEdges: opt(arrayOf(edge)),
   ui: opt(fields({ viewport: opt(viewport) })),
 });
 const checkContext = fields({

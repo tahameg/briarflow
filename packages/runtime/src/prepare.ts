@@ -3,6 +3,7 @@
  * variables.md §4, §6).
  */
 import {
+  analyzeExec,
   computeVariableOrder,
   findFlow,
   nodeLabel,
@@ -65,6 +66,16 @@ export interface PlannedNode {
   incoming: Map<string, PortAddress>;
   /** Variable slot key for variable nodes. */
   variable?: string;
+  /** Pure node (no execution line): runs when a node on the line needs its outputs. */
+  pure: boolean;
+}
+
+/** Execution lines of a flow that has them (docs/specs/execution.md). */
+export interface ExecPlan {
+  inputId: string;
+  outputId: string;
+  /** Node id → execution output (`then`, `failed`) → next node id. */
+  next: Map<string, Map<string, string>>;
 }
 
 export interface Plan {
@@ -73,8 +84,10 @@ export interface Plan {
   inputs: Record<string, unknown>;
   nodes: Map<string, PlannedNode>;
   variables: Map<string, VariableSlot>;
-  /** Get node id → writer node id it reads (`null` = starting value). */
+  /** Get node id → writer node id it reads (`null` = starting value). Data-driven flows only. */
   reads: Map<string, string | null>;
+  /** Set when the flow has execution lines: only live nodes are planned, run along the line. */
+  exec?: ExecPlan;
 }
 
 export type PrepareResult = { ok: true; plan: Plan } | { ok: false; error: SerializedError };
@@ -158,7 +171,8 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
   }
 
   const ports = resolveFlowPorts(doc, flowId, catalog);
-  const order = computeVariableOrder(doc, flowId, catalog);
+  const lines = flow.execEdges === undefined ? undefined : analyzeExec(doc, flow, catalog);
+  const order = lines ? { plans: [], implicitEdges: [] } : computeVariableOrder(doc, flowId, catalog);
 
   // Variables and globals.
   const variables = new Map<string, VariableSlot>();
@@ -191,6 +205,7 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
   const nodes = new Map<string, PlannedNode>();
   for (const node of flow.nodes) {
     if (nodes.has(node.id)) continue;
+    if (lines && !lines.live.has(node.id)) continue;
     const resolved = ports.nodes.get(node.id);
     if (!resolved) continue;
     const kind = kindOf(node.type);
@@ -215,6 +230,7 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
       dependents: new Set(),
       depth: 0,
       incoming: new Map(),
+      pure: def?.pure === true,
     };
     if (kind === "variableGet" || kind === "variableSet") planned.variable = `var:${String(config["variableId"])}`;
     if (kind === "globalGet" || kind === "globalSet") planned.variable = `global:${String(config["globalId"])}`;
@@ -274,7 +290,20 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
     return { ok: false, error: invalidFlow(flow.name, [diagnostic]) };
   }
 
-  return { ok: true, plan: { flow, scope, inputs: inputs.values, nodes, variables, reads } };
+  const plan: Plan = { flow, scope, inputs: inputs.values, nodes, variables, reads };
+  if (lines) {
+    const next = new Map<string, Map<string, string>>();
+    for (const e of flow.execEdges ?? []) {
+      if (!nodes.has(e.from.node) || !nodes.has(e.to.node)) continue;
+      const out = next.get(e.from.node) ?? new Map<string, string>();
+      out.set(e.from.port, e.to.node);
+      next.set(e.from.node, out);
+    }
+    const inputId = [...nodes.values()].find((n) => n.kind === "input")?.id ?? "";
+    const outputId = flow.nodes.find((n) => n.type === FLOW_OUTPUT_NODE_TYPE)?.id ?? "";
+    plan.exec = { inputId, outputId, next };
+  }
+  return { ok: true, plan };
 }
 
 /**

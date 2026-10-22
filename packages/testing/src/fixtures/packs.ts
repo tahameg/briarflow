@@ -91,6 +91,7 @@ function createBriarTestPack(): NodePack {
 
   const variableGet = defineNode({
     type: "briar.variable.get",
+    pure: true,
     title: "Get variable",
     category: "Variables",
     cache: false,
@@ -122,6 +123,7 @@ function createBriarTestPack(): NodePack {
 
   const globalGet = defineNode({
     type: "briar.global.get",
+    pure: true,
     title: "Get global",
     category: "Variables",
     cache: false,
@@ -153,6 +155,7 @@ function createBriarTestPack(): NodePack {
 
   const structMake = defineNode({
     type: "briar.struct.make",
+    pure: true,
     title: "Make struct",
     category: "Data",
     config: { typeId: cfg.typeId({ kind: "struct", title: "Struct" }) },
@@ -174,6 +177,7 @@ function createBriarTestPack(): NodePack {
 
   const structBreak = defineNode({
     type: "briar.struct.break",
+    pure: true,
     title: "Break struct",
     category: "Data",
     config: { typeId: cfg.typeId({ kind: "struct", title: "Struct" }) },
@@ -190,6 +194,7 @@ function createBriarTestPack(): NodePack {
 
   const constant = defineNode({
     type: "briar.constant",
+    pure: true,
     title: "Constant",
     category: "Data",
     config: { type: cfg.type({ title: "Type" }) },
@@ -203,6 +208,7 @@ function createBriarTestPack(): NodePack {
 
   const template = defineNode({
     type: "text.template",
+    pure: true,
     title: "Text template",
     category: "Text",
     config: { template: cfg.text({ multiline: true, title: "Template" }) },
@@ -221,6 +227,7 @@ function createBriarTestPack(): NodePack {
 
   const join = defineNode({
     type: "text.join",
+    pure: true,
     title: "Join text",
     inputs: { items: t.list(t.text()), separator: { type: t.text(), default: "" } },
     outputs: { text: t.text() },
@@ -229,6 +236,7 @@ function createBriarTestPack(): NodePack {
 
   const listGet = defineNode({
     type: "list.get",
+    pure: true,
     title: "Get item",
     inputs: { list: t.list(t.var("T")), index: t.int() },
     outputs: { item: t.optional(t.var("T")) },
@@ -237,6 +245,7 @@ function createBriarTestPack(): NodePack {
 
   const toText = defineNode({
     type: "convert.toText",
+    pure: true,
     title: "To text",
     inputs: { value: t.var("T") },
     outputs: { text: t.text() },
@@ -245,6 +254,7 @@ function createBriarTestPack(): NodePack {
 
   const floatToInt = defineNode({
     type: "convert.floatToInt",
+    pure: true,
     title: "Float to int",
     inputs: { value: t.float(), mode: { type: t.ref(RoundingMode), default: "round" } },
     outputs: { value: t.int() },
@@ -293,23 +303,27 @@ function createKitPack(): NodePack {
     defineNode({ type: "kit.intListSource", outputs: { list: t.list(t.int()) }, run: () => ({ list: [1] }) }),
     defineNode({
       type: "kit.imageSource",
+      pure: true,
       outputs: { image: t.image() },
       run: () => ({ image: { uri: "briar-media://m_kit", mime: "image/png" } }),
     }),
     defineNode({
       type: "kit.passText",
+      pure: true,
       inputs: { value: t.text() },
       outputs: { value: t.text() },
       run: ({ inputs }) => ({ value: inputs.value }),
     }),
     defineNode({
       type: "kit.addOne",
+      pure: true,
       inputs: { value: t.int() },
       outputs: { value: t.int() },
       run: ({ inputs }) => ({ value: inputs.value + 1 }),
     }),
     defineNode({
       type: "kit.same",
+      pure: true,
       inputs: { a: t.var("T"), b: t.var("T") },
       outputs: { out: t.var("T") },
       run: ({ inputs }) => ({ out: inputs.a }),
@@ -321,6 +335,7 @@ function createKitPack(): NodePack {
     defineNode({ type: "kit.sinkConstrained", inputs: { value: t.int({ min: 0, max: 10 }) }, run: () => ({}) }),
     defineNode({
       type: "kit.configured",
+      pure: true,
       config: {
         count: cfg.int({ min: 0, max: 3, default: 1 }),
         mode: cfg.choice(["a", "b"], { default: "a" }),
@@ -355,6 +370,7 @@ function createWordsPack(): NodePack {
 
   const shout = defineNode({
     type: "words.shout",
+    pure: true,
     title: "Shout",
     description: "Uppercases text and adds exclamation marks.",
     inputs: {
@@ -367,6 +383,7 @@ function createWordsPack(): NodePack {
 
   const count = defineNode({
     type: "words.count",
+    pure: true,
     title: "Count words",
     inputs: { text: t.text({ multiline: true }) },
     outputs: { stats: t.ref(Stats) },

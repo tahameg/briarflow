@@ -65,7 +65,7 @@ export function typeRefShapeProblem(value: unknown, path: string): { path: strin
   const v = value as Record<string, unknown>;
   switch (v["kind"]) {
     case "primitive": {
-      const names = ["text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file"];
+      const names = ["text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file", "error"];
       if (typeof v["name"] !== "string" || !names.includes(v["name"])) {
         return { path: `${path}.name`, reason: "must be a primitive name" };
       }

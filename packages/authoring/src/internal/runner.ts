@@ -7,6 +7,7 @@ import type { Command, CommandOp } from "../commands.js";
 import { CommandError, type BatchResult, type CreatedIds } from "../result.js";
 import type { Ctx, Effect, Payload } from "./ctx.js";
 import * as g from "./handlers/graph.js";
+import * as x from "./handlers/exec.js";
 import * as f from "./handlers/flows.js";
 import * as t from "./handlers/types.js";
 import * as v from "./handlers/vars.js";
@@ -81,6 +82,10 @@ const HANDLERS: Record<CommandOp, Handler> = {
   "node.setConfig": g.nodeSetConfig,
   "edge.connect": g.edgeConnect,
   "edge.disconnect": g.edgeDisconnect,
+  "exec.connect": x.execConnect,
+  "exec.disconnect": x.execDisconnect,
+  "flow.exec.enable": x.flowExecEnable,
+  "flow.exec.set": x.flowExecSet,
 };
 
 /** Implementation of `applyCommands`. */

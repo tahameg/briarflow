@@ -104,8 +104,10 @@ export function edge(id: string, from: string, fromPort: string, to: string, toP
 /** Portrait context of phase-1.md §6. */
 export function portraitContext(): ContextDocument {
   const doc = emptyContext();
+  // A flow without execution lines (data-driven): these tests are about data validation.
+  const { execEdges: _lines, ...created } = createFlowDocument({ name: "Portrait", id: "flow_p", inputNodeId: "n_in", outputNodeId: "n_out" });
   const flow: FlowDocument = {
-    ...createFlowDocument({ name: "Portrait", id: "flow_p", inputNodeId: "n_in", outputNodeId: "n_out" }),
+    ...created,
     inputs: [{ name: "character", type: { kind: "named", id: "ty_char" } }],
     outputs: [{ name: "prompt", type: { kind: "primitive", name: "text" } }],
   };

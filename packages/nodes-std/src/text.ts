@@ -10,6 +10,7 @@ import { renderTemplate, templatePlaceholders } from "./text-utils.js";
  */
 export const textTemplate = defineNode({
   type: "text.template",
+  pure: true,
   title: "Text template",
   category: "Text",
   icon: "text",
@@ -42,6 +43,7 @@ export const textTemplate = defineNode({
 /** `text.join`: joins a list of text with a separator. */
 export const textJoin = defineNode({
   type: "text.join",
+  pure: true,
   title: "Join text",
   category: "Text",
   icon: "text",

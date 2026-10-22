@@ -2,8 +2,12 @@
  * Internal: one local run (docs/specs/runtime.md §2–§8, variables.md §6–§8).
  */
 import {
+  ERROR_OUTPUT,
+  EXEC_FAILED,
+  EXEC_THEN,
   NodeError,
   serializeError,
+  type ErrorValue,
   type ContextDocument,
   type ExecContext,
   type Logger,
@@ -116,6 +120,8 @@ export class LocalRun implements Run {
   private startedAt: string | undefined;
   private plan: Plan | undefined;
   private readonly exec = new Map<string, NodeExec>();
+  /** Flows with execution lines: nodes reached so far (only these run, are skipped or awaited). */
+  private readonly active = new Set<string>();
   private firstFailure: { node: PlannedNode; error: SerializedError } | undefined;
   private readonly readyQueue: string[] = [];
   private draining = false;
@@ -201,7 +207,8 @@ export class LocalRun implements Run {
           startedAtMs: 0,
         });
       }
-      this.markReady([...plan.nodes.values()].filter((n) => n.deps.size === 0).map((n) => n.id));
+      if (plan.exec) this.activate(plan.exec.inputId);
+      else this.markReady([...plan.nodes.values()].filter((n) => n.deps.size === 0).map((n) => n.id));
       this.checkDone();
     } catch (err) {
       this.internalError(err);
@@ -232,6 +239,7 @@ export class LocalRun implements Run {
     if (plan) {
       const notStarted = [...plan.nodes.values()]
         .filter((n) => {
+          if (plan.exec && !this.active.has(n.id)) return false;
           const s = this.exec.get(n.id)?.state;
           return s === "pending" || s === "waiting";
         })
@@ -249,7 +257,11 @@ export class LocalRun implements Run {
 
   private checkDone(): void {
     if (this.isFinished || !this.plan) return;
-    for (const ex of this.exec.values()) if (!TERMINAL.has(ex.state)) return;
+    const lines = this.plan.exec !== undefined;
+    for (const [id, ex] of this.exec) {
+      if (lines && !this.active.has(id)) continue;
+      if (!TERMINAL.has(ex.state)) return;
+    }
     this.finish();
   }
 
@@ -275,7 +287,17 @@ export class LocalRun implements Run {
     }
     const plan = this.plan as Plan;
     const outputNode = [...plan.nodes.values()].find((n) => n.kind === "output");
-    const outputs = outputNode ? this.exec.get(outputNode.id)?.outputs : undefined;
+    let outputs = outputNode ? this.exec.get(outputNode.id)?.outputs : undefined;
+    if (!outputs && plan.exec) {
+      if (plan.flow.outputs.length > 0) {
+        this.finishWith("failed", {
+          code: "run.output_not_reached",
+          message: `The execution line of flow "${plan.flow.name}" ended before reaching Output, so the run has no outputs. Connect the line to Output.`,
+        });
+        return;
+      }
+      outputs = {};
+    }
     if (!outputs) {
       this.internalError(new Error("the output node did not complete"));
       return;
@@ -353,6 +375,31 @@ export class LocalRun implements Run {
   // ------------------------------------------------------------------------------------------
   // Scheduling
   // ------------------------------------------------------------------------------------------
+
+  /**
+   * Flows with execution lines: `id` is reached (a line node via the line, a pure node because
+   * a reached node reads it). Reaches the pure nodes it reads, then starts it once its inputs
+   * are there.
+   */
+  private activate(id: string): void {
+    const plan = this.plan as Plan;
+    const node = plan.nodes.get(id);
+    if (!node || this.active.has(id) || this.cancelKind || this.isFinished) return;
+    this.active.add(id);
+    for (const d of node.deps) {
+      const dep = plan.nodes.get(d);
+      if (dep?.pure && !this.active.has(d)) this.activate(d);
+    }
+    this.startWhenFed(id);
+  }
+
+  /** Starts a reached node whose data sources all have outputs. */
+  private startWhenFed(id: string): void {
+    const plan = this.plan as Plan;
+    const node = plan.nodes.get(id) as PlannedNode;
+    if (this.exec.get(id)?.state !== "pending") return;
+    if ([...node.deps].every((d) => this.exec.get(d)?.outputs !== undefined)) this.markReady([id]);
+  }
 
   private markReady(ids: string[]): void {
     const plan = this.plan as Plan;
@@ -436,7 +483,12 @@ export class LocalRun implements Run {
     this.endProgress(ex);
     const durationMs = Math.max(0, this.nowMs() - ex.startedAtMs);
     this.emit({ type: "node.completed", nodeId: node.id, outputs, cached, durationMs });
-    if (!this.cancelKind) {
+    const lines = (this.plan as Plan).exec;
+    if (!this.cancelKind && lines) {
+      for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
+      const next = node.pure ? undefined : lines.next.get(node.id)?.get(EXEC_THEN);
+      if (next !== undefined) this.activate(next);
+    } else if (!this.cancelKind) {
       const plan = this.plan as Plan;
       const ready: string[] = [];
       for (const d of node.dependents) {
@@ -455,7 +507,20 @@ export class LocalRun implements Run {
     ex.state = "failed";
     this.endProgress(ex);
     this.emit({ type: "node.failed", nodeId: node.id, error: f.error });
-    if (!this.cancelKind) {
+    const lines = (this.plan as Plan | undefined)?.exec;
+    const handler = lines && !node.pure ? lines.next.get(node.id)?.get(EXEC_FAILED) : undefined;
+    if (this.cancelKind) {
+      // nothing more runs
+    } else if (handler !== undefined) {
+      // Handled: the failed line runs, and can read why from the node's error output.
+      const error: ErrorValue = { code: f.error.code, message: f.error.message, nodeId: node.id, node: node.title };
+      if (f.error.details !== undefined) error.details = f.error.details;
+      ex.outputs = { [ERROR_OUTPUT]: error };
+      for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
+      this.activate(handler);
+    } else if (lines && node.pure) {
+      this.failReaders(node, f);
+    } else {
       if (!this.firstFailure) this.firstFailure = { node, error: f.error };
       this.skipDownstream(node);
     }
@@ -467,8 +532,34 @@ export class LocalRun implements Run {
     this.failNode(node, ex, failure("node.cancelled", `Node ${node.title} was cancelled.`, node.id));
   }
 
+  /** A pure node failed: the reached nodes waiting for it fail instead (line nodes may take their failed line). */
+  private failReaders(failed: PlannedNode, f: NodeFailure): void {
+    const plan = this.plan as Plan;
+    for (const id of [...failed.dependents].sort()) {
+      if (!this.active.has(id) || this.exec.get(id)?.state !== "pending") continue;
+      const reader = plan.nodes.get(id) as PlannedNode;
+      const ex = this.exec.get(id) as NodeExec;
+      this.failNode(
+        reader,
+        ex,
+        failure("node.invalid_input", `Node ${reader.title} could not get its inputs: ${failed.title} failed: ${f.error.message}`, reader.id, {
+          details: { source: failed.id, cause: f.error },
+        }),
+      );
+    }
+  }
+
   private skipDownstream(failed: PlannedNode): void {
     const plan = this.plan as Plan;
+    if (plan.exec) {
+      // An unhandled failure stops the line: every reached node that has not started is skipped.
+      const waiting = [...plan.nodes.values()].filter((n) => this.active.has(n.id) && this.exec.get(n.id)?.state === "pending").sort(byDepthThenId);
+      for (const n of waiting) {
+        (this.exec.get(n.id) as NodeExec).state = "skipped";
+        this.emit({ type: "node.skipped", nodeId: n.id, reason: "upstream_failed", cause: failed.id });
+      }
+      return;
+    }
     const seen = new Set<string>();
     const stack = [...failed.dependents];
     while (stack.length > 0) {
@@ -554,6 +645,8 @@ export class LocalRun implements Run {
     const outputs: Record<string, unknown> = {};
     for (const port of node.ports.outputs) {
       let value = rec[port.name];
+      // A canFail node's error output is only filled on the failed line.
+      if (value === undefined && port.name === ERROR_OUTPUT && node.def?.canFail) continue;
       if (value === undefined) {
         if (port.type.kind === "optional") value = null;
         else return bad(`Node ${node.title} did not return its output "${port.name}".`, { port: port.name });
@@ -590,8 +683,10 @@ export class LocalRun implements Run {
         return;
       }
       if (node.kind === "variableGet" || node.kind === "globalGet") {
-        const writer = plan.reads.get(node.id) ?? null;
-        const value = writer !== null && this.written.has(writer) ? this.written.get(writer) : slot.start;
+        // Along execution lines a GET reads the latest write; data-driven flows read their writer.
+        const writer = plan.exec ? null : (plan.reads.get(node.id) ?? null);
+        const latest = plan.exec && this.current.has(slot.key) ? this.current.get(slot.key) : slot.start;
+        const value = writer !== null && this.written.has(writer) ? this.written.get(writer) : latest;
         if (value === UNSET) {
           this.failNode(
             node,

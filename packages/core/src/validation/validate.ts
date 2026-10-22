@@ -23,6 +23,7 @@ import { buildAdjacency, findCycles } from "./graph.js";
 import { nodeLabel } from "./labels.js";
 import { resolveFlowPorts } from "./ports.js";
 import { computeVariableOrder } from "./variables.js";
+import { analyzeExec } from "./exec.js";
 
 const VARIABLE_TYPES: readonly string[] = Object.values(VARIABLE_NODE_TYPES);
 
@@ -248,9 +249,16 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
     err("flow.cycle", `Flow "${flow.name}" has a loop: ${text.join(" → ")}.`, { nodeId: cycle[0] as string }, { cycle });
   }
 
-  // Variable ordering.
-  out.push(...computeVariableOrder(doc, flowId, catalog).diagnostics);
-  return out;
+  // Data-driven flows (no execution lines yet): variable writes are ordered by the data graph.
+  if (flow.execEdges === undefined) {
+    out.push(...computeVariableOrder(doc, flowId, catalog).diagnostics);
+    return out;
+  }
+  // Execution lines decide what runs and in which order. Nodes off the line never run, so
+  // their problems are not reported; problems of wires stay.
+  const exec = analyzeExec(doc, flow, catalog);
+  const kept = out.filter((d) => d.path.nodeId === undefined || exec.live.has(d.path.nodeId) || d.code.startsWith("edge."));
+  return [...kept, ...exec.diagnostics];
 }
 
 function mismatchHint(from: TypeRef, to: TypeRef): string {

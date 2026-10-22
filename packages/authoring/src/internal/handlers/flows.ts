@@ -2,6 +2,8 @@
  * Context and flow commands (commands.md §2, §5 without the signature).
  */
 import {
+  EXEC_IN,
+  EXEC_THEN,
   FLOW_INPUT_NODE_TYPE,
   FLOW_OUTPUT_NODE_TYPE,
   mapNamedIds,
@@ -74,6 +76,7 @@ export function flowCreate(ctx: Ctx, p: Payload): Effect {
       { id: outputNodeId, type: FLOW_OUTPUT_NODE_TYPE, position: { x: 640, y: 0 } },
     ],
     edges: [],
+    execEdges: [{ id: "x_1", from: { node: inputNodeId, port: EXEC_THEN }, to: { node: outputNodeId, port: EXEC_IN } }],
   };
   if (typeof p["description"] === "string") flow.description = p["description"];
   const index = (p["index"] as number | undefined) ?? ctx.doc.flows.length;
@@ -168,6 +171,7 @@ export function recreateFlowCommands(flow: FlowDocument, index: number): Command
     }
   });
   flow.edges.forEach((e, i) => commands.push(edgeConnectCommand(flow.id, e, i)));
+  commands.push({ op: "flow.exec.set", flowId: flow.id, edges: flow.execEdges === undefined ? null : flow.execEdges.map((e) => ({ id: e.id, from: { ...e.from }, to: { ...e.to } })) });
   if (flow.ui?.viewport) commands.push({ op: "flow.setViewport", flowId: flow.id, viewport: { ...flow.ui.viewport } });
   return commands;
 }

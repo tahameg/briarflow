@@ -44,6 +44,7 @@ describe.skipIf(!existsSync(PYTHON))("python pack through the briarflow facade",
     flow.connect(upper.port("result"), sign.port("text"));
     flow.connect(upper.port("result"), flow.output.port("loud"));
     flow.connect(sign.port("result"), flow.output.port("signature"));
+    flow.wireExecution();
     await ctx.save();
 
     const run = await briar.run(flow.id, { text: "hello" });

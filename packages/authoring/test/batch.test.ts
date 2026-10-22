@@ -6,11 +6,11 @@ import { KIT, emptyDoc, richDoc } from "./fixtures/docs.js";
 import { accept, clock, flowOf, frozen, nodeOf, NOW, options, reject } from "./fixtures/helpers.js";
 
 describe("COMMAND_OPS / isCommandOp", () => {
-  it("lists 65 ops in spec order", () => {
-    expect(COMMAND_OPS).toHaveLength(65);
+  it("lists 69 ops in spec order", () => {
+    expect(COMMAND_OPS).toHaveLength(69);
     expect(COMMAND_OPS[0]).toBe("context.rename");
-    expect(COMMAND_OPS[COMMAND_OPS.length - 1]).toBe("edge.disconnect");
-    expect(new Set(COMMAND_OPS).size).toBe(65);
+    expect(COMMAND_OPS[COMMAND_OPS.length - 1]).toBe("flow.exec.set");
+    expect(new Set(COMMAND_OPS).size).toBe(69);
   });
   it("isCommandOp", () => {
     expect(isCommandOp("node.move")).toBe(true);

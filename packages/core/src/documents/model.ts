@@ -121,6 +121,17 @@ export interface Edge {
   to: PortAddress;
 }
 
+/**
+ * An execution line: from a node's execution output (`then`, `failed`, …) to a node's
+ * execution input (`in`). Each execution output has at most one line; an input can take many.
+ */
+export interface ExecEdge {
+  /** `x_…`, unique among the flow's execution lines. */
+  id: string;
+  from: PortAddress;
+  to: PortAddress;
+}
+
 /** Canvas viewport. */
 export interface Viewport {
   x: number;
@@ -144,6 +155,12 @@ export interface FlowDocument {
   /** Always contains exactly one `briar.input` and one `briar.output` node. */
   nodes: readonly NodeInstance[];
   edges: readonly Edge[];
+  /**
+   * Execution lines (docs/specs/execution.md). Absent on flows made before execution lines:
+   * those run data-driven (every node, in dependency order) until the editor wires them
+   * (`flow.exec.enable`). Present, even empty, means only nodes on a line run.
+   */
+  execEdges?: readonly ExecEdge[];
   ui?: { viewport?: Viewport };
 }
 

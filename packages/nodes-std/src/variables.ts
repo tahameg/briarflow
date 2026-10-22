@@ -18,6 +18,7 @@ function engineOnly(type: string): never {
 /** `briar.variable.get`: reads a flow variable (variables.md §4 Rule 3). */
 export const variableGet = defineNode({
   type: "briar.variable.get",
+  pure: true,
   title: "Get variable",
   category: "Variables",
   icon: "variable",
@@ -57,6 +58,7 @@ export const variableSet = defineNode({
 /** `briar.global.get`: reads a context global. */
 export const globalGet = defineNode({
   type: "briar.global.get",
+  pure: true,
   title: "Get global",
   category: "Variables",
   icon: "globe",

@@ -1,3 +1,4 @@
+import { EXEC_IN, EXEC_THEN } from "../nodes/exec-ports.js";
 import { BriarError } from "../errors.js";
 import type { Clock, IdGenerator, IdKind } from "../util/ids.js";
 import { createIdGenerator, ID_PREFIXES, isValidId } from "../util/ids.js";
@@ -117,6 +118,7 @@ export function createFlowDocument(options: CreateFlowOptions): FlowDocument {
       { id: outputNodeId, type: FLOW_OUTPUT_NODE_TYPE, position: { x: 640, y: 0 } },
     ],
     edges: [],
+    execEdges: [{ id: ids("x"), from: { node: inputNodeId, port: EXEC_THEN }, to: { node: outputNodeId, port: EXEC_IN } }],
   };
   if (options.description !== undefined) flow.description = options.description;
   return flow;

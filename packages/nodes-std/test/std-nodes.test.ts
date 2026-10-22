@@ -74,6 +74,7 @@ describe("stdPack", () => {
     expect(stdPack.nodes.map((d) => d.type).sort()).toEqual(
       [
         "briar.constant",
+        "briar.error.break",
         "briar.global.get",
         "briar.global.set",
         "briar.struct.break",
@@ -149,6 +150,7 @@ describeNodePack(stdPack, {
     "convert.parseFloat": [{ inputs: { text: "1e3" }, outputs: { value: 1000 } }],
     "convert.floatToInt": [{ inputs: { value: 2.5 }, outputs: { value: 3 } }],
     "debug.print": [{ inputs: { text: "hello" }, outputs: {} }],
+    "briar.error.break": [{ inputs: { error: { code: "node.timeout", message: "Too slow", node: "LLM" } }, outputs: { code: "node.timeout", message: "Too slow", node: "LLM", nodeId: null } }],
   },
 });
 

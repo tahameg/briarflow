@@ -57,6 +57,10 @@ export interface NodeDescriptor {
   deprecated: string | null;
   /** Present (true) on frontend nodes only: their effect happens in the viewer. */
   frontend?: true;
+  /** Present (true) on pure nodes only: no execution line. */
+  pure?: true;
+  /** Present (true) on nodes with a `failed` execution line and an `error` output. */
+  canFail?: true;
 }
 
 /**
@@ -99,6 +103,8 @@ export function toNodeDescriptor(def: AnyNodeDefinition, pack: Pick<NodePack, "n
     concurrency: def.concurrency ?? null,
     deprecated: def.deprecated ?? null,
     ...(def.frontend ? { frontend: true as const } : {}),
+    ...(def.pure ? { pure: true as const } : {}),
+    ...(def.canFail ? { canFail: true as const } : {}),
   };
 }
 

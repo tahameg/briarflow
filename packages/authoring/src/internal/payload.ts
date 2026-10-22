@@ -63,6 +63,16 @@ const scope: Check = (v, path) => {
 const position = shape({ x: num, y: num });
 const viewport = shape({ x: num, y: num, zoom: num });
 const portRef = shape({ node: str, port: str });
+const execEdge = shape({ id: str, from: portRef, to: portRef });
+const execEdges: Check = (v, path) => {
+  if (v === null) return ok;
+  if (!Array.isArray(v)) return p(path, "must be a list of execution lines or null");
+  for (const [i, e] of v.entries()) {
+    const r = execEdge(e, `${path}[${i}]`);
+    if (r) return r;
+  }
+  return ok;
+};
 const fieldDecl = shape({ name: str, type: typeInput }, { description: str, default: any });
 const member: Check = (v, path) => (typeof v === "string" ? ok : shape({ value: str }, { label: str })(v, path));
 const stringRecord: Check = (v, path) => {
@@ -159,6 +169,10 @@ const SCHEMAS: Record<Exclude<CommandOp, "edge.disconnect">, OpSchema> = {
   "node.clearValue": { req: { ...nodeRef, port: str } },
   "node.setConfig": { req: { ...nodeRef, config: record } },
   "edge.connect": { req: { ...flowId, from: portRef, to: portRef }, opt: { id: str, index: int } },
+  "exec.connect": { req: { ...flowId, from: portRef, to: portRef }, opt: { id: str, index: int } },
+  "exec.disconnect": { req: { ...flowId, edgeId: str } },
+  "flow.exec.enable": { req: flowId },
+  "flow.exec.set": { req: { ...flowId, edges: execEdges } },
 };
 
 /**

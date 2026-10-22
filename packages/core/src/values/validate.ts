@@ -234,6 +234,13 @@ class Checker {
       case "boolean":
         if (typeof value !== "boolean") this.invalid(path, `must be true or false (got ${describe(value)})`);
         return value;
+      case "error": {
+        const e = value as Record<string, unknown> | null;
+        if (typeof e !== "object" || e === null || Array.isArray(e) || typeof e["code"] !== "string" || typeof e["message"] !== "string") {
+          this.invalid(path, `must be an error { code, message } (got ${describe(value)})`);
+        }
+        return value;
+      }
       default:
         return this.media(value, type.name, c, path);
     }

@@ -23,6 +23,7 @@ describe("flow.create", () => {
         { id: "n_o", type: FLOW_OUTPUT_NODE_TYPE, position: { x: 640, y: 0 } },
       ],
       edges: [],
+      execEdges: [{ id: "x_1", from: { node: "n_i", port: "then" }, to: { node: "n_o", port: "in" } }],
     });
     expect(r.inverse).toEqual([{ op: "flow.delete", flowId: "flow_new", restore: true }]);
   });

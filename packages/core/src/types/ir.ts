@@ -5,15 +5,32 @@
 /** Primitive type names. Media primitives hold a {@link MediaRef}. */
 export type PrimitiveName =
   | "text" | "int" | "float" | "boolean"
-  | "image" | "video" | "audio" | "model3d" | "file";
+  | "image" | "video" | "audio" | "model3d" | "file"
+  | "error";
 
 /** The media primitives. */
 export type MediaPrimitiveName = "image" | "video" | "audio" | "model3d" | "file";
 
 /** All primitive names, in display order. */
 export const PRIMITIVE_NAMES: readonly PrimitiveName[] = [
-  "text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file",
+  "text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file", "error",
 ];
+
+/**
+ * Value of the `error` primitive: why a node failed. Produced by the engine on a node's
+ * `error` output when it fails and its "failed" execution line is connected; read its fields
+ * with Break error.
+ */
+export interface ErrorValue {
+  /** Stable code, e.g. `node.timeout`. */
+  code: string;
+  message: string;
+  /** Node that failed. */
+  nodeId?: string;
+  /** Its title at run time. */
+  node?: string;
+  details?: unknown;
+}
 
 /** All media primitive names. */
 export const MEDIA_PRIMITIVE_NAMES: readonly MediaPrimitiveName[] = ["image", "video", "audio", "model3d", "file"];
@@ -64,7 +81,8 @@ export type PrimitiveTypeRef =
   | { kind: "primitive"; name: "video"; constraints?: TimedMediaConstraints }
   | { kind: "primitive"; name: "audio"; constraints?: TimedMediaConstraints }
   | { kind: "primitive"; name: "model3d"; constraints?: MediaConstraints }
-  | { kind: "primitive"; name: "file"; constraints?: MediaConstraints };
+  | { kind: "primitive"; name: "file"; constraints?: MediaConstraints }
+  | { kind: "primitive"; name: "error"; constraints?: Record<string, never> };
 
 /**
  * A struct or enum, by stable id: `ty_…` for user types, `<pack>.<Name>` for pack types.

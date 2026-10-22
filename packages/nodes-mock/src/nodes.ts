@@ -19,6 +19,7 @@ const encoder = new TextEncoder();
 /** `mock.llm`: a fake chat model. */
 export const mockLlm = defineNode({
   type: "mock.llm",
+  canFail: true,
   title: "Mock LLM",
   category: "AI",
   icon: "bot",
@@ -129,6 +130,7 @@ function filler(prompt: string, seed: number, resolve: (id: string) => TypeDecl 
 /** `mock.structured`: fills a struct deterministically from `hash({prompt, seed, path})`. */
 export const mockStructured = defineNode({
   type: "mock.structured",
+  canFail: true,
   title: "Mock structured output",
   category: "AI",
   icon: "bot",
@@ -163,6 +165,7 @@ export const mockStructured = defineNode({
 /** `mock.image`: a deterministic SVG stored through `ctx.media`. */
 export const mockImage = defineNode({
   type: "mock.image",
+  canFail: true,
   title: "Mock image",
   category: "Image",
   icon: "image",
@@ -189,6 +192,7 @@ export const mockImage = defineNode({
 /** `mock.model3d`: a minimal glTF cube whose color comes from the hash. */
 export const mockModel3d = defineNode({
   type: "mock.model3d",
+  canFail: true,
   title: "Mock 3D model",
   category: "3D",
   icon: "box",
@@ -207,6 +211,7 @@ export const mockModel3d = defineNode({
 /** `mock.delay`: passes a value through after `ms`, reporting progress; honours cancellation. */
 export const mockDelay = defineNode({
   type: "mock.delay",
+  canFail: true,
   title: "Delay",
   category: "Mock",
   icon: "timer",
@@ -233,6 +238,7 @@ export const mockDelay = defineNode({
 /** `mock.flaky`: fails the first `failures` attempts with retryable `node.unavailable`. */
 export const mockFlaky = defineNode({
   type: "mock.flaky",
+  canFail: true,
   title: "Flaky",
   category: "Mock",
   icon: "zap",
@@ -256,6 +262,7 @@ export const mockFlaky = defineNode({
 /** `mock.fail`: always fails with `mock.failed`. */
 export const mockFail = defineNode({
   type: "mock.fail",
+  canFail: true,
   title: "Fail",
   category: "Mock",
   icon: "x",

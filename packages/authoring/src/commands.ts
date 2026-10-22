@@ -498,6 +498,37 @@ export interface EdgeConnectCommand extends CommandBase {
   /** Position in the target list (default: end; clamped). Used by inverse commands to restore order. */
   index?: number;
 }
+/**
+ * created: `{ edgeId, replacedEdgeId? }`. An execution line from a node's execution output
+ * (`then`, `failed`) to a node's execution input (`in`). Replaces the line already leaving
+ * that output (an output goes one way).
+ */
+export interface ExecConnectCommand extends CommandBase {
+  op: "exec.connect";
+  flowId: string;
+  from: PortRef;
+  to: PortRef;
+  id?: string;
+  /** Position in the target list (default: end; clamped). Used by inverse commands to restore order. */
+  index?: number;
+}
+export interface ExecDisconnectCommand extends CommandBase {
+  op: "exec.disconnect";
+  flowId: string;
+  edgeId: string;
+}
+/** Wires a flow made before execution lines (Input → execution nodes in data order → Output). No-op otherwise. */
+export interface FlowExecEnableCommand extends CommandBase {
+  op: "flow.exec.enable";
+  flowId: string;
+}
+/** Replaces all execution lines; `null` makes it a flow without them again. Used by undo. */
+export interface FlowExecSetCommand extends CommandBase {
+  op: "flow.exec.set";
+  flowId: string;
+  edges: readonly { id: string; from: PortRef; to: PortRef }[] | null;
+}
+
 /** Removes an edge by id, or the edge into input `to`. */
 export type EdgeDisconnectCommand =
   | (CommandBase & { op: "edge.disconnect"; flowId: string; edgeId: string; to?: undefined })
@@ -573,7 +604,11 @@ export type Command =
   | NodeClearValueCommand
   | NodeSetConfigCommand
   | EdgeConnectCommand
-  | EdgeDisconnectCommand;
+  | EdgeDisconnectCommand
+  | ExecConnectCommand
+  | ExecDisconnectCommand
+  | FlowExecEnableCommand
+  | FlowExecSetCommand;
 
 /** The `op` string of any command, e.g. `"node.move"`. */
 export type CommandOp = Command["op"];
@@ -648,6 +683,10 @@ export const COMMAND_OPS: readonly CommandOp[] = [
   "node.setConfig",
   "edge.connect",
   "edge.disconnect",
+  "exec.connect",
+  "exec.disconnect",
+  "flow.exec.enable",
+  "flow.exec.set",
 ];
 
 /**

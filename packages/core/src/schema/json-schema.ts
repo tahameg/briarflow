@@ -161,6 +161,12 @@ class SchemaCompiler {
           }
           case "boolean":
             return { type: "boolean" };
+          case "error":
+            return {
+              type: "object",
+              required: ["code", "message"],
+              properties: { code: { type: "string" }, message: { type: "string" }, nodeId: { type: "string" }, node: { type: "string" }, details: {} },
+            };
           default: {
             this.media = true;
             const ref = { $ref: "#/$defs/MediaRef" };

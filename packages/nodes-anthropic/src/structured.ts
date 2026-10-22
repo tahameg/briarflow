@@ -14,6 +14,7 @@ const outputs = (typeId: string) => ({ value: t.fromRef({ kind: "named", id: typ
 export function claudeStructured(options: AnthropicPackOptions) {
   return defineNode({
     type: "anthropic.structured",
+    canFail: true,
     title: "Claude structured output",
     description: "Asks Claude for a value of a struct type; the answer is checked against the type.",
     ...nodeSettings,

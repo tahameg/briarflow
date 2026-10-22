@@ -10,6 +10,7 @@ function notAStruct(id: string): PortError {
 /** `briar.struct.make`: one input per field (field default as port default) → struct value. */
 export const structMake = defineNode({
   type: "briar.struct.make",
+  pure: true,
   title: "Make struct",
   category: "Data",
   icon: "braces",
@@ -35,6 +36,7 @@ export const structMake = defineNode({
 /** `briar.struct.break`: struct value → one output per field. */
 export const structBreak = defineNode({
   type: "briar.struct.break",
+  pure: true,
   title: "Break struct",
   category: "Data",
   icon: "braces",
@@ -60,6 +62,7 @@ export const structBreak = defineNode({
 /** `briar.constant`: a typed value set as a constant (identity when wired). */
 export const constant = defineNode({
   type: "briar.constant",
+  pure: true,
   title: "Constant",
   category: "Data",
   icon: "pin",
@@ -72,4 +75,23 @@ export const constant = defineNode({
     return { inputs: { value: t.fromRef(config.type) }, outputs: { value: t.fromRef(config.type) } };
   },
   run: ({ inputs }) => ({ value: inputs.value }),
+});
+
+/** `briar.error.break`: an `error` value → its fields (member access for errors). */
+export const errorBreak = defineNode({
+  type: "briar.error.break",
+  pure: true,
+  title: "Break error",
+  category: "Data",
+  icon: "braces",
+  color: "sky",
+  description: "Splits an error (from a node's error output on its failed line) into its code, message and the node that failed.",
+  inputs: { error: t.error() },
+  outputs: {
+    code: { type: t.text(), description: "Stable code, e.g. node.timeout." },
+    message: t.text(),
+    node: { type: t.optional(t.text()), description: "Title of the node that failed." },
+    nodeId: t.optional(t.text()),
+  },
+  run: ({ inputs }) => ({ code: inputs.error.code, message: inputs.error.message, node: inputs.error.node ?? null, nodeId: inputs.error.nodeId ?? null }),
 });

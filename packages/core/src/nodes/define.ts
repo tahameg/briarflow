@@ -164,6 +164,17 @@ export interface NodeDefinitionInput<
    * outputs, typed values, defaults) and does the work. Editors mark these nodes.
    */
   frontend?: boolean;
+  /**
+   * A pure node has no execution line: it only computes outputs from inputs (conversions,
+   * operators, templates, variable GET). It runs when a node on the execution line needs one
+   * of its outputs. Default false: the node sits on the execution line (in → then).
+   */
+  pure?: boolean;
+  /**
+   * The node can fail on purpose (network, model, file errors): it gets a second outgoing
+   * execution line, `failed`, and an `error` output that holds why. Default false.
+   */
+  canFail?: boolean;
   /** Pure, synchronous, deterministic. Replaces static ports when present. */
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   /** The work. Returning a missing, ill-typed or undeclared output is a compile error. */
@@ -194,6 +205,10 @@ export interface NodeDefinition<I extends PortMap = PortMap, O extends PortMap =
   readonly deprecated?: string;
   /** Set (true) on frontend nodes only; see {@link NodeDefinitionInput.frontend}. */
   readonly frontend?: true;
+  /** Set (true) on pure nodes only; see {@link NodeDefinitionInput.pure}. */
+  readonly pure?: true;
+  /** Set (true) on nodes with a `failed` line; see {@link NodeDefinitionInput.canFail}. */
+  readonly canFail?: true;
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   run(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): MaybePromise<NodeOutputs<O>>;
 }
@@ -251,6 +266,10 @@ export function defineNode<
   if (input.color !== undefined && !NODE_COLORS.includes(input.color)) fail(`color must be one of ${NODE_COLORS.join(", ")}.`);
   if (input.cache !== undefined && typeof input.cache !== "boolean") fail("cache must be true or false.");
   if (input.frontend !== undefined && typeof input.frontend !== "boolean") fail("frontend must be true or false.");
+  if (input.pure !== undefined && typeof input.pure !== "boolean") fail("pure must be true or false.");
+  if (input.canFail !== undefined && typeof input.canFail !== "boolean") fail("canFail must be true or false.");
+  if (input.pure === true && input.canFail === true) fail("a pure node has no execution line, so it cannot have a failed line (canFail). Drop one of them.");
+  if (input.canFail === true && input.outputs && "error" in input.outputs) fail('canFail adds an "error" output; rename your own "error" output.');
   const timeoutMs = input.timeoutMs ?? 300_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) fail("timeoutMs must be a whole number >= 0 (0 = no timeout).");
   if (input.concurrency !== undefined && (!Number.isSafeInteger(input.concurrency) || input.concurrency < 1)) {
@@ -281,6 +300,8 @@ export function defineNode<
   if (input.concurrency !== undefined) (out as { concurrency?: number }).concurrency = input.concurrency;
   if (input.deprecated !== undefined) (out as { deprecated?: string }).deprecated = input.deprecated;
   if (input.frontend === true) (out as { frontend?: true }).frontend = true;
+  if (input.pure === true) (out as { pure?: true }).pure = true;
+  if (input.canFail === true) (out as { canFail?: true }).canFail = true;
   if (input.resolvePorts !== undefined) out.resolvePorts = input.resolvePorts;
   return out;
 }

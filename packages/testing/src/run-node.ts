@@ -6,6 +6,7 @@
  * `run`. Progress reports and log lines are captured for assertions.
  */
 import {
+  ERROR_OUTPUT,
   containsVar,
   createCatalog,
   findFlow,
@@ -357,6 +358,8 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
     outputs = {};
     for (const port of resolved.outputs) {
       let value = rec[port.name];
+      // A canFail node's error output is only filled on the failed line.
+      if (value === undefined && port.name === ERROR_OUTPUT && (def as unknown as AnyNodeDefinition).canFail) continue;
       if (value === undefined) {
         if (port.declaredType.kind === "optional") value = null;
         else throw bad(`Node ${title} did not return its output "${port.name}".`, { port: port.name });

@@ -12,7 +12,7 @@
  */
 import { definePack, type NodePack } from "@briarflow/core";
 import { convertFloatToInt, convertParseFloat, convertParseInt, convertToText, RoundingMode } from "./convert.js";
-import { constant, structBreak, structMake } from "./data.js";
+import { constant, errorBreak, structBreak, structMake } from "./data.js";
 import { debugPrint } from "./debug.js";
 import { listGet, listLength, listMake } from "./list.js";
 import { textJoin, textTemplate } from "./text.js";
@@ -21,7 +21,7 @@ import { globalGet, globalSet, variableGet, variableSet } from "./variables.js";
 export const PACKAGE_NAME = "@briarflow/nodes-std";
 
 export { convertFloatToInt, convertParseFloat, convertParseInt, convertToText, RoundingMode } from "./convert.js";
-export { constant, structBreak, structMake } from "./data.js";
+export { constant, errorBreak, structBreak, structMake } from "./data.js";
 export { debugPrint } from "./debug.js";
 export { listGet, listLength, listMake } from "./list.js";
 export { textJoin, textTemplate } from "./text.js";
@@ -52,6 +52,7 @@ export const stdPack: NodePack = definePack({
     structMake,
     structBreak,
     constant,
+    errorBreak,
     textTemplate,
     textJoin,
     listMake,

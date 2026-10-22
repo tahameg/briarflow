@@ -159,6 +159,7 @@ const KIND_LABEL: Record<IdKind, string> = {
   variable: "variable",
   node: "node",
   edge: "edge",
+  exec: "execution line",
 };
 
 /**

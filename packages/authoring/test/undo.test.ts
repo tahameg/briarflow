@@ -20,6 +20,8 @@ interface Case {
   batch: Command[];
 }
 
+const withLines = () => build(richDoc(), [{ op: "flow.exec.enable", flowId: KIT }]);
+
 const withTone = () =>
   build(richDoc(), [
     { op: "type.defineEnum", scope: G, id: "ty_tone", name: "Tone", members: ["soft"] },
@@ -123,6 +125,11 @@ const CORPUS: Case[] = [
   { name: "edge.disconnect by id", batch: [{ op: "edge.disconnect", flowId: KIT, edgeId: "e_4" }] },
   { name: "edge.disconnect by to", batch: [{ op: "edge.disconnect", flowId: KIT, to: { node: "n_out", port: "summary" } }] },
   { name: "§10 batch from empty", doc: emptyDoc, batch: [...SECTION_10_BATCH] },
+  { name: "flow.exec.enable", batch: [{ op: "flow.exec.enable", flowId: KIT }] },
+  { name: "flow.exec.set", batch: [{ op: "flow.exec.set", flowId: KIT, edges: [{ id: "x_9", from: { node: "n_in", port: "then" }, to: { node: "n_out", port: "in" } }] }] },
+  { name: "exec.connect replacing", doc: withLines, batch: [{ op: "exec.connect", flowId: KIT, from: { node: "n_in", port: "then" }, to: { node: "n_sink", port: "in" } }] },
+  { name: "exec.disconnect", doc: withLines, batch: [{ op: "exec.disconnect", flowId: KIT, edgeId: "x_1" }] },
+  { name: "node.remove takes its execution lines", doc: withLines, batch: [{ op: "node.remove", flowId: KIT, nodeId: "n_sink" }] },
   {
     name: "mixed multi-command batch",
     batch: [

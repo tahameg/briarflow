@@ -2,6 +2,7 @@
  * Port resolution of node instances: static or dynamic (`resolvePorts`) ports, built-in
  * input/output nodes, generic bindings. Shared by validation, authoring and the runtime.
  */
+import { ERROR_OUTPUT } from "../nodes/exec-ports.js";
 import type { ContextDocument, FieldDecl, FlowDocument, NodeInstance } from "../documents/model.js";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
@@ -183,6 +184,10 @@ function resolveNode(
       path: at,
     });
     return { ...base, definition: def, inputs: [], outputs: [] };
+  }
+  if (def.canFail && !ro.some((p) => p.name === ERROR_OUTPUT)) {
+    const type: TypeRef = { kind: "primitive", name: "error" };
+    ro.push({ name: ERROR_OUTPUT, type, declaredType: type, title: "Error", description: "Why the node failed. Only set on the failed line.", hasDefault: false });
   }
   return { ...base, definition: def, inputs: ri, outputs: ro };
 }

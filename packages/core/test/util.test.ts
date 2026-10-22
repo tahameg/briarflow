@@ -122,7 +122,7 @@ describe("ids", () => {
   const kinds = Object.keys(ID_PREFIXES) as IdKind[];
 
   it("has the prefixes of types.md §1", () => {
-    expect(ID_PREFIXES).toEqual({ context: "ctx", flow: "flow", type: "ty", global: "gv", variable: "var", node: "n", edge: "e" });
+    expect(ID_PREFIXES).toEqual({ context: "ctx", flow: "flow", type: "ty", global: "gv", variable: "var", node: "n", edge: "e", exec: "x" });
   });
 
   it.each(kinds)("accepts valid %s ids and rejects other kinds' prefixes", (kind) => {

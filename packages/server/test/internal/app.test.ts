@@ -34,6 +34,8 @@ const PORTRAIT_COMMANDS = [
   { op: "edge.connect", flowId: "flow_p", id: "e_5", from: { node: "n_llm", port: "text" }, to: { node: "n_img", port: "prompt" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_6", from: { node: "n_llm", port: "text" }, to: { node: "n_out", port: "description" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_7", from: { node: "n_img", port: "image" }, to: { node: "n_out", port: "image" } },
+  { op: "flow.exec.set", flowId: "flow_p", edges: null },
+  { op: "flow.exec.enable", flowId: "flow_p" },
 ];
 
 const CHARACTER = { name: "Ada", style: "pixel" };
@@ -232,6 +234,8 @@ describe("runs", () => {
         { op: "node.add", flowId: "flow_slow", id: "n_d", type: "mock.delay", position: { x: 0, y: 0 }, values: { ms: 5000 } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_in", port: "v" }, to: { node: "n_d", port: "value" } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_d", port: "value" }, to: { node: "n_out", port: "v" } },
+        { op: "flow.exec.set", flowId: "flow_slow", edges: null },
+        { op: "flow.exec.enable", flowId: "flow_slow" },
       ],
     });
     const started = await json(app, "POST", "/flows/flow_slow/runs?wait=true&waitMs=30", { inputs: { v: "x" } });
@@ -276,6 +280,8 @@ describe("runs", () => {
         { op: "node.add", flowId: "flow_slow", id: "n_d", type: "mock.delay", position: { x: 0, y: 0 }, values: { ms: 50 } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_in", port: "v" }, to: { node: "n_d", port: "value" } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_d", port: "value" }, to: { node: "n_out", port: "v" } },
+        { op: "flow.exec.set", flowId: "flow_slow", edges: null },
+        { op: "flow.exec.enable", flowId: "flow_slow" },
       ],
     });
     const started = (await (await json(app, "POST", "/flows/flow_slow/runs", { inputs: { v: 1 } })).json()) as { runId: string };

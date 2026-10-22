@@ -35,6 +35,7 @@ async function quickStart(briar: Briar) {
   flow.connect(brk.port("style"), tpl.port("style"));
   flow.connect(tpl.port("text"), llm.port("prompt"));
   flow.connect(llm.port("text"), flow.output.port("reply"));
+  flow.line(flow.input, llm, flow.output);
   expect(ctx.diagnostics().filter((d) => d.severity === "error")).toEqual([]);
   await ctx.save();
   return { ctx, flow };
@@ -200,6 +201,7 @@ describe("global writes", () => {
     flow.connect(flow.input.port("text"), set.port("value"));
     flow.connect(set.port("value"), set2.port("value"));
     flow.connect(set2.port("value"), flow.output.port("written"));
+    flow.wireExecution();
     expect(ctx.diagnostics().filter((d) => d.severity === "error")).toEqual([]);
     await ctx.save();
     return { ctx, flow, note, extra };
@@ -348,6 +350,7 @@ describe("runs", () => {
     const delay = flow.nodes.add("mock.delay", { values: { ms: 10_000 } });
     flow.connect(flow.input.port("text"), delay.port("value"));
     flow.connect(delay.port("value"), flow.output.port("text"));
+    flow.line(flow.input, delay, flow.output);
     await ctx.save();
     const run = await briar.run(flow.id, { text: "x" });
     await briar.close();

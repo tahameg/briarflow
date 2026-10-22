@@ -7,16 +7,17 @@ export const ID_PREFIXES = {
   variable: "var",
   node: "n",
   edge: "e",
+  exec: "x",
 } as const;
 
-/** A kind of document id: `context`, `flow`, `type`, `global`, `variable`, `node`, `edge`. */
+/** A kind of document id: `context`, `flow`, `type`, `global`, `variable`, `node`, `edge`, `exec` (execution line). */
 export type IdKind = keyof typeof ID_PREFIXES;
 
 /** Id prefix for one {@link IdKind}, e.g. `"ctx"`. Run ids use `"run"`, media ids `"m"`. */
 export type IdPrefix = (typeof ID_PREFIXES)[IdKind];
 
 /** Regex of every document id: `<prefix>_<1–60 of [A-Za-z0-9_-]>`. */
-export const ID_PATTERN = /^(ctx|flow|ty|gv|var|n|e)_[A-Za-z0-9_-]{1,60}$/;
+export const ID_PATTERN = /^(ctx|flow|ty|gv|var|n|e|x)_[A-Za-z0-9_-]{1,60}$/;
 
 /**
  * Creates ids for new entities. Receives the prefix (`"flow"`, `"n"`, `"run"`, …) and returns
