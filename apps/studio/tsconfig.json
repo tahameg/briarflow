@@ -1,0 +1,15 @@
+{
+  "//": "Studio-only config: the root typecheck covers apps/*/src/**/*.ts but not .tsx, so the studio checks itself with `npm run typecheck -w @briarflow/studio` (also run by its build). `paths` repeats the base map and adds @briarflow/editor-react, whose entry is index.tsx.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@briarflow/editor-react": ["../../packages/editor-react/src/index.tsx"],
+      "@briarflow/editor-react/canvas": ["../../packages/editor-react/src/components/FlowCanvas.tsx"],
+      "@briarflow/*": ["../../packages/*/src/index.ts"],
+      "briarflow": ["../../packages/briarflow/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

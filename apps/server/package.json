@@ -1,0 +1,27 @@
+{
+  "name": "@briarflow/server-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Briarflow server: REST + SSE API, SQLite + filesystem storage, std + mock packs, and the studio UI.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@briarflow/core": "*",
+    "@briarflow/nodes-anthropic": "*",
+    "@briarflow/nodes-mock": "*",
+    "@briarflow/nodes-std": "*",
+    "@briarflow/python": "*",
+    "@briarflow/server": "*",
+    "@briarflow/storage-fs": "*",
+    "@briarflow/storage-sqlite": "*",
+    "@hono/node-server": "^1.19.17",
+    "briarflow": "*",
+    "hono": "^4.13.13",
+    "tsx": "^4.23.15"
+  }
+}

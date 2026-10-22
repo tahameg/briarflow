@@ -1,0 +1,18 @@
+{
+  "//": "Typechecks shared (portable) packages WITHOUT @types/node globals, so process/Buffer/etc. fail to compile there. Keep the list in sync with SHARED_PACKAGES and PORTABLE_ENTRIES (server) in scripts/check-boundaries.mjs.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/authoring/src/**/*.ts",
+    "packages/runtime/src/**/*.ts",
+    "packages/nodes-std/src/**/*.ts",
+    "packages/nodes-mock/src/**/*.ts",
+    "packages/nodes-anthropic/src/**/*.ts",
+    "packages/client/src/**/*.ts",
+    "packages/editor/src/**/*.ts",
+    "packages/server/src/**/*.ts"
+  ]
+}

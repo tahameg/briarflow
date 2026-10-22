@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/test/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "apps/studio/**"
+  ],
+  "//": "apps/studio has its own tsconfig (Vite client types, .tsx); it is checked by `npm run typecheck -w @briarflow/studio`."
+}

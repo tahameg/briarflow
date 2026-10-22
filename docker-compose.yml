@@ -1,0 +1,18 @@
+# Lite mode: one container (API + studio), SQLite and media on a named volume.
+#   docker compose up --build      → http://localhost:3000
+# Set ANTHROPIC_API_KEY in your shell or an .env file to enable the Claude nodes.
+services:
+  briarflow:
+    build: .
+    image: briarflow:latest
+    ports:
+      - "3000:3000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # BRIAR_PYTHON_WORKER_URL: http://python-worker:8765
+    volumes:
+      - briarflow-data:/data
+    restart: unless-stopped
+
+volumes:
+  briarflow-data:

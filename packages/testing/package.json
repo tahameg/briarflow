@@ -1,0 +1,26 @@
+{
+  "name": "@briarflow/testing",
+  "version": "0.0.0",
+  "description": "Conformance suites and test helpers for Briarflow extensions.",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/core": "*"
+  },
+  "peerDependencies": {
+    "vitest": "^4.1.0"
+  }
+}

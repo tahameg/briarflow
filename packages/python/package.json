@@ -1,0 +1,29 @@
+{
+  "name": "@briarflow/python",
+  "version": "0.0.0",
+  "description": "Run Python Briarflow nodes: the TypeScript bridge to Python workers (protocol v1).",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@briarflow/core": "*"
+  },
+  "devDependencies": {
+    "briarflow": "*"
+  }
+}

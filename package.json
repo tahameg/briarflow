@@ -1,0 +1,36 @@
+{
+  "name": "briarflow-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "test": "node scripts/check-boundaries.mjs && vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.shared.json && npm run typecheck -w @briarflow/studio",
+    "lint": "node scripts/check-boundaries.mjs",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm start -w @briarflow/server-app",
+    "dev:server": "npm run dev -w @briarflow/server-app",
+    "dev:studio": "npm run dev -w @briarflow/studio",
+    "smoke": "node apps/server/scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^4.1.12",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "tsdown": "~0.17.2",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.0",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.12"
+  }
+}

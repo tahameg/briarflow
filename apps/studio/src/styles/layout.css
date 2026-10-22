@@ -1,0 +1,374 @@
+/* Studio main screen layout (design-system.md §11). Editor component styles come from @briarflow/editor-react/theme.css. */
+
+.bf-app {
+  display: grid;
+  grid-template-rows: var(--bf-topbar-h) minmax(0, 1fr);
+  height: 100%;
+  min-width: 720px;
+  overflow: hidden;
+}
+
+/* ---------- Top bar ---------- */
+.bf-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bf-space-4);
+  padding: 0 var(--bf-space-3);
+  background: var(--bf-surface);
+  border-bottom: var(--bf-border-thick) solid var(--bf-ink);
+  z-index: var(--bf-z-panel);
+}
+.bf-topbar__left,
+.bf-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--bf-space-3);
+  min-width: 0;
+}
+.bf-brand {
+  padding: 2px var(--bf-space-2);
+  background: var(--bf-yellow);
+  color: var(--bf-ink-inverse);
+  box-shadow: var(--bf-shadow-sm);
+  font-family: var(--bf-font-display);
+  font-size: var(--bf-text-lg);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.bf-crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--bf-space-2);
+  min-width: 0;
+}
+.bf-crumbs__ctx {
+  overflow: hidden;
+  font-family: var(--bf-font-display);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bf-crumbs__sep {
+  color: var(--bf-ink-muted);
+  font-family: var(--bf-font-display);
+}
+.bf-crumbs__flow {
+  width: auto;
+  min-width: 160px;
+  height: 28px;
+}
+
+/* ---------- Main grid ---------- */
+.bf-main {
+  display: grid;
+  /* Columns come from Workspace: only zones that hold panels take space. */
+  gap: var(--bf-space-2);
+  min-height: 0;
+  padding: var(--bf-space-2);
+}
+.bf-pad {
+  padding: var(--bf-space-2) var(--bf-space-3);
+}
+
+/* ---------- Contexts tree ---------- */
+.bf-tree {
+  margin: 0;
+  padding: var(--bf-space-1) 0;
+  list-style: none;
+}
+.bf-tree__flows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bf-tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--bf-space-2);
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--bf-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--bf-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.bf-tree__row:hover {
+  background: var(--bf-surface-2);
+}
+.bf-tree__row--open {
+  font-weight: 700;
+}
+.bf-tree__row--flow {
+  padding-left: calc(var(--bf-space-3) + 22px);
+}
+.bf-tree__row--current {
+  color: var(--bf-yellow);
+  background: var(--bf-surface-3);
+  box-shadow: inset 4px 0 0 0 var(--bf-yellow);
+}
+.bf-tree__row:focus-visible {
+  outline-offset: -3px;
+}
+/* A row plus its ✎ / × actions, shown on hover, focus and for the active row (design-system §11). */
+.bf-tree__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.bf-tree__item > .bf-tree__row {
+  flex: 1;
+  min-width: 0;
+}
+.bf-tree__item:has(> .bf-tree__row--current) {
+  background: var(--bf-surface-3);
+  box-shadow: inset 4px 0 0 0 var(--bf-yellow);
+}
+.bf-tree__item > .bf-tree__row--current {
+  background: transparent;
+  box-shadow: none;
+}
+.bf-tree__actions {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding-right: var(--bf-space-1);
+  visibility: hidden;
+}
+.bf-tree__item:hover .bf-tree__actions,
+.bf-tree__item:focus-within .bf-tree__actions,
+.bf-tree__item--active .bf-tree__actions {
+  visibility: visible;
+}
+.bf-button.bf-row-edit:hover,
+.bf-button.bf-row-edit:focus-visible {
+  border-color: var(--bf-ink-muted);
+  color: var(--bf-ink);
+}
+.bf-tree__item--editing {
+  padding: 2px var(--bf-space-3);
+}
+.bf-tree__rename {
+  width: 100%;
+}
+.bf-tree__new {
+  padding: 2px var(--bf-space-3) 4px calc(var(--bf-space-3) + 22px);
+}
+.bf-tree__note {
+  margin: 0;
+  padding: 2px var(--bf-space-3) 2px calc(var(--bf-space-3) + 22px);
+  font-size: var(--bf-text-sm);
+  color: var(--bf-ink-muted);
+}
+
+/* ---------- Center: canvas + dock ---------- */
+.bf-center {
+  display: grid;
+  grid-template-rows: minmax(0, 65fr) minmax(0, 35fr);
+  gap: var(--bf-space-2);
+  min-height: 0;
+  min-width: 0;
+}
+.bf-dock {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bf-surface);
+  border: var(--bf-border-thick) solid var(--bf-ink);
+}
+.bf-dock__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--bf-space-3);
+}
+.bf-dock__body:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ---------- Splash (connecting / server offline) ---------- */
+.bf-splash {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--bf-space-5);
+  background-color: var(--bf-bg);
+  background-image:
+    linear-gradient(var(--bf-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bf-grid-major) 1px, transparent 1px),
+    linear-gradient(var(--bf-grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bf-grid-minor) 1px, transparent 1px);
+  background-size:
+    120px 120px,
+    120px 120px,
+    24px 24px,
+    24px 24px;
+}
+.bf-splash__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--bf-space-4);
+  max-width: 640px;
+  padding: var(--bf-space-6);
+  background: var(--bf-surface);
+  border: var(--bf-border-heavy) solid var(--bf-ink);
+  box-shadow: 8px 8px 0 0 var(--bf-yellow);
+}
+.bf-splash__title {
+  margin: 0;
+  color: var(--bf-yellow);
+  font-size: 44px;
+}
+.bf-splash__text {
+  margin: 0;
+  font-size: var(--bf-text-lg);
+}
+.bf-splash__detail {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--bf-space-2) var(--bf-space-3);
+  background: var(--bf-bg);
+  border: var(--bf-border) solid var(--bf-danger);
+  color: var(--bf-danger);
+  font-family: var(--bf-font-code);
+  font-size: var(--bf-text-sm);
+  white-space: pre-wrap;
+}
+
+/* ---------- Dock zones (dock.tsx) ---------- */
+.bf-topbar__group {
+  display: inline-flex;
+  gap: var(--bf-space-1);
+}
+.bf-center--full {
+  grid-template-rows: minmax(0, 1fr);
+}
+.bf-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bf-space-2);
+  min-width: 0;
+  min-height: 0;
+}
+.bf-zone--target {
+  outline: var(--bf-border) dashed var(--bf-surface-3);
+  outline-offset: 2px;
+}
+.bf-zone--over {
+  outline-color: var(--bf-yellow);
+}
+.bf-zone--empty {
+  justify-content: center;
+  align-items: center;
+  min-height: 64px;
+  background: var(--bf-surface);
+  border: var(--bf-border) dashed var(--bf-ink-muted);
+}
+.bf-zone--empty.bf-zone--over {
+  border-color: var(--bf-yellow);
+}
+.bf-zone__hint {
+  color: var(--bf-ink-muted);
+  font-family: var(--bf-font-display);
+  font-size: var(--bf-text-sm);
+  text-transform: uppercase;
+}
+.bf-dock-panel {
+  flex: 1 1 0;
+  min-height: 96px;
+}
+.bf-dock-panel--collapsed {
+  flex: none;
+  min-height: 0;
+}
+.bf-dock-panel--collapsed .bf-panel__bar {
+  border-bottom: 0;
+}
+.bf-dock-panel__bar {
+  justify-content: flex-start;
+  padding-left: var(--bf-space-1);
+}
+.bf-dock-panel__toggle {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--bf-ink-muted);
+  cursor: pointer;
+}
+.bf-dock-panel__toggle:hover {
+  color: var(--bf-ink);
+}
+.bf-dock-panel__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+.bf-panel__sub {
+  color: var(--bf-ink-muted);
+  font-size: var(--bf-text-sm);
+  text-transform: none;
+}
+.bf-dock__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bf-space-2);
+  padding-right: var(--bf-space-2);
+  border-bottom: var(--bf-border-thick) solid var(--bf-ink);
+}
+.bf-dock__bar .bf-tabs {
+  border-bottom: 0;
+}
+.bf-dock__bar .bf-tab {
+  cursor: grab;
+}
+.bf-dock__body--flush {
+  padding: 0;
+}
+.bf-move {
+  position: relative;
+}
+.bf-move__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: var(--bf-z-popover);
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  background: var(--bf-surface);
+  border: var(--bf-border) solid var(--bf-ink);
+  box-shadow: var(--bf-shadow-md);
+}
+.bf-zone--bottom .bf-move__menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.bf-move__item {
+  min-height: 28px;
+  padding: 0 var(--bf-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--bf-ink);
+  font-size: var(--bf-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.bf-move__item:hover,
+.bf-move__item:focus-visible {
+  background: var(--bf-surface-3);
+}
+.bf-move__item--muted {
+  border-top: var(--bf-border-thin) solid var(--bf-surface-3);
+  color: var(--bf-ink-muted);
+}

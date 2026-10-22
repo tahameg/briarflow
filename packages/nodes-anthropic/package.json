@@ -1,0 +1,26 @@
+{
+  "name": "@briarflow/nodes-anthropic",
+  "version": "0.0.0",
+  "description": "Claude nodes for Briarflow (Anthropic Messages API over plain fetch).",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/core": "*"
+  },
+  "devDependencies": {
+    "@briarflow/testing": "*"
+  }
+}

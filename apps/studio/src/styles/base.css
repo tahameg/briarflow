@@ -1,0 +1,96 @@
+/* Base element styles: brutalist, flat, square, dark. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: var(--bf-radius);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bf-bg);
+  color: var(--bf-ink);
+  font-family: var(--bf-font-body);
+  font-size: var(--bf-text-md);
+  line-height: var(--bf-leading);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--bf-font-display);
+  font-weight: 800;
+  line-height: var(--bf-leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--bf-font-code);
+  font-size: var(--bf-text-sm);
+}
+
+a {
+  color: var(--bf-yellow);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+::selection {
+  background: var(--bf-yellow);
+  color: var(--bf-ink-inverse);
+}
+
+/* Focus is never removed: yellow 3px outline, offset 2px (spec §4). */
+:focus-visible {
+  outline: 3px solid var(--bf-yellow);
+  outline-offset: 2px;
+}
+
+.bf-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.bf-muted {
+  color: var(--bf-ink-muted);
+}
+
+.bf-code {
+  font-family: var(--bf-font-code);
+  font-size: var(--bf-text-sm);
+}
+
+/* Thin, square scrollbars that match the surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bf-surface-3) transparent;
+}

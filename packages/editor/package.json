@@ -1,0 +1,25 @@
+{
+  "name": "@briarflow/editor",
+  "version": "0.0.0",
+  "description": "Headless, framework-agnostic editor store for Briarflow contexts: optimistic commands, server sync, undo/redo, selection, viewport and run status.",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/authoring": "*",
+    "@briarflow/client": "*",
+    "@briarflow/core": "*"
+  }
+}

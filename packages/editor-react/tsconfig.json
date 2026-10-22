@@ -1,0 +1,9 @@
+{
+  "//": "editor-react is .tsx, which the root tsconfig (*.ts only, no jsx) does not cover; it checks itself.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": []
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

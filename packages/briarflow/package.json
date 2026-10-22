@@ -1,0 +1,31 @@
+{
+  "name": "briarflow",
+  "version": "0.0.0",
+  "description": "Briarflow facade: createBriar(), memory stores, fluent authoring handles, run registry.",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/core": "*",
+    "@briarflow/authoring": "*",
+    "@briarflow/runtime": "*",
+    "@briarflow/nodes-std": "*"
+  },
+  "devDependencies": {
+    "@briarflow/nodes-mock": "*",
+    "@briarflow/storage-fs": "*",
+    "@briarflow/storage-sqlite": "*"
+  }
+}

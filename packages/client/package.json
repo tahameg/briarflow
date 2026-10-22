@@ -1,0 +1,24 @@
+{
+  "name": "@briarflow/client",
+  "version": "0.0.0",
+  "description": "Typed fetch-based client for the Briarflow REST + SSE API (contexts, flows, runs, node types, media).",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/authoring": "*",
+    "@briarflow/core": "*"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@briarflow/editor-react",
+  "version": "0.0.0",
+  "description": "React views over @briarflow/editor: React Flow canvas, palette, types, variables, inspector and run panels in the Briar Brutal design system.",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./canvas": "./src/components/FlowCanvas.tsx",
+    "./theme.css": "./src/styles/theme.css",
+    "./tokens.css": "./src/styles/tokens.css",
+    "./styles.css": "./src/styles/editor.css"
+  },
+  "types": "./src/index.tsx",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@briarflow/authoring": "*",
+    "@briarflow/client": "*",
+    "@briarflow/core": "*",
+    "@briarflow/editor": "*",
+    "@xyflow/react": "^12.12.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@briarflow/nodes-std": "*"
+  }
+}
