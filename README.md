@@ -1,35 +1,15 @@
 # Briarflow
 
-**Typed, visual AI pipelines you can draw in a studio, run as a service, or embed as a library — prompts, LLM calls and media in one graph where every wire is type-checked.**
+**A strongly typed, graph-based framework for building AI pipelines — prompt construction, LLM calls, structured outputs, image processing, and custom logic, composed as flows of typed nodes connected by type-checked wires.**
 
-![The Briarflow studio running a character-portrait flow: a struct is broken into fields, a template builds the prompt, an LLM and an image generator run on the execution line, and the image shows on the node and in the run panel.](docs/images/studio-portrait.png)
+![Briarflow studio running a character-portrait flow: a struct is broken into fields, a template builds the prompt, LLM and image nodes execute along the execution line, and results appear inline and in the run panel.](docs/images/studio-portrait.png)
 
-Briarflow is a strongly typed, graph-based framework for prompt construction and AI-result
-pipelines. You build **flows** from typed **nodes**: text templates, struct make/break, LLM
-calls, image generators and processors, your own TypeScript or Python nodes. You connect them
-with wires the type checker validates, and run them with streamed progress events.
+Briarflow is **library first**. You compose **flows** from typed **nodes** — text templates, struct constructors, LLM and image-generation calls, image processors, and your own TypeScript or Python functions — connected by wires that the type checker validates before a run starts.
 
-It is **library first**. The same flow runs in-process (`createBriar()`), over HTTP
-(`@briarflow/server` + `@briarflow/client`), or from the visual **studio** that ships with the
-server.
-
----
-
-## Contents
-
-- [Why Briarflow](#why-briarflow)
-- [Tour of the studio](#tour-of-the-studio)
-- [Quick start](#quick-start): Docker · library · development
-- [Core ideas](#core-ideas)
-- [Node packs](#node-packs)
-- [Connect it to everything else](#connect-it-to-everything-else)
-- [Write your own nodes](#write-your-own-nodes): TypeScript · Python
-- [Deployment options](#deployment-options)
-- [Configuration](#configuration)
-- [REST API at a glance](#rest-api-at-a-glance)
-- [Packages](#packages)
-- [Docs](#docs)
-- [Project status](#project-status)
+Because flows are plain JSON documents, the exact same flow runs:
+- **In-process as a TypeScript library** via `createBriar()` from `briarflow`
+- **Behind a REST + Server-Sent Events API** via `@briarflow/server` and `@briarflow/client`
+- **Interactively in the studio**, the React visual editor that ships with the server
 
 ---
 
@@ -37,62 +17,34 @@ server.
 
 | | |
 |---|---|
-| **Typed end to end** | Structs, enums, lists, optionals, media types (`image`, `video`, `audio`, `model3d`, `file`) and generics. Every wire, constant and run input is checked. Errors say what is wrong, where, and how to fix it. |
-| **One flow, three ways to run it** | In your process as a library, behind a REST + SSE API, or from the studio. The flow document is plain JSON, the same everywhere. |
-| **Built for AI work** | Retries with backoff, timeouts, cancellation, rate-limit handling, a result cache, and streamed progress. Media is first class: a registry of images, video and files, with previews on the nodes. |
-| **Never pays twice for the same artifact** | Each flow keeps its last run. Nodes that make media and get the same inputs reuse their previous result instead of calling the model again. **Force run** regenerates everything. |
-| **Visual and code-friendly** | Draw flows in the studio, or build them with a fluent TypeScript API, a JSON command set with undo/redo, or REST. |
-| **Pluggable** | Node packs (`definePack`), storage (`ContextStore`, media registry, blob store), secrets vault, settings, and Python nodes through a worker. |
-| **Testable** | `runNode`, conformance suites for node packs and stores, deterministic mock AI nodes, and 2,290+ tests in the repo. |
+| **Library, service, or studio** | Author and run flows in-process from TypeScript, serve them over HTTP + SSE, or draw and debug them visually in the studio. |
+| **Typed end to end** | Primitives, structs, enums, lists, optionals, generics, and first-class media types (`image`, `video`, `audio`, `model3d`, `file`). Invalid wires, configs, and inputs are rejected with clear diagnostics explaining what is wrong, where, and how to fix it. |
+| **Built for AI pipelines** | Explicit execution order lines with failure branches, on-demand pure nodes, retries with exponential backoff, timeouts, `AbortSignal` cancellation, result caching, concurrency limits, and streamed progress events. |
+| **Extensible in TS & Python** | Build node packs in TypeScript (`defineNode`, `definePack`), expose Python functions as nodes through a zero-dependency worker (`@node`, `serve`), and plug in storage backends (SQLite, filesystem, memory) and encrypted secret vaults. |
+| **Connects to everything** | Every flow is a typed HTTP endpoint that publishes a JSON Schema signature. Trigger runs from webhooks, cron, CI, or workflow tools (n8n, Zapier); offer flows as tools to LLM agents; or embed the API and React editor in your own product. |
 
-## Tour of the studio
-
-**Image pipelines with live previews.** Every node with an image or video output shows what the
-last run produced. Double-click opens a large viewer. The **View image** debug node sits on the
-execution line and also writes the image, its size and type to the console.
-
-![The Image lab flow: Make image creates an orange image, Resize and Split channels process it, View image shows it, and the console lists the image with its mime type, size and bytes.](docs/images/image-lab.png)
-
-**The dot operator, visually.** Drag a wire from any output into empty space and the menu
-offers matching nodes, plus every member of the value's type. For an image that means
-`.mime`, `.width` and `.size`; for a struct, its fields, nested as `.portrait.image.width`.
-Struct fields can be read and set; everything else is read-only.
-
-<p align="center"><img src="docs/images/members.png" alt="Dropping a wire from an image output opens a menu with Get member: .id, .mime, .extension, .name, .size, .url, .width, .height." width="640"></p>
-
-**Secrets stay on the server.** API keys live in an encrypted vault and are picked by name in
-Settings. Values never come back to the browser; nodes read them on the server at run time.
-
-<p align="center"><img src="docs/images/settings.png" alt="Settings dialog, OpenAI tab: default API key, keys for text and images picked from the vault, and the API base URL." width="640"></p>
-
-Also in the studio:
-- execution lines, with a failure branch per node;
-- flow and global variables;
-- a struct and enum editor;
-- node variants, such as one OpenAI image node with a model dropdown;
-- a problems panel with clickable diagnostics;
-- undo/redo, plus a console that collects prints, outputs, retries and errors.
+---
 
 ## Quick start
 
-### 1. Run the studio with Docker (one container)
+### 1. Run the server and studio with Docker
 
 ```bash
 docker build -t briarflow .
 docker run -p 3000:3000 -v briarflow-data:/data briarflow
 ```
 
-Open <http://localhost:3000>. The API lives at `http://localhost:3000/api/v1`. Or use Compose:
+Open <http://localhost:3000> for the studio; the REST API is served at `http://localhost:3000/api/v1`. Or run with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-Contexts, the media registry, last runs, the vault and settings live in SQLite under `/data`;
-uploaded files sit next to it. To enable the Claude nodes, pass `-e ANTHROPIC_API_KEY=…`.
-OpenAI keys are added in the studio (**Settings → OpenAI**) and stored encrypted.
+Contexts, the media registry, last runs, the encrypted vault, and settings are stored in SQLite under `/data`, alongside uploaded media files. Pass `-e ANTHROPIC_API_KEY=…` to enable Claude nodes; OpenAI keys are configured in the studio (**Settings → OpenAI**) and stored encrypted in the vault.
 
-### 2. Use it as a library
+### 2. Use it as a TypeScript library
+
+> Packages in this repository are currently versioned `0.0.0` and **not published to npm yet** — run and import them from a checkout of this monorepo.
 
 ```ts
 import { createBriar } from "briarflow";
@@ -112,7 +64,7 @@ flow.connect(flow.input.port("topic"), llm.port("prompt"));
 flow.connect(llm.port("text"), image.port("prompt"));
 flow.connect(llm.port("text"), flow.output.port("caption"));
 flow.connect(image.port("image"), flow.output.port("poster"));
-flow.line(flow.input, llm, image, flow.output);   // the execution line
+flow.line(flow.input, llm, image, flow.output);   // execution order
 await ctx.save();
 
 const run = await briar.run(flow.id, { topic: "a lighthouse at dusk" });
@@ -120,15 +72,15 @@ for await (const event of run.events()) console.log(event.type);  // run.started
 const result = await run.result;
 console.log(result.status, result.outputs);  // "succeeded", { caption: "…", poster: { mediaId: "med_…" } }
 
-const bytes = await briar.media.read(result.outputs.poster);       // the image itself
+const bytes = await briar.media.read(result.outputs.poster);       // Uint8Array of the generated image
 await briar.close();
 ```
 
-To use real models, swap `mockPack` for a provider:
-- `anthropicPack()` from `@briarflow/nodes-anthropic`, with `secrets: envSecrets()`;
-- `openaiPack()` from `@briarflow/nodes-openai`, with a vault.
+To call real providers, swap `mockPack` for:
+- `anthropicPack()` from `@briarflow/nodes-anthropic` (with `secrets: envSecrets()`)
+- `openaiPack()` from `@briarflow/nodes-openai` (configured with a secret vault)
 
-For persistent storage, pass SQLite stores:
+For persistent storage on disk, configure SQLite and filesystem stores:
 
 ```ts
 import { FsMediaStore } from "@briarflow/storage-fs";
@@ -137,58 +89,63 @@ import { SqliteContextStore, SqliteLastRunStore, SqliteMediaRegistry } from "@br
 const file = "./data/briarflow.db";
 const briar = createBriar({
   store: new SqliteContextStore({ file }),
-  media: new SqliteMediaRegistry({ file }),        // media entries; run artifacts as raw bytes
-  lastRuns: new SqliteLastRunStore({ file }),      // the last run of each flow
-  blobs: new FsMediaStore({ dir: "./data/media" }), // uploaded files
+  media: new SqliteMediaRegistry({ file }),
+  lastRuns: new SqliteLastRunStore({ file }),
+  blobs: new FsMediaStore({ dir: "./data/media" }),
   packs: [mockPack],
 });
 ```
 
-### 3. Develop on the repo
+### 3. Local development
+
+Requires **Node >= 20.19** (and **Python >= 3.10** if working with Python nodes).
 
 ```bash
 npm install
-npm run dev:server        # API on http://localhost:3000 (data in apps/server/data)
-npm run dev:studio        # studio on http://localhost:5173, proxies /api to :3000
-npm run smoke             # end-to-end check against the running server
-npm test                  # every Vitest suite
-npm run typecheck
+npm run dev:server        # API on http://localhost:3000
+npm run dev:studio        # Studio on http://localhost:5173 (proxies /api to :3000)
+npm run smoke             # End-to-end smoke check against the running server
+npm test                  # All Vitest suites
+npm run typecheck         # TypeScript check across workspaces
 cd python && python -m pytest
 ```
 
-Requires Node ≥ 20.19. Python nodes need Python ≥ 3.10.
+---
 
-## Core ideas
+## How it works
 
-| Idea | In one line |
+### Core concepts
+
+| Concept | Role |
 |---|---|
-| **Context** | A document holding flows, struct/enum types and global variables. Immutable, versioned by `revision`, edited through commands. |
-| **Flow** | A graph with typed **inputs** and **outputs**, like a function signature. It is exposed as JSON Schema, so other tools can call it. |
-| **Node** | A typed function from a **pack** (`openai.image`, `text.template`, `image.resize`, …). Nodes can have config, variants, retries, timeouts and a cache. |
-| **Wires** | Data edges. Generics bind across wires (`T` becomes `Character`). An incompatible wire is refused with a reason. |
-| **Execution line** | The order side effects happen in. **Pure** nodes (templates, image math, member access) have no line: they run when something on the line reads them. |
-| **Variables** | Flow variables and context-wide globals, read and written by nodes (globals can be read-only). |
-| **Media** | A media value is `{ mediaId }`, a key into the **media registry**. The registry knows each item's mime type, size, dimensions and file name, and where the bytes are: in the database, in a file store, or at a URL. A loader with an in-memory cache reads any of them. |
-| **Last run** | Each flow keeps its last run, so previews survive a reload. Run artifacts are temporary and are removed when a newer run replaces them. Unchanged media-making nodes are **carried over** instead of being called again. |
-| **Frontend nodes** | Nodes whose effect happens in the studio: **Print** and **View image**. |
+| **Context** | An immutable, revision-numbered JSON document holding flows, shared struct/enum types, and global variables. Edited atomically through a JSON command set with undo/redo. |
+| **Flow** | A graph with a typed input and output signature. Exposes its signature as JSON Schema so external services and LLM agents can validate inputs and inspect outputs. |
+| **Node** | A typed operation from a **pack** (`openai.image`, `anthropic.structured`, `text.template`, `image.resize`). Supports typed ports, config, model variants, retries, timeouts, and caching. |
+| **Wires** | Data edges between ports. Generic type variables (`$T`) unify across connected wires, and incompatible connections are rejected immediately. |
+| **Execution line** | Defines the sequence of side-effecting nodes and optional `failed` branches. **Pure** nodes (templates, member access, image transforms) have no execution line and evaluate on demand when read. |
+| **Variables** | Flow-local variables and context-wide globals (`readonly` or `readwrite`) with validated read/write ordering. |
+| **Media** | Media values travel through flows as `{ mediaId }` references into a **media registry** that tracks metadata (MIME type, dimensions, size) and resolves bytes from SQLite, disk blobs, or URLs. |
 
-## Node packs
+### Node packs
 
-| Pack | Nodes |
+| Pack | Included nodes |
 |---|---|
-| `briar` (std, always on) | inputs/outputs, constants, struct make/break, **Get/Set member**, text template and join, list tools, JSON get/parse/stringify, type conversions, flow and global variables, **Print**, **View image** |
-| `image` | Make image (from RGBA/RGB channels or one color), Split channels, Resize (contain/cover/stretch), Crop, Rotate/flip, Grayscale, Invert, Convert (PNG/JPEG). Pure JavaScript codecs, no native modules. |
-| `openai` | Text and structured output, and **image generation**: GPT Image 2.5 Flare/Sunburst, GPT Image 2, and older models marked deprecated. Covers custom sizes, quality, format, background and moderation. |
-| `anthropic` | Claude messages and structured output (`anthropic.message`, `anthropic.structured`) |
-| `mock` | Deterministic fake LLM, structured, image and 3D nodes, plus delay, flaky and fail nodes, for demos and tests |
-| Python packs | Any pack served by a Python worker (`@node` functions), loaded at runtime |
+| `briar` (`@briarflow/nodes-std`, built in) | Flow input/output, constants, struct make/break, member get/set (`.field`, `.width`, `.mime`), text template and join, list ops, JSON get/parse/stringify, type conversions, flow/global variables, studio `Print` and `View image` nodes |
+| `image` (`@briarflow/nodes-image`) | Make image (from RGBA/RGB channels or solid color), Split channels, Resize (contain/cover/stretch), Crop, Rotate/flip, Grayscale, Invert, Convert (PNG/JPEG in pure JS, no native dependencies) |
+| `openai` (`@briarflow/nodes-openai`) | Text and structured outputs (Responses API) and image generation (Images API, with model variants, custom sizes, quality, format, and background controls) |
+| `anthropic` (`@briarflow/nodes-anthropic`) | Claude messages (`anthropic.message`) and structured outputs (`anthropic.structured`) |
+| `mock` (`@briarflow/nodes-mock`) | Deterministic fake LLM, structured output, image, and 3D nodes, plus delay, flaky, and fail nodes for tests and offline demos |
+| Python packs (`@briarflow/python` + `python/`) | Any pack served by a Python worker process (`@node` functions), loaded dynamically at runtime |
 
-## Connect it to everything else
+### The visual studio
 
-Briarflow is meant to be called by other systems, so a flow is just a typed endpoint.
+The server ships with **the studio**, a browser editor built on `@briarflow/editor` and `@briarflow/editor-react`. It lets you edit flow signatures inline on the canvas, wire data and execution lines, inspect live node progress and inline media previews, access nested struct fields or media metadata by dropping a wire on empty canvas, manage struct/enum types and encrypted vault secrets, and inspect run outputs and errors in the console.
 
-**Trigger a flow from anything that speaks HTTP.** That covers cron, CI, n8n, Zapier, Make,
-GitHub Actions, webhooks and queue workers:
+---
+
+## Use it from anywhere
+
+### Trigger flows over HTTP (webhooks, cron, CI, n8n, Zapier, workers)
 
 ```bash
 curl -X POST "http://localhost:3000/api/v1/flows/flow_portrait/runs?wait=true" \
@@ -199,10 +156,9 @@ curl -X POST "http://localhost:3000/api/v1/flows/flow_portrait/runs?wait=true" \
 curl -o portrait.png http://localhost:3000/api/v1/media/med_…
 ```
 
-Long runs return `202` and stream progress over Server-Sent Events
-(`GET /runs/:id/events`), which can resume with `Last-Event-ID`.
+Runs started without `?wait=true` (or runs that exceed `waitMs`) return `202 Accepted` and stream live progress over Server-Sent Events at `GET /api/v1/runs/:runId/events` (resumable via `Last-Event-ID` or `?after=<seq>`).
 
-**Call it from TypeScript with the typed client:**
+### Call from TypeScript with the typed client
 
 ```ts
 import { createBriarClient } from "@briarflow/client";
@@ -214,27 +170,28 @@ const { outputs } = await run.result;
 const image = await client.media.download(outputs.portrait.mediaId);
 ```
 
-**Embed the API in your own server, with your own auth and routes:**
+### Embed the API in your own backend
+
+`@briarflow/server` builds a standard [Hono](https://hono.dev) app with a per-action `authorize` hook. Mount custom routes alongside it or run `api.fetch` on Node, Bun, Deno, or Cloudflare Workers:
 
 ```ts
 import { createBriarApp, serve } from "@briarflow/server";
 
 const api = createBriarApp(briar, {
-  authorize: ({ action, c }) => c.get("user")?.can(action) ?? false,   // per action: flows.run, contexts.edit, …
+  authorize: ({ action, c }) => c.get("user")?.can(action) ?? false,  // flows.run, contexts.edit, …
 });
 api.post("/api/v1/portraits", async (c) => {
   const run = await briar.run("flow_portrait", await c.req.json());
   return c.json((await run.result).outputs);
 });
-await serve(api, { port: 8080 });   // or mount `api.fetch` in Hono, Bun, Deno, Cloudflare or any Fetch runtime
+await serve(api, { port: 8080 });
 ```
 
-**Use flows as tools for an agent.** Every flow publishes its signature as JSON Schema
-(`GET /flows/:id`). Hand that schema to an LLM as a tool definition and call the run endpoint
-when it picks the tool.
+### Offer flows as tools to LLM agents
 
-**Embed the editor in your product.** The editor is a headless store (`@briarflow/editor`)
-plus React components (`@briarflow/editor-react`):
+`GET /api/v1/flows/:flowId` returns the flow along with its input and output JSON Schema (`signature.inputs` and `signature.outputs`). Pass `signature.inputs` as a tool definition to an LLM agent, and invoke `POST /api/v1/flows/:flowId/runs?wait=true` with the model's arguments when the tool is called.
+
+### Embed the visual editor in a React app
 
 ```tsx
 const store = createEditorStore({ backend: clientBackend(client), contextId: "ctx_marketing" });
@@ -245,9 +202,11 @@ const store = createEditorStore({ backend: clientBackend(client), contextId: "ct
 </EditorProvider>
 ```
 
-## Write your own nodes
+---
 
-### TypeScript
+## Extend with custom nodes
+
+### TypeScript nodes
 
 ```ts
 import { defineNode, definePack, t } from "@briarflow/core";
@@ -266,8 +225,8 @@ export const thumbnail = defineNode({
   inputs: { image: t.image({ formats: ["png", "jpeg"] }) },
   outputs: { image: t.image() },
   async run({ inputs, ctx }) {
-    const bytes = await ctx.media.read(inputs.image);   // from memory, the database, a file or the web
-    const small = await makeThumbnail(bytes);           // your code
+    const bytes = await ctx.media.read(inputs.image);
+    const small = await makeThumbnail(bytes);
     return { image: await ctx.media.put(small, { mime: "image/png", filename: "thumb.png" }) };
   },
 });
@@ -275,11 +234,11 @@ export const thumbnail = defineNode({
 export const wordsPack = definePack({ name: "words", version: "1.0.0", title: "Words", nodes: [shout, thumbnail] });
 ```
 
-Types flow into `run` (`inputs.times` is a `number`). The studio shows the node with the right
-widgets, and `describeNodePack(wordsPack)` from `@briarflow/testing` checks the pack.
-Guide: [writing nodes](docs/guides/writing-nodes.md).
+Port types infer static TypeScript types inside `run`, render appropriate input widgets in the studio, and can be unit-tested with `runNode()` and `describeNodePack()` from `@briarflow/testing`. See the [Writing nodes guide](docs/guides/writing-nodes.md).
 
-### Python
+### Python nodes
+
+For workloads using PyTorch, diffusers, OpenCV, or other Python libraries, write functions with the zero-dependency Python SDK and run them as a worker process:
 
 ```python
 from briarflow import ExecContext, Image, node, pack, serve
@@ -293,106 +252,99 @@ def solid_image(color: str, width: int = 64, height: int = 64, *, ctx: ExecConte
 serve(pack("imaging", "0.1.0", nodes=[solid_image]))
 ```
 
-Run the worker. Then `pythonPack({ url, token })`, or `BRIAR_PYTHON_WORKER_URL` for the server,
-loads its nodes like any other pack, with types taken from the Python type hints.
-Guide: [Python nodes](docs/guides/python-nodes.md).
+Load the worker in TypeScript via `spawnPythonWorker()` / `pythonPack({ url, token })` from `@briarflow/python`, or point the server at it with `BRIAR_PYTHON_WORKER_URL`. Python type hints (`str`, `int`, `Image`, `@struct` dataclasses, `Enum`, `Annotated` constraints) map directly to Briarflow types. See the [Python nodes guide](docs/guides/python-nodes.md).
+
+---
 
 ## Deployment options
 
-| Option | When | How |
+| Mode | When to use | How to run |
 |---|---|---|
-| **Single container** (server + studio) | A team tool, an internal service, a demo | `docker run -p 3000:3000 -v briarflow-data:/data briarflow`. One volume holds everything; back up `/data`. |
-| **Docker Compose** | Adding a Python worker or a proxy alongside | `docker compose up --build`, and uncomment `BRIAR_PYTHON_WORKER_URL` to attach a worker service. |
-| **Plain Node** | VMs, bare metal, PaaS (Render, Fly.io, Railway) | `npm ci && npm run build -w @briarflow/studio && npm start`. Set `HOST=0.0.0.0`, `PORT` and `BRIAR_DATA_DIR` on a persistent disk. |
-| **Embedded API** | Inside your existing backend, with your auth | `createBriarApp(briar, { authorize })`. It is a Hono app, so it runs on Node or any Fetch-API runtime. |
-| **Library only** | Batch jobs, CLIs, workers, tests | `createBriar()` in-process with memory or SQLite stores. No HTTP needed. |
-| **Headless API + your own UI** | Products that ship their own editor | Run the server with `BRIAR_STUDIO_DIR=off`, and use `@briarflow/client` and `@briarflow/editor-react`. |
+| **Single container** (server + studio) | Internal team tool, self-hosted service, or demo | `docker run -p 3000:3000 -v briarflow-data:/data briarflow` — everything persists on `/data`. |
+| **Docker Compose** | Running alongside a Python worker or reverse proxy | `docker compose up --build` (uncomment `BRIAR_PYTHON_WORKER_URL` to attach a Python worker). |
+| **Plain Node** | VMs, bare metal, or PaaS (Fly.io, Render, Railway) | `npm ci && npm run build -w @briarflow/studio && npm start` with `HOST=0.0.0.0`, `PORT`, and `BRIAR_DATA_DIR` on a persistent disk. |
+| **Embedded API** | Inside an existing backend with custom auth | `createBriarApp(briar, { authorize })` mounted in Hono, Node, Bun, Deno, or any Fetch runtime. |
+| **Library only** | CLI tools, background workers, batch jobs, tests | `createBriar()` in-process with memory or SQLite stores; no HTTP server needed. |
+| **Headless API + custom UI** | Products embedding their own workflow UI | Run with `BRIAR_STUDIO_DIR=off` and connect via `@briarflow/client` and `@briarflow/editor-react`. |
 
-Production notes:
-- **Auth.** The bundled server has no login of its own. Keep it on localhost or a private
-  network, or put an authenticating proxy in front of it, or embed it with an `authorize` hook.
-- **One process per database.** Each server cleans up its runs' temporary media at start and
-  after every run. Don't point two processes at the same SQLite file.
-- **Secrets.** Vault values are encrypted with AES-256-GCM. The key is `BRIAR_VAULT_KEY`, or
-  `/data/vault.key`, which is created on first start. Losing the key makes stored secrets
-  unreadable.
-- **Health.** `GET /health` answers `ok`; the image has a Docker `HEALTHCHECK`.
+### Production notes
+
+- **Authentication:** The bundled server (`apps/server`) has no built-in login. Keep it on `localhost` or a private network, place an authenticating reverse proxy in front of it, or embed `@briarflow/server` with an `authorize` hook.
+- **One process per SQLite file:** Each server cleans up temporary run media on startup and after runs complete. Do not point multiple processes at the same `briarflow.db`.
+- **Vault encryption key:** Secrets in the vault are encrypted with AES-256-GCM using `BRIAR_VAULT_KEY` (or `<BRIAR_DATA_DIR>/vault.key`, generated automatically on first start). Back up the key alongside your database.
+- **Health checks:** `GET /health` returns `200 ok` and is wired into the container `HEALTHCHECK`.
+
+---
 
 ## Configuration
 
-| Variable | Default | Meaning |
+| Environment variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | HTTP port |
-| `HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | Listen address |
-| `BRIAR_DATA_DIR` | `./data` (`/data` in Docker) | `briarflow.db` (contexts, media registry, last runs, vault, settings) and `media/` (uploads) |
-| `BRIAR_VAULT_KEY` | `<data dir>/vault.key` | 64 hex characters; encrypts vault secrets |
+| `PORT` | `3000` | HTTP listen port |
+| `HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | Bind address |
+| `BRIAR_DATA_DIR` | `./data` (`/data` in Docker) | Directory holding `briarflow.db`, `vault.key`, and `media/` |
+| `BRIAR_VAULT_KEY` | `<BRIAR_DATA_DIR>/vault.key` | 64-character hex key for AES-256-GCM vault encryption |
 | `BRIAR_CORS_ORIGIN` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allowed origins, or `off` |
-| `BRIAR_STUDIO_DIR` | `apps/studio/dist` | Built studio served at `/` (`off` to disable) |
-| `BRIAR_STUDIO_CONTEXT`, `BRIAR_STUDIO_FLOW` | — | What the studio opens first; created at start when missing |
-| `BRIAR_MOCK_NODES` | `true` | Offer the mock pack |
-| `BRIAR_PYTHON_WORKER_URL`, `BRIAR_PYTHON_WORKER_TOKEN` | — | Load node packs from a Python worker |
-| `ANTHROPIC_API_KEY` | — | Enables the Claude nodes |
-| `BRIAR_LOG_LEVEL` | `info` | `debug` for request-level logs |
+| `BRIAR_STUDIO_DIR` | `apps/studio/dist` | Path to the built studio served at `/` (`off` to disable) |
+| `BRIAR_STUDIO_CONTEXT`, `BRIAR_STUDIO_FLOW` | — | Initial context and flow opened in the studio (created on startup if missing) |
+| `BRIAR_MOCK_NODES` | `true` | Load the deterministic `mock` node pack |
+| `BRIAR_PYTHON_WORKER_URL`, `BRIAR_PYTHON_WORKER_TOKEN` | — | Load a remote Python worker pack at startup |
+| `ANTHROPIC_API_KEY` | — | API key that enables the `@briarflow/nodes-anthropic` pack |
+| `BRIAR_LOG_LEVEL` | `info` | Log verbosity (`debug` enables request-level logs) |
 
-## REST API at a glance
+### REST API at a glance
 
-| | Route | |
+| Area | Endpoints | Purpose |
 |---|---|---|
-| Contexts | `GET/POST /contexts`, `GET/DELETE /contexts/:id` | List, create, read and delete documents |
-| Authoring | `POST /contexts/:id/commands`, `GET /contexts/:id/diagnostics` | Atomic command batches with revision checks |
-| Flows | `GET /flows/:id`, `GET /flows/:id/last-run` | Flow, JSON Schema signature, and its last run |
-| Runs | `POST /flows/:id/runs` (`?wait`, `force`), `GET /runs/:id`, `GET /runs/:id/events` (SSE), `POST /runs/:id/cancel` | |
-| Media | `POST /media`, `POST /media/links`, `GET /media/:id`, `GET /media/:id/entry` | Upload, link, download and inspect |
-| Node types | `GET /node-types` | Packs, node descriptors and pack types, with an ETag |
-| Vault & settings | `GET/POST /secrets`, `POST/DELETE /secrets/:name`, `GET/POST /settings` | Values go in and never come out |
+| **Contexts** | `GET/POST /contexts`, `GET/DELETE /contexts/:id` | List, create, load, and delete context documents |
+| **Authoring** | `POST /contexts/:id/commands`, `GET /contexts/:id/diagnostics` | Apply atomic command batches with optimistic revision checks |
+| **Flows** | `GET /flows/:id`, `GET /flows/:id/last-run` | Fetch flow definition, JSON Schema signature, and last run state |
+| **Runs** | `POST /flows/:id/runs` (`?wait`, `force`), `GET /runs/:id`, `GET /runs/:id/events` (SSE), `POST /runs/:id/cancel` | Start runs, await results, stream SSE progress, or cancel |
+| **Media** | `POST /media`, `POST /media/links`, `GET /media/:id`, `GET /media/:id/entry` | Upload bytes, register URLs, download media, and inspect metadata |
+| **Catalog** | `GET /node-types` | List loaded packs, node descriptors, and pack types (with ETag caching) |
+| **Vault & settings** | `GET/POST /secrets`, `POST/DELETE /secrets/:name`, `GET/POST /settings` | Write-only secret storage and per-pack settings |
 
-Full reference: [docs/specs/rest-api.md](docs/specs/rest-api.md).
+Full specification: [docs/specs/rest-api.md](docs/specs/rest-api.md).
+
+---
 
 ## Packages
 
-| Package | What it is |
+| Package | Description |
 |---|---|
-| [`briarflow`](packages/briarflow) | The facade: `createBriar()`, fluent authoring handles, runs, last runs, in-memory stores, `envSecrets()` |
-| [`@briarflow/core`](packages/core) | Type system, documents, `defineNode` / `definePack`, validation, JSON Schema, the media registry and loader |
-| [`@briarflow/authoring`](packages/authoring) | The command set, with undo/redo |
-| [`@briarflow/runtime`](packages/runtime) | The engine: scheduling, execution lines, events, retries, timeouts, cache, carry-over, cancellation |
-| [`@briarflow/nodes-std`](packages/nodes-std) | Built-in nodes |
-| [`@briarflow/nodes-image`](packages/nodes-image) | Image processing nodes |
-| [`@briarflow/nodes-openai`](packages/nodes-openai), [`@briarflow/nodes-anthropic`](packages/nodes-anthropic) | Provider nodes |
-| [`@briarflow/nodes-mock`](packages/nodes-mock) | Deterministic fake AI nodes |
-| [`@briarflow/storage-sqlite`](packages/storage-sqlite), [`@briarflow/storage-fs`](packages/storage-fs) | Contexts, media registry, last runs, vault and settings in SQLite; files on disk |
-| [`@briarflow/python`](packages/python) + [`python/`](python) | The Python node SDK (stdlib only) and its TypeScript bridge |
-| [`@briarflow/server`](packages/server) | REST + SSE API as a Hono app |
-| [`@briarflow/client`](packages/client) | Typed API client with resumable event streams |
-| [`@briarflow/editor`](packages/editor), [`@briarflow/editor-react`](packages/editor-react) | Headless editor store and the React Flow canvas |
-| [`@briarflow/testing`](packages/testing) | `runNode`, conformance suites, fixtures |
-| [`apps/server`](apps/server), [`apps/studio`](apps/studio) | The runnable service and the studio |
+| [`briarflow`](packages/briarflow) | High-level facade: `createBriar()`, fluent authoring handles, run registry, in-memory stores, `envSecrets()` |
+| [`@briarflow/core`](packages/core) | Type system, document model, `defineNode` / `definePack`, validation, JSON Schema compiler, media registry and loader |
+| [`@briarflow/authoring`](packages/authoring) | JSON command set and `ContextEditor` with undo/redo |
+| [`@briarflow/runtime`](packages/runtime) | Execution engine: scheduling, execution lines, retries, timeouts, caching, carry-over, and cancellation |
+| [`@briarflow/nodes-std`](packages/nodes-std) | Standard built-in nodes (`briar`, `text`, `list`, `json`, `convert`, `debug`) |
+| [`@briarflow/nodes-image`](packages/nodes-image) | Pure-JS image creation and processing nodes |
+| [`@briarflow/nodes-openai`](packages/nodes-openai), [`@briarflow/nodes-anthropic`](packages/nodes-anthropic) | OpenAI and Anthropic provider node packs |
+| [`@briarflow/nodes-mock`](packages/nodes-mock) | Deterministic fake AI nodes for testing and demos |
+| [`@briarflow/storage-sqlite`](packages/storage-sqlite), [`@briarflow/storage-fs`](packages/storage-fs) | SQLite stores (contexts, media registry, last runs, vault, settings) and filesystem stores |
+| [`@briarflow/python`](packages/python) + [`python/`](python) | Zero-dependency Python node SDK (`briarflow`) and TypeScript worker bridge |
+| [`@briarflow/server`](packages/server) | Portable Hono REST + SSE API server |
+| [`@briarflow/client`](packages/client) | Typed HTTP + SSE client SDK |
+| [`@briarflow/editor`](packages/editor), [`@briarflow/editor-react`](packages/editor-react) | Framework-agnostic editor store and React Flow visual canvas |
+| [`@briarflow/testing`](packages/testing) | `runNode` helper, store and pack conformance suites, and test fixtures |
+| [`apps/server`](apps/server), [`apps/studio`](apps/studio) | Runnable Node server and React visual studio |
 
-Shared packages (`core`, `authoring`, `runtime`, `nodes-std`, `nodes-mock`, `client`, `editor`)
-use web-standard APIs only, so they run in browsers, Node, Deno, Bun and workers.
+Shared packages (`core`, `authoring`, `runtime`, `nodes-std`, `nodes-mock`, `client`, `editor`) use web-standard APIs only (`Promise`, `AbortSignal`, `AsyncIterable`, `fetch`, `ReadableStream`, `Uint8Array`) with no Node-only or React dependencies.
 
-## Docs
+---
 
-- **Start here:** [Architecture](docs/ARCHITECTURE.md) · [Status](docs/STATUS.md) · [Phases](docs/PHASES.md) · [Decisions](docs/DECISIONS.md)
-- **Guides:** [writing nodes](docs/guides/writing-nodes.md) · [Python nodes](docs/guides/python-nodes.md) · [writing a store](docs/guides/writing-a-store.md)
-- **Specs:** [types](docs/specs/types.md) · [node API](docs/specs/node-api.md) · [media](docs/specs/media.md) · [commands](docs/specs/commands.md) · [runtime](docs/specs/runtime.md) · [REST API](docs/specs/rest-api.md) · [storage](docs/specs/storage.md) · [variables](docs/specs/variables.md) · [design system](docs/specs/design-system.md)
+## Documentation & status
+
+- **Architecture & roadmap:** [Architecture](docs/ARCHITECTURE.md) · [Status](docs/STATUS.md) · [Phases](docs/PHASES.md) · [Decisions](docs/DECISIONS.md)
+- **Guides:** [Writing nodes](docs/guides/writing-nodes.md) · [Python nodes](docs/guides/python-nodes.md) · [Writing a store](docs/guides/writing-a-store.md)
+- **Specifications:** [Types](docs/specs/types.md) · [Node API](docs/specs/node-api.md) · [Media](docs/specs/media.md) · [Commands](docs/specs/commands.md) · [Runtime](docs/specs/runtime.md) · [REST API](docs/specs/rest-api.md) · [Storage](docs/specs/storage.md) · [Variables](docs/specs/variables.md) · [Design system](docs/specs/design-system.md)
 - **Contributing:** [AGENTS.md](AGENTS.md)
 
-## Project status
+### Status
 
-The MVP is feature-complete and covered by tests:
-- the engine;
-- the studio;
-- the REST server and client;
-- the SQLite stores;
-- the Python bridge;
-- the image, OpenAI and Anthropic packs.
+The MVP is feature-complete and backed by 2,290+ automated tests across Vitest and pytest, covering the core type system, authoring commands, runtime engine, standard/image/OpenAI/Anthropic/mock packs, SQLite and filesystem stores, Python SDK and bridge, REST server and client, and visual studio.
 
-The packages are versioned `0.0.0` and **not published to npm yet**. Use them from this
-monorepo; each one builds with `tsdown`. What comes next is tracked in
-[docs/STATUS.md](docs/STATUS.md#after-mvp-next):
-- nodes that store artifacts for good;
-- live tests against the provider APIs;
-- a bundled server build.
+Packages are currently versioned `0.0.0` and are **not published to npm yet**; use them directly from this monorepo (each package builds with `tsdown`). Remaining post-MVP items are tracked in [docs/STATUS.md](docs/STATUS.md#after-mvp-next).
 
-License: MIT, as declared in the package manifests.
+### License
+
+MIT, as declared in the package manifests.
