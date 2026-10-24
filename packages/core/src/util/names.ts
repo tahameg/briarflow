@@ -13,6 +13,8 @@ export const ENUM_VALUE_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 export const PACK_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 /** Generic variable names used with `t.var`: `T`, `Item`. Max 16. */
 export const TYPE_VAR_NAME_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
+/** Vault secret names: `OPENAI_KEY`, `prod.openai-key`. 1–64 characters. */
+export const SECRET_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
 /** Node types: `<namespace>.<name>[.<sub>]`, e.g. `openai.chat`, `briar.variable.get`. */
 export const NODE_TYPE_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][A-Za-z0-9_]*)+$/;
 
@@ -26,6 +28,11 @@ export const RESERVED_FIELD_NAMES: readonly string[] = ["__proto__", "constructo
 /** True for a valid, non-reserved struct/enum name (≤ 64 chars). */
 export function isValidTypeName(name: string): boolean {
   return name.length <= 64 && TYPE_NAME_PATTERN.test(name) && !RESERVED_TYPE_NAMES.includes(name);
+}
+
+/** True for a valid vault secret name ({@link SECRET_NAME_PATTERN}). */
+export function isValidSecretName(name: string): boolean {
+  return SECRET_NAME_PATTERN.test(name);
 }
 
 /** True for a valid, non-reserved field/port/variable/global name (≤ 64 chars). */

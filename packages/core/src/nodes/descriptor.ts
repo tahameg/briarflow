@@ -61,6 +61,33 @@ export interface NodeDescriptor {
   pure?: true;
   /** Present (true) on nodes with a `failed` execution line and an `error` output. */
   canFail?: true;
+  /** Present (true) on conversion nodes (first input → the one output). */
+  conversion?: true;
+  /**
+   * Present on nodes with variants. The top-level `inputs` / `outputs` / `config` /
+   * `dynamicPorts` are the default variant's.
+   */
+  variants?: VariantsDescriptor;
+}
+
+/** The selector and every variant of a node type. */
+export interface VariantsDescriptor {
+  title: string;
+  description?: string;
+  default: string;
+  options: VariantDescriptor[];
+}
+
+/** One variant: its shape. */
+export interface VariantDescriptor {
+  name: string;
+  title: string;
+  description?: string;
+  deprecated: string | null;
+  inputs: PortDescriptor[];
+  outputs: PortDescriptor[];
+  config: ConfigDescriptor[];
+  dynamicPorts: boolean;
 }
 
 /**
@@ -72,7 +99,52 @@ export interface NodeDescriptor {
  * ```
  */
 export function toNodeDescriptor(def: AnyNodeDefinition, pack: Pick<NodePack, "name" | "version">): NodeDescriptor {
-  const config: ConfigDescriptor[] = Object.entries(def.config).map(([name, f]) => {
+  const out: NodeDescriptor = {
+    type: def.type,
+    pack: { name: pack.name, version: pack.version },
+    title: def.title,
+    description: def.description,
+    category: def.category,
+    icon: def.icon ?? null,
+    color: def.color ?? null,
+    inputs: ports(def.inputs, true),
+    outputs: ports(def.outputs, false),
+    config: configFields(def),
+    dynamicPorts: typeof def.resolvePorts === "function",
+    secrets: [...def.secrets],
+    cache: def.cache,
+    timeoutMs: def.timeoutMs,
+    retry: cloneJson(def.retry),
+    concurrency: def.concurrency ?? null,
+    deprecated: def.deprecated ?? null,
+    ...(def.frontend ? { frontend: true as const } : {}),
+    ...(def.pure ? { pure: true as const } : {}),
+    ...(def.canFail ? { canFail: true as const } : {}),
+    ...(def.conversion ? { conversion: true as const } : {}),
+  };
+  if (def.variants) {
+    const v = def.variants;
+    out.variants = {
+      title: v.title,
+      ...(v.description === undefined ? {} : { description: v.description }),
+      default: v.default,
+      options: v.options.map((o) => ({
+        name: o.name,
+        title: o.title,
+        ...(o.description === undefined ? {} : { description: o.description }),
+        deprecated: o.deprecated ?? null,
+        inputs: ports(o.definition.inputs, true),
+        outputs: ports(o.definition.outputs, false),
+        config: configFields(o.definition),
+        dynamicPorts: typeof o.definition.resolvePorts === "function",
+      })),
+    };
+  }
+  return out;
+}
+
+function configFields(def: AnyNodeDefinition): ConfigDescriptor[] {
+  return Object.entries(def.config).map(([name, f]) => {
     const d: ConfigDescriptor = { name, kind: f.kind, required: f.required, title: f.title ?? titleFromName(name) };
     if (f.description !== undefined) d.description = f.description;
     if (f.default !== undefined) d.default = cloneJson(f.default);
@@ -84,28 +156,6 @@ export function toNodeDescriptor(def: AnyNodeDefinition, pack: Pick<NodePack, "n
     if (f.writable !== undefined) d.writable = f.writable;
     return d;
   });
-  return {
-    type: def.type,
-    pack: { name: pack.name, version: pack.version },
-    title: def.title,
-    description: def.description,
-    category: def.category,
-    icon: def.icon ?? null,
-    color: def.color ?? null,
-    inputs: ports(def.inputs, true),
-    outputs: ports(def.outputs, false),
-    config,
-    dynamicPorts: typeof def.resolvePorts === "function",
-    secrets: [...def.secrets],
-    cache: def.cache,
-    timeoutMs: def.timeoutMs,
-    retry: cloneJson(def.retry),
-    concurrency: def.concurrency ?? null,
-    deprecated: def.deprecated ?? null,
-    ...(def.frontend ? { frontend: true as const } : {}),
-    ...(def.pure ? { pure: true as const } : {}),
-    ...(def.canFail ? { canFail: true as const } : {}),
-  };
 }
 
 function ports(map: PortMap, isInput: boolean): PortDescriptor[] {

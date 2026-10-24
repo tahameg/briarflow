@@ -83,10 +83,10 @@ describe("std nodes inside the engine", () => {
       inputs: [{ name: "s", type: text }],
       outputs: [{ name: "n", type: int }],
       nodes: [
-        { id: "n_pf", type: "convert.parseFloat", position: pos },
+        { id: "n_pf", type: "convert.asFloat", position: pos },
         { id: "n_fi", type: "convert.floatToInt", position: pos },
       ],
-      edges: [e("e_1", "n_in.s", "n_pf.text"), e("e_2", "n_pf.value", "n_fi.value"), e("e_3", "n_fi.value", "n_out.n")],
+      edges: [e("e_1", "n_in.s", "n_pf.value"), e("e_2", "n_pf.value", "n_fi.value"), e("e_3", "n_fi.value", "n_out.n")],
     });
     expect((await run(d, { s: " 2.5 " })).outputs).toEqual({ n: 3 });
     const bad = await run(d, { s: "x" });

@@ -26,6 +26,27 @@
   gap: var(--bf-space-3);
   min-width: 0;
 }
+.bf-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #4a3f33;
+  border-radius: 4px;
+  background: #2a2723;
+  color: var(--bf-ink);
+  font: inherit;
+  font-size: var(--bf-text-sm);
+  cursor: pointer;
+}
+.bf-settings-btn:hover {
+  border-color: var(--bf-yellow);
+}
+.bf-settings-btn span {
+  font-size: 16px;
+  line-height: 1;
+}
 .bf-brand {
   padding: 2px var(--bf-space-2);
   background: var(--bf-yellow);
@@ -311,17 +332,12 @@
 .bf-dock__bar {
   box-shadow: 0 1px rgba(255, 255, 255, 0.05);
 }
-.bf-move__menu {
-  border: 6px solid transparent;
-  border-radius: 9px;
-  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
-  box-shadow: 0 0 0 1px #c07a48, 0 10px 24px rgba(0, 0, 0, 0.6);
-}
+.bf-move__menu,
 .bf-splash__card {
-  border: 10px solid transparent;
-  border-radius: 10px;
-  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
-  box-shadow: 0 0 0 1px #c07a48, 0 24px 48px rgba(0, 0, 0, 0.55);
+  border: 1px solid #0f0d0b;
+  border-radius: 4px;
+  background: #2a2723;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 
 /* ---------- Context / flow switchers (Switcher.tsx) ---------- */

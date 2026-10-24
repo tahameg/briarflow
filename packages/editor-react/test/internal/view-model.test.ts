@@ -3,7 +3,7 @@ import { applyCommands } from "@briarflow/authoring";
 import { createCatalog, createContextDocument, validateContext } from "@briarflow/core";
 import type { ContextDocument, TypeRef } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
-import { buildFlowView, canConnect } from "../../src/graph.js";
+import { buildFlowView, canConnect, planConnection } from "../../src/graph.js";
 import { initialConfig, paletteGroups, snap } from "../../src/palette.js";
 import { isListType, ledFamily, typeStyle } from "../../src/theme.js";
 import { initialValue, widgetKind } from "../../src/values.js";
@@ -64,6 +64,33 @@ describe("buildFlowView", () => {
     expect(canConnect(view, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" })).toBe(false);
     expect(canConnect(view, { node: "n_join", port: "text" }, { node: "n_join", port: "separator" })).toBe(false);
     expect(canConnect(view, { node: "n_join", port: "text" }, { node: "n_out", port: "text" })).toBe(true);
+  });
+
+  it("plans a conversion node between types that do not fit but convert", () => {
+    const r = applyCommands(
+      sample(),
+      [
+        { op: "flow.input.add", flowId: "flow_p", name: "raw", type: "text" },
+        { op: "node.add", flowId: "flow_p", type: "json.getField", id: "n_get", position: { x: 300, y: 200 } },
+        { op: "node.add", flowId: "flow_p", type: "convert.asInt", id: "n_int", position: { x: 300, y: 400 } },
+      ],
+      { catalog },
+    );
+    if (!r.ok) throw r.error;
+    const view = buildFlowView(r.doc, "flow_p", catalog, validateContext(r.doc, catalog), undefined)!;
+    // text → json input: As JSON goes in between.
+    expect(planConnection(view, catalog, { node: "n_in", port: "raw" }, { node: "n_get", port: "json" })).toEqual({
+      kind: "convert",
+      conversion: { type: "convert.asJson", title: "As JSON", input: "text", output: "json" },
+    });
+    // count (int) → text: As text.
+    expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
+    expect(canConnect(view, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" }, catalog)).toBe(true);
+    // json → As int's text|json input: direct; int → it: through As text.
+    expect(planConnection(view, catalog, { node: "n_get", port: "value" }, { node: "n_int", port: "value" })).toEqual({ kind: "direct" });
+    expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_int", port: "value" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
+    // An unwired oneOf port shows its choices.
+    expect(view.byId.get("n_int")!.inputs[0]!.typeText).toBe("text | json");
   });
 
   it("returns undefined for an unknown flow", () => {

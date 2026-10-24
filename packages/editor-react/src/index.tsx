@@ -46,9 +46,13 @@ export { GlobalsPanel, SignatureEditor, VariablesPanel } from "./components/Vari
 export type { SignatureEditorProps, VariablesPanelProps } from "./components/VariablesPanel.js";
 export { Inspector } from "./components/Inspector.js";
 export type { InspectorProps } from "./components/Inspector.js";
-export { RunPanel, rejectionDiagnostics, runBlockedHint, useFlowErrorCount } from "./components/RunPanel.js";
+export { RunPanel, rejectionDiagnostics, runBlockedHint, startEditorRun, useFlowErrorCount } from "./components/RunPanel.js";
 export { ConsolePanel } from "./components/ConsolePanel.js";
 export type { ConsolePanelProps } from "./components/ConsolePanel.js";
+export { SecretPicker, SecretsPanel, VaultProvider, useVault } from "./components/Vault.js";
+export type { NewSecretRequest, SecretPickerProps, VaultAccess, VaultApi } from "./components/Vault.js";
+export { SettingsPanel } from "./components/Settings.js";
+export type { PackSettingsInfo, SettingsAccess, SettingsPanelProps, SettingsSection } from "./components/Settings.js";
 export type { RunPanelProps } from "./components/RunPanel.js";
 export { DiagnosticsList, filterDiagnostics } from "./components/DiagnosticsList.js";
 export type { DiagnosticsListProps } from "./components/DiagnosticsList.js";
@@ -96,7 +100,7 @@ export type { ButtonProps, ConfirmDialogProps, DotState, ModalProps, PanelProps,
 export { BRIAR_TOKENS, briarTheme, isListType, ledFamily, nodeAccent, tokenVar, typeColor, typeStyle } from "./theme.js";
 export type { BriarToken, LedFamily, NamedKindLookup, TypeStyle } from "./theme.js";
 export { buildFlowView, canConnect, emptyCatalog, kindLookup, nodeTitle } from "./graph.js";
-export type { EdgeView, ExecEdgeView, FlowView, NodeView, PortView } from "./graph.js";
+export type { EdgeView, ExecEdgeView, FlowView, NodeView, PortView, VariantView } from "./graph.js";
 export { NODE_CONFIG_MIME, NODE_TYPE_MIME, initialConfig, paletteGroups, snap } from "./palette.js";
 export { nextName, shapeShorthand, toggleArray, typeShape } from "./fields.js";
 export type { TypeShape } from "./fields.js";

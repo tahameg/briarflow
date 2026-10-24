@@ -10,6 +10,7 @@ import {
   nodeLabel,
   scopeForFlow,
   validateNodeConfig,
+  variantDefinition,
   type AnyNodeDefinition,
   type ConfigField,
   type Edge,
@@ -106,16 +107,19 @@ export function nodeAdd(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
   if (BUILTINS.includes(type)) {
     fail("node.builtin_singleton", `Every flow has exactly one ${type} node; it is created with the flow.`, { type });
   }
-  const def = ctx.catalog.get(type);
-  if (!def) {
+  const typeDef = ctx.catalog.get(type);
+  if (!typeDef) {
     const packs = ctx.catalog.packs.map((x) => x.name);
     fail("node.unknown_type", `Unknown node type "${type}". Is its pack loaded? Known packs: ${packs.length ? packs.join(", ") : "none"}.`, { type });
   }
+  const variant = typeDef.variants ? ((p["variant"] as string | undefined) ?? typeDef.variants.default) : (p["variant"] as string | undefined);
+  const def = variantOf(typeDef, variant);
   const id = newId(ctx, "node", p["id"], (x) => flow.nodes.some((n) => n.id === x));
   const config = prepareConfig(ctx, def, flow, p["config"] as Record<string, unknown> | undefined);
   const title = p["title"] as string | undefined;
   checkTitle(ctx, title);
   let node: NodeInstance = { id, type, position: roundPosition(p["position"] as Position) };
+  if (variant !== undefined) node.variant = variant;
   if (title !== undefined && title !== "") node.title = title;
   if (config !== undefined) node.config = config;
   const values = p["values"] as Record<string, unknown> | undefined;
@@ -136,6 +140,7 @@ export function nodeAdd(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
     }
   }
   const resolvedCmd = { ...p, id } as Payload;
+  if (variant !== undefined) resolvedCmd["variant"] = variant;
   if (config !== undefined) resolvedCmd["config"] = config;
   return {
     created: { nodeId: id },
@@ -154,6 +159,7 @@ function checkTitle(ctx: Ctx, title: string | null | undefined): void {
 /** `node.add` command that recreates `node` (restore). */
 export function nodeAddCommand(flowId: string, node: NodeInstance, index: number): Command {
   const cmd: Payload = { op: "node.add", flowId, id: node.id, type: node.type, position: { ...node.position }, index };
+  if (node.variant !== undefined) cmd["variant"] = node.variant;
   if (node.title !== undefined) cmd["title"] = node.title;
   if (node.config !== undefined) cmd["config"] = node.config;
   if (node.values !== undefined) cmd["values"] = node.values;
@@ -268,13 +274,7 @@ export function nodeSetConfig(ctx: Ctx, p: Payload): Effect {
       nodeId: node.id,
     });
   }
-  const def = ctx.catalog.get(node.type);
-  if (!def) {
-    const packs = ctx.catalog.packs.map((x) => x.name);
-    fail("node.unknown_type", `Unknown node type "${node.type}". Is its pack loaded? Known packs: ${packs.length ? packs.join(", ") : "none"}.`, {
-      type: node.type,
-    });
-  }
+  const def = variantOf(knownType(ctx, node.type), node.variant);
   const config = prepareConfig(ctx, def, flow, p["config"] as Record<string, unknown>) ?? {};
   let next = without(node, "typeBindings");
   next = Object.keys(config).length === 0 ? without(next, "config") : { ...next, config };
@@ -282,6 +282,68 @@ export function nodeSetConfig(ctx: Ctx, p: Payload): Effect {
   return {
     inverse: [{ op: "node.setConfig", flowId: flow.id, nodeId: node.id, config: node.config ?? {} }],
     resolved: { ...p, config } as unknown as Command,
+    touched: [flow.id],
+  };
+}
+
+function knownType(ctx: Ctx, type: string): AnyNodeDefinition {
+  const def = ctx.catalog.get(type);
+  if (!def) {
+    const packs = ctx.catalog.packs.map((x) => x.name);
+    fail("node.unknown_type", `Unknown node type "${type}". Is its pack loaded? Known packs: ${packs.length ? packs.join(", ") : "none"}.`, { type });
+  }
+  return def;
+}
+
+/** The definition of `variant` of a node type; fails with `node.unknown_variant`. */
+function variantOf(typeDef: AnyNodeDefinition, variant: string | undefined): AnyNodeDefinition {
+  const def = variantDefinition(typeDef, variant);
+  if (def) return def;
+  const names = typeDef.variants?.options.map((o) => o.name) ?? [];
+  return fail(
+    "node.unknown_variant",
+    names.length > 0
+      ? `Node type "${typeDef.type}" has no variant "${variant}". Pick one of: ${names.join(", ")}.`
+      : `Node type "${typeDef.type}" has no variants; leave variant out.`,
+    { type: typeDef.type, variant, variants: names },
+  );
+}
+
+/**
+ * Config kept when a node switches variant: keys the new variant declares with the same kind,
+ * minus any the new variant rejects (e.g. a choice it does not offer).
+ */
+function carryConfig(ctx: Ctx, def: AnyNodeDefinition, flow: FlowDocument, from: AnyNodeDefinition, config: Record<string, unknown>): Record<string, unknown> {
+  const fields = configFields(def);
+  const old = configFields(from);
+  let kept: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(config)) if (fields[k] !== undefined && fields[k]?.kind === old[k]?.kind) kept[k] = v;
+  const r = validateNodeConfig(def, kept, ctx.doc, flow.id, ctx.catalog);
+  if (!r.ok) {
+    const bad = new Set(r.diagnostics.map((d) => d.path.field).filter((f): f is string => f !== undefined));
+    kept = Object.fromEntries(Object.entries(kept).filter(([k]) => !bad.has(k)));
+  }
+  return kept;
+}
+
+export function nodeSetVariant(ctx: Ctx, p: Payload): Effect {
+  const flow = getFlow(ctx, p["flowId"] as string);
+  const node = getNode(ctx, flow, p["nodeId"] as string);
+  const typeDef = knownType(ctx, node.type);
+  const from = variantDefinition(typeDef, node.variant);
+  const def = variantOf(typeDef, p["variant"] as string);
+  const variant = def.variant as string;
+  const given = p["config"] as Record<string, unknown> | undefined;
+  if (given === undefined && variant === node.variant) return { inverse: [], resolved: p as unknown as Command, touched: "none" };
+  const raw = given ?? (from ? carryConfig(ctx, def, flow, from, node.config ?? {}) : {});
+  const config = prepareConfig(ctx, def, flow, Object.keys(raw).length > 0 ? raw : undefined) ?? {};
+  let next: NodeInstance = { ...without(node, "typeBindings"), variant };
+  next = Object.keys(config).length === 0 ? without(next, "config") : { ...next, config };
+  putFlow(ctx, { ...flow, nodes: flow.nodes.map((n) => (n.id === node.id ? next : n)) });
+  const back: Payload = { op: "node.setVariant", flowId: flow.id, nodeId: node.id, variant: node.variant ?? typeDef.variants?.default, config: node.config ?? {} };
+  return {
+    inverse: [back as unknown as Command],
+    resolved: { ...p, variant, config } as unknown as Command,
     touched: [flow.id],
   };
 }

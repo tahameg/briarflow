@@ -129,7 +129,7 @@ export const SECTION_10_BATCH: readonly Command[] = [
     id: "n_tpl",
     type: "text.template",
     position: { x: 420, y: 0 },
-    config: { template: "Draw {name} in {style} style" },
+    config: { template: "Draw {{name}} in {{style}} style" },
   },
   { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_in", port: "character" }, to: { node: "n_brk", port: "value" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_2", from: { node: "n_brk", port: "name" }, to: { node: "n_tpl", port: "name" } },

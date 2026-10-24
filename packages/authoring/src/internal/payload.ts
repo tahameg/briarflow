@@ -160,7 +160,7 @@ const SCHEMAS: Record<Exclude<CommandOp, "edge.disconnect">, OpSchema> = {
   "flow.variable.delete": { req: varRef, opt: { cascade: bool } },
   "node.add": {
     req: { ...flowId, type: str, position },
-    opt: { id: str, title: str, config: record, values: record, index: int },
+    opt: { id: str, variant: str, title: str, config: record, values: record, index: int },
   },
   "node.remove": { req: nodeRef },
   "node.move": { req: { ...nodeRef, position } },
@@ -168,6 +168,7 @@ const SCHEMAS: Record<Exclude<CommandOp, "edge.disconnect">, OpSchema> = {
   "node.setValue": { req: { ...nodeRef, port: str, value: any } },
   "node.clearValue": { req: { ...nodeRef, port: str } },
   "node.setConfig": { req: { ...nodeRef, config: record } },
+  "node.setVariant": { req: { ...nodeRef, variant: str }, opt: { config: record } },
   "edge.connect": { req: { ...flowId, from: portRef, to: portRef }, opt: { id: str, index: int } },
   "exec.connect": { req: { ...flowId, from: portRef, to: portRef }, opt: { id: str, index: int } },
   "exec.disconnect": { req: { ...flowId, edgeId: str } },

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createCatalog, noopLogger, type AnyNodeDefinition, type ExecContext, type NodeInstance } from "@briarflow/core";
 import {
   convertFloatToInt,
-  convertParseFloat,
-  convertParseInt,
+  convertAsFloat,
+  convertAsInt,
   convertToText,
   listGet,
   listLength,
@@ -28,7 +28,8 @@ function ctx(): ExecContext {
     progress() {},
     log: noopLogger,
     media: { kind: "none", put: async () => ({ uri: "briar-media://m_1", mime: "image/png" }), get: async () => undefined, delete: async () => false },
-    secrets: { get: async () => "" },
+    secrets: { get: async () => "", read: async () => "" },
+    settings: { get: async () => undefined },
     globals: { get: () => undefined },
     variables: { get: () => undefined },
     fetch: globalThis.fetch,
@@ -42,7 +43,7 @@ async function call(def: unknown, inputs: Record<string, unknown>, config: Recor
 
 describe("stdPack", () => {
   it("is pack briar with the std namespaces and every §9 node except the core built-ins", () => {
-    expect(stdPack).toMatchObject({ name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug"] });
+    expect(stdPack).toMatchObject({ name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug", "json"] });
     expect(stdPack.types.map((t) => t.id)).toEqual(["briar.RoundingMode"]);
     expect(stdPack.nodes.map((n) => n.type).sort()).toEqual(
       [
@@ -54,23 +55,32 @@ describe("stdPack", () => {
         "briar.struct.break",
         "briar.constant",
         "briar.error.break",
+        "briar.member.get",
+        "briar.member.set",
         "text.template",
         "text.join",
         "list.make",
         "list.length",
         "list.get",
         "convert.toText",
-        "convert.parseInt",
-        "convert.parseFloat",
+        "convert.asJson",
+        "convert.asInt",
+        "convert.asFloat",
+        "convert.asBoolean",
+        "convert.asJsonArray",
         "convert.floatToInt",
         "debug.print",
+        "json.construct",
+        "json.getField",
+        "json.setField",
+        "json.addField",
       ].sort(),
     );
     const catalog = createCatalog([stdPack]);
     expect(catalog.get("briar.input")).toBeUndefined();
     expect(catalog.descriptors().every((d) => JSON.parse(JSON.stringify(d)) !== undefined)).toBe(true);
     const cached = stdPack.nodes.filter((n) => !n.cache).map((n) => n.type).sort();
-    expect(cached).toEqual(["briar.global.get", "briar.global.set", "briar.variable.get", "briar.variable.set"]);
+    expect(cached).toEqual(["briar.global.get", "briar.global.set", "briar.variable.get", "briar.variable.set", "text.template"]);
   });
 
   it("qualifies the RoundingMode port of floatToInt", () => {
@@ -80,14 +90,17 @@ describe("stdPack", () => {
 });
 
 describe("text.template", () => {
-  it("lists placeholders in order of first appearance; {{ and }} are literal", () => {
-    expect(templatePlaceholders("Draw {name} in {style} style, {name}! {{not}} }}")).toEqual(["name", "style"]);
-    expect(templatePlaceholders("Hi {")).toMatchObject({ error: { code: "text.invalid_template" } });
-    expect(templatePlaceholders("Hi {first name}")).toMatchObject({ error: { code: "text.invalid_placeholder" } });
+  it("lists placeholders in order of first appearance; \\{{ is literal", () => {
+    expect(templatePlaceholders("Draw {{name}} in {{style}} style, {{name}}! \\{{not}} }}")).toEqual({
+      inputs: [{ name: "name", json: false }, { name: "style", json: false }],
+      variables: [],
+    });
+    expect(templatePlaceholders("Hi {{")).toMatchObject({ error: { code: "text.invalid_template" } });
+    expect(templatePlaceholders("Hi {{first name}}")).toMatchObject({ error: { code: "text.invalid_placeholder" } });
   });
 
   it("resolves one generic port per placeholder with synthetic vars T1…Tn", () => {
-    const ports = textTemplate.resolvePorts?.({ config: { template: "{character_name_that_is_long} and {b}" }, scope: {} as never });
+    const ports = textTemplate.resolvePorts?.({ config: { template: "{{character_name_that_is_long}} and {{b}}" }, scope: {} as never });
     expect(ports).toEqual({
       inputs: { character_name_that_is_long: { kind: "typeSpec", ref: { kind: "var", name: "T1" } }, b: { kind: "typeSpec", ref: { kind: "var", name: "T2" } } },
       outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "text" } } },
@@ -95,14 +108,14 @@ describe("text.template", () => {
   });
 
   it("renders values with the toText rules", async () => {
-    expect(renderTemplate("{a}-{b}-{c}-{d} {{x}}", { a: "t", b: 1.5, c: true, d: null })).toBe("t-1.5-true- {x}");
-    const out = await call(textTemplate, { who: { b: 2, a: [1] }, img: { uri: "briar-media://m_9", mime: "image/png" } }, { template: "{who} {img}" });
+    expect(renderTemplate("{{a}}-{{b}}-{{c}}-{{d}} \\{{x}}", { a: "t", b: 1.5, c: true, d: null })).toBe("t-1.5-true- {{x}}");
+    const out = await call(textTemplate, { who: { b: 2, a: [1] }, img: { uri: "briar-media://m_9", mime: "image/png" } }, { template: "{{who}} {{img}}" });
     expect(out).toEqual({ text: '{"a":[1],"b":2} briar-media://m_9' });
   });
 
   it("uses type bindings so struct values that look like media are rendered as JSON", async () => {
     const value = { uri: "x", mime: "y" };
-    const out = await call(textTemplate, { s: value }, { template: "{s}" }, { typeBindings: { T1: { kind: "named", id: "ty_s" } } });
+    const out = await call(textTemplate, { s: value }, { template: "{{s}}" }, { typeBindings: { T1: { kind: "named", id: "ty_s" } } });
     expect(out).toEqual({ text: '{"mime":"y","uri":"x"}' });
   });
 });
@@ -141,19 +154,19 @@ describe("text.join and lists", () => {
 });
 
 describe("conversions", () => {
-  it("parseInt trims and is strict", async () => {
-    expect(await call(convertParseInt, { text: " -42 " })).toEqual({ value: -42 });
-    await expect(call(convertParseInt, { text: "4.2" })).rejects.toMatchObject({ code: "convert.invalid_number" });
-    await expect(call(convertParseInt, { text: "" })).rejects.toMatchObject({ code: "convert.invalid_number" });
-    await expect(call(convertParseInt, { text: "99999999999999999999" })).rejects.toMatchObject({ code: "convert.invalid_number" });
+  it("asInt trims and is strict", async () => {
+    expect(await call(convertAsInt, { value: " -42 " })).toEqual({ value: -42 });
+    await expect(call(convertAsInt, { value: "4.2" })).rejects.toMatchObject({ code: "convert.invalid_number" });
+    await expect(call(convertAsInt, { value: "" })).rejects.toMatchObject({ code: "convert.invalid_number" });
+    await expect(call(convertAsInt, { value: "99999999999999999999" })).rejects.toMatchObject({ code: "convert.invalid_number" });
   });
 
-  it("parseFloat trims and is strict", async () => {
-    expect(await call(convertParseFloat, { text: " 3.5 " })).toEqual({ value: 3.5 });
-    expect(await call(convertParseFloat, { text: "1e3" })).toEqual({ value: 1000 });
-    expect(await call(convertParseFloat, { text: ".5" })).toEqual({ value: 0.5 });
-    await expect(call(convertParseFloat, { text: "abc" })).rejects.toMatchObject({ code: "convert.invalid_number" });
-    await expect(call(convertParseFloat, { text: "Infinity" })).rejects.toMatchObject({ code: "convert.invalid_number" });
+  it("asFloat trims and is strict", async () => {
+    expect(await call(convertAsFloat, { value: " 3.5 " })).toEqual({ value: 3.5 });
+    expect(await call(convertAsFloat, { value: "1e3" })).toEqual({ value: 1000 });
+    expect(await call(convertAsFloat, { value: ".5" })).toEqual({ value: 0.5 });
+    await expect(call(convertAsFloat, { value: "abc" })).rejects.toMatchObject({ code: "convert.invalid_number" });
+    await expect(call(convertAsFloat, { value: "Infinity" })).rejects.toMatchObject({ code: "convert.invalid_number" });
   });
 
   it("floatToInt rounds half away from zero by default", async () => {

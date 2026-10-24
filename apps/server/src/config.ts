@@ -9,8 +9,13 @@ import { DEFAULT_CORS_ORIGINS } from "@briarflow/server";
 export interface ServerConfig {
   port: number;
   host: string;
-  /** Directory holding `briarflow.db` and `media/`. */
+  /** Directory holding `briarflow.db`, `vault.key` and `media/`. */
   dataDir: string;
+  /**
+   * Vault key (`BRIAR_VAULT_KEY`, 64 hex characters). Default: `<dataDir>/vault.key`,
+   * created with a random key on first start.
+   */
+  vaultKey: string | undefined;
   /** Allowed CORS origins; `false` when `BRIAR_CORS_ORIGIN=off`. */
   corsOrigins: readonly string[] | false;
   /** Directory of the built studio, served at `/` when it exists. */
@@ -85,6 +90,7 @@ export function loadConfig(env: Env, defaults: { defaultStudioDir?: string } = {
     port,
     host: nonEmpty(env, "HOST") ?? "127.0.0.1",
     dataDir: nonEmpty(env, "BRIAR_DATA_DIR") ?? "./data",
+    vaultKey: nonEmpty(env, "BRIAR_VAULT_KEY"),
     corsOrigins,
     studioDir: studioRaw === "off" ? undefined : (studioRaw ?? defaults.defaultStudioDir),
     python: pythonUrl === undefined ? undefined : pythonToken === undefined ? { url: pythonUrl } : { url: pythonUrl, token: pythonToken },

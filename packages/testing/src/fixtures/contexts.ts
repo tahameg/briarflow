@@ -52,7 +52,7 @@ export function portraitContext(): ContextDocument {
             "text.template",
             { x: 420, y: 0 },
             {
-              config: { template: "Draw {name} in {style} style" },
+              config: { template: "Draw {{name}} in {{style}} style" },
               typeBindings: { T1: ir.text(), T2: ir.named(ART_STYLE_ID) },
             },
           ),
@@ -555,7 +555,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     code: "node.ports_unresolved",
     severity: "error",
     path: { flowId: P, nodeId: "n_tpl" },
-    doc: () => portraitWith((f) => void (f.nodes.find((n) => n.id === "n_tpl")!.config = { template: "Draw {1bad}" })),
+    doc: () => portraitWith((f) => void (f.nodes.find((n) => n.id === "n_tpl")!.config = { template: "Draw {{1bad}}" })),
   },
   {
     label: "constant of the wrong type",
@@ -593,14 +593,6 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     severity: "error",
     path: { flowId: K, nodeId: "n_conv" },
     doc: () => kitContext({ nodes: [node("n_conv", "convert.toText", { x: 0, y: 0 })] }),
-  },
-  {
-    label: "required input without edge, constant or default",
-    code: "input.unconnected",
-    severity: "error",
-    path: { flowId: K, nodeId: "n_sink", port: "value" },
-    doc: () => kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 })] }),
-    messageContains: ["value"],
   },
   {
     label: "flow output not connected",

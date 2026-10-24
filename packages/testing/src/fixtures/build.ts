@@ -74,6 +74,7 @@ export const ir = {
   float: (constraints?: NumberConstraints): TypeRef =>
     constraints ? { kind: "primitive", name: "float", constraints } : { kind: "primitive", name: "float" },
   boolean: (): TypeRef => ({ kind: "primitive", name: "boolean" }),
+  json: (): TypeRef => ({ kind: "primitive", name: "json" }),
   image: (constraints?: ImageConstraints): TypeRef =>
     constraints ? { kind: "primitive", name: "image", constraints } : { kind: "primitive", name: "image" },
   video: (constraints?: TimedMediaConstraints): TypeRef =>

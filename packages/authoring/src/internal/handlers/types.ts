@@ -13,6 +13,7 @@ import {
   type TypeDecl,
   type TypeRef,
   type TypeScopeRef,
+  nodeDefinition,
 } from "@briarflow/core";
 import type { Command } from "../../commands.js";
 import {
@@ -101,7 +102,7 @@ export function findTypeUsages(doc: ContextDocument, catalog: NodeCatalog, typeI
       });
     }
     for (const n of flow.nodes) {
-      const fields = configFields(catalog.get(n.type));
+      const fields = configFields(nodeDefinition(catalog, n));
       let used = false;
       for (const [k, v] of Object.entries(n.config ?? {})) {
         const kind = fields[k]?.kind;

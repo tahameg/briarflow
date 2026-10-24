@@ -122,13 +122,13 @@ describe("engine cache", () => {
     expect(probe.calls.get("n_other")).toBeUndefined();
     await engine.run({ context: countDoc("w", "n_c"), flowId: FLOW_ID }).result;
     expect(probe.calls.get("n_c")).toBe(2);
-    // config differences (text.template) → different keys
+    // config differences (briar.constant) → different keys
     const spy = spyCache();
     const { engine: e2 } = makeEngine({ cache: spy.cache });
-    const tpl = (template: string) =>
-      doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_t", "text.template", { config: { template } })], edges: [e("n_t.text", "n_out.out")] });
-    await e2.run({ context: tpl("A"), flowId: FLOW_ID }).result;
-    await e2.run({ context: tpl("B"), flowId: FLOW_ID }).result;
+    const constant = (type: ReturnType<typeof ir.int>) =>
+      doc({ outputs: [{ name: "out", type: ir.float() }], nodes: [n("n_k", "briar.constant", { config: { type }, values: { value: 1 } })], edges: [e("n_k.value", "n_out.out")] });
+    await e2.run({ context: constant(ir.int()), flowId: FLOW_ID }).result;
+    await e2.run({ context: constant(ir.float()), flowId: FLOW_ID }).result;
     expect(new Set(spy.gets).size).toBe(2);
   });
 

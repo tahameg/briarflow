@@ -11,6 +11,7 @@
     "packages/nodes-std/src/**/*.ts",
     "packages/nodes-mock/src/**/*.ts",
     "packages/nodes-anthropic/src/**/*.ts",
+    "packages/nodes-openai/src/**/*.ts",
     "packages/client/src/**/*.ts",
     "packages/editor/src/**/*.ts",
     "packages/server/src/**/*.ts"

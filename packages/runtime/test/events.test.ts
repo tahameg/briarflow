@@ -65,7 +65,7 @@ const diamond = () =>
       n("n_a", "probe.echo"),
       n("n_b", "probe.echo"),
       n("n_c", "probe.echo"),
-      n("n_join", "text.template", { config: { template: "{b}+{c}" } }),
+      n("n_join", "text.template", { config: { template: "{{b}}+{{c}}" } }),
     ],
     edges: [
       e("n_in.t", "n_a.value"),

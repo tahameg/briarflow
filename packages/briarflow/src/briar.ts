@@ -8,10 +8,14 @@ import {
   createCatalog,
   createContextDocument,
   createIdGenerator,
+  createMemorySettings,
+  createMemoryVault,
+  createTypeScope,
   findFlow,
   flowSignatureSchema,
   noopLogger,
   validateContext,
+  validateValue,
   type Clock,
   type ContextDocument,
   type ContextListQuery,
@@ -26,8 +30,12 @@ import {
   type NodeCatalog,
   type NodeDescriptor,
   type NodePack,
+  type JsonValue,
+  type PackSetting,
   type Page,
   type SecretResolver,
+  type SecretVault,
+  type SettingsStore,
   type TypeDecl,
 } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
@@ -46,6 +54,10 @@ export interface BriarOptions {
   media?: MediaStore;
   /** Secrets for nodes. Default: none (every lookup is `undefined`). */
   secrets?: SecretResolver;
+  /** The secret vault (`ctx.secrets.read`, `briar.vault`). Default: a vault in memory. */
+  vault?: SecretVault;
+  /** Setting values (`ctx.settings.get`, `briar.settings`). Default: settings in memory. */
+  settings?: SettingsStore;
   /** Node packs. The standard pack is added unless `std: false` or a pack named `"briar"` is given. */
   packs?: readonly NodePack[];
   /** Add `stdPack` from `@briarflow/nodes-std`. Default `true`. */
@@ -53,7 +65,7 @@ export interface BriarOptions {
   /** Default: no-op. */
   logger?: Logger;
   /** Engine tuning (concurrency, cache, retries' jitter, fetch, …). */
-  engine?: Omit<EngineOptions, "catalog" | "media" | "secrets" | "logger" | "clock" | "idGenerator">;
+  engine?: Omit<EngineOptions, "catalog" | "media" | "secrets" | "vault" | "settings" | "logger" | "clock" | "idGenerator">;
   /** Time source for documents, runs and the run registry. Default `() => new Date()`. */
   clock?: Clock;
   /** Ids of contexts, created entities and runs. Default `createIdGenerator()`. */
@@ -91,10 +103,22 @@ export interface FlowInfo {
 
 /** What `GET /node-types` returns. */
 export interface NodeTypesInfo {
-  packs: { name: string; version: string; title: string; description: string }[];
+  packs: { name: string; version: string; title: string; description: string; settings: PackSetting[] }[];
   nodes: NodeDescriptor[];
   /** Pack types (ids `<pack>.<Name>`). */
   types: TypeDecl[];
+}
+
+/** One declared setting with its pack, as the settings screen lists it. */
+export interface SettingInfo extends PackSetting {
+  pack: string;
+  packTitle: string;
+}
+
+/** What `GET /settings` returns: every declared setting and the stored values, by key. */
+export interface SettingsInfo {
+  settings: SettingInfo[];
+  values: Record<string, JsonValue>;
 }
 
 /** Options of {@link Briar.run}. */
@@ -167,6 +191,18 @@ export interface Briar {
     /** Newest first. */
     list(filter?: RunListFilter): BriarRun[];
   };
+  /** The secret vault. Values go in and never come out (except to nodes, through the engine). */
+  readonly vault: SecretVault;
+  /** Declared settings and their values. */
+  readonly settings: {
+    info(): Promise<SettingsInfo>;
+    /**
+     * Sets a declared setting; `null` / `undefined` clears it (the default applies). Throws
+     * `settings.unknown` for an undeclared key and `settings.invalid` for a value that does
+     * not fit its type.
+     */
+    set(key: string, value: unknown): Promise<void>;
+  };
   /** Cancels running runs, waits for them, closes packs and stores that have `close()`. */
   close(): Promise<void>;
 }
@@ -221,13 +257,16 @@ export function createBriar(options: BriarOptions = {}): Briar {
   const store = options.store ?? new MemoryContextStore();
   const media = options.media ?? new MemoryMediaStore();
   const secrets = options.secrets ?? noSecrets;
+  const vault = options.vault ?? createMemoryVault({ clock: options.clock ?? (() => new Date()) });
+  const settingsStore = options.settings ?? createMemorySettings();
   const logger = options.logger ?? noopLogger;
   const clock = options.clock ?? (() => new Date());
   const idGenerator = options.idGenerator ?? createIdGenerator();
   const userPacks = [...(options.packs ?? [])];
   const packs = options.std !== false && !userPacks.some((p) => p.name === stdPack.name) ? [stdPack, ...userPacks] : userPacks;
   const catalog = createCatalog(packs);
-  const engine = createEngine({ ...(options.engine ?? {}), catalog, media, secrets, logger, clock, idGenerator });
+  const engine = createEngine({ ...(options.engine ?? {}), catalog, media, secrets, vault, settings: settingsStore, logger, clock, idGenerator });
+  const declaredSettings = (): SettingInfo[] => catalog.packs.flatMap((p) => p.settings.map((s) => ({ ...s, pack: p.name, packTitle: p.title })));
   const registry = new RunRegistry(options.runRetention ?? {}, clock);
   const attempts = options.globalWriteAttempts ?? 5;
   let closed = false;
@@ -370,7 +409,7 @@ export function createBriar(options: BriarOptions = {}): Briar {
     flows,
     nodeTypes() {
       return {
-        packs: catalog.packs.map((p) => ({ name: p.name, version: p.version, title: p.title, description: p.description })),
+        packs: catalog.packs.map((p) => ({ name: p.name, version: p.version, title: p.title, description: p.description, settings: p.settings.map((s) => ({ ...s })) })),
         nodes: catalog.descriptors(),
         types: [...catalog.types],
       };
@@ -412,6 +451,29 @@ export function createBriar(options: BriarOptions = {}): Briar {
       get: (runId) => registry.get(runId),
       list: (filter) => registry.list(filter),
     },
+    vault,
+    settings: {
+      async info() {
+        const settings = declaredSettings();
+        const all = await settingsStore.all();
+        const values: Record<string, JsonValue> = {};
+        for (const s of settings) if (all[s.key] !== undefined) values[s.key] = all[s.key] as JsonValue;
+        return { settings, values };
+      },
+      async set(key, value) {
+        ensureOpen();
+        const decl = declaredSettings().find((s) => s.key === key);
+        if (!decl) {
+          throw new BriarError("settings.unknown", `There is no setting "${key}". Settings come from the loaded packs.`, { details: { key } });
+        }
+        if (value === null || value === undefined) return settingsStore.set(key, undefined);
+        const problems = validateValue(value, decl.type, createTypeScope({}), { path: key });
+        if (problems.length > 0) {
+          throw new BriarError("settings.invalid", `Setting ${decl.title}: ${problems[0]!.message}`, { details: { key, diagnostics: problems } });
+        }
+        await settingsStore.set(key, value as JsonValue);
+      },
+    },
     close() {
       closing ??= (async () => {
         closed = true;
@@ -430,6 +492,8 @@ export function createBriar(options: BriarOptions = {}): Briar {
         for (const pack of userPacks as readonly (NodePack | ClosablePack)[]) await tryClose(pack);
         await tryClose(media);
         await tryClose(store);
+        await tryClose(vault);
+        await tryClose(settingsStore);
         for (const err of errors) logger.error("briar.close_failed", { error: err instanceof Error ? err.message : String(err) });
       })();
       return closing;

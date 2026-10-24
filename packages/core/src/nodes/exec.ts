@@ -4,6 +4,7 @@
 import type { NodeInstance, TypeDecl } from "../documents/model.js";
 import type { Logger } from "../interfaces/logger.js";
 import type { MediaStore } from "../interfaces/media-store.js";
+import type { SecretRef } from "../types/ir.js";
 
 /**
  * Per-execution services for a node. Created by the engine; tests use `runNode` from
@@ -22,11 +23,22 @@ export interface ExecContext {
   /** Tagged with runId/nodeId. */
   readonly log: Logger;
   readonly media: MediaStore;
-  /**
-   * Secrets the definition declared in `secrets`. Resolved before the first attempt; an
-   * undeclared name throws `NodeError("node.secret_not_declared")`.
-   */
-  readonly secrets: { get(name: string): Promise<string> };
+  readonly secrets: {
+    /**
+     * Secrets the definition declared in `secrets` (environment / secret resolver). Resolved
+     * before the first attempt; an undeclared name throws `NodeError("node.secret_not_declared")`.
+     */
+    get(name: string): Promise<string>;
+    /**
+     * The value of a vault secret the node was given: the value of one of its `secret`
+     * inputs, or of a `secret` setting of its pack it read with `settings.get`. Any other
+     * name throws `node.secret_not_allowed`; a name missing from the vault throws
+     * `node.missing_secret`.
+     */
+    read(ref: SecretRef): Promise<string>;
+  };
+  /** Settings of the node's pack (`definePack({ settings })`), by name; the declared default when unset. */
+  readonly settings: { get(name: string): Promise<unknown> };
   /** Run-start snapshot of globals, by name. Unknown → `NodeError("variable.unknown")`. Read-only. */
   readonly globals: { get(name: string): unknown };
   /** Run-start values of flow variables, by name. Read-only. */

@@ -525,6 +525,26 @@
 .bf-stepper:hover {
   border-color: var(--bf-ink);
 }
+.bf-json-compact {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--bf-space-1);
+  min-width: 0;
+}
+.bf-json-compact > .bf-json textarea {
+  min-width: 220px;
+}
+.bf-json-compact__toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.bf-json-compact__toggle:hover {
+  color: var(--bf-ink);
+}
 .bf-value-note {
   color: var(--bf-ink-muted);
   font-family: var(--bf-font-code);
@@ -781,10 +801,10 @@
   border-radius: 3px;
 }
 .bf-dialog {
-  border: 8px solid transparent;
-  border-radius: 10px;
-  background: var(--bf-plate) padding-box, var(--bf-wood-briar) border-box;
-  box-shadow: 0 0 0 1px #c07a48, inset 0 0 0 1px var(--bf-line), 0 24px 48px rgba(0, 0, 0, 0.55);
+  border: 1px solid #0f0d0b;
+  border-radius: 4px;
+  background: #2a2723;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 .bf-dialog::backdrop {
   background: rgba(10, 7, 4, 0.6);
@@ -866,4 +886,165 @@
 .bf-tab:focus-visible {
   outline: 1px solid var(--bf-brass-hi);
   outline-offset: 1px;
+}
+
+/* ---------- Vault, secret picker, settings ---------- */
+.bf-modal--narrow {
+  width: min(460px, calc(100vw - 32px));
+}
+.bf-secret-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.bf-secret-picker .bf-input {
+  min-width: 0;
+  flex: 1;
+}
+.bf-secret-picker__add {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--bf-line);
+  border-radius: 3px;
+  background: var(--bf-surface-2);
+  color: var(--bf-ink);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.bf-secret-picker__add:hover {
+  background: var(--bf-yellow);
+  color: #1b1712;
+}
+.bf-secret-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bf-secret-form__row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.bf-secret-form__note {
+  margin: 0;
+  font-size: var(--bf-text-sm);
+}
+.bf-secret-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.bf-secrets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bf-secrets__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bf-secrets__replace {
+  display: inline-flex;
+  gap: 4px;
+}
+.bf-plain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--bf-text-sm);
+}
+.bf-plain-table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--bf-line);
+  color: var(--bf-ink-muted, #8f877a);
+  font-weight: 400;
+  text-align: left;
+}
+.bf-plain-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  vertical-align: middle;
+}
+.bf-plain-table__actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.bf-plain-table__actions > * + * {
+  margin-left: 4px;
+}
+.bf-settings {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 320px;
+}
+.bf-settings__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--bf-line);
+}
+.bf-settings__tab {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bf-settings__tab:hover {
+  background: var(--bf-surface-2);
+}
+.bf-settings__tab--active {
+  background: var(--bf-surface-2);
+  font-weight: 600;
+}
+.bf-settings__body {
+  min-width: 0;
+}
+.bf-settings__title {
+  margin: 0 0 8px;
+  font-size: var(--bf-text-md, 15px);
+}
+.bf-settings__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.bf-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bf-settings__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bf-settings__help {
+  margin: 0;
+  font-size: var(--bf-text-sm);
+}
+@media (max-width: 640px) {
+  .bf-settings {
+    grid-template-columns: 1fr;
+  }
+  .bf-settings__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0 0 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--bf-line);
+  }
 }

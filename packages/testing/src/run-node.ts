@@ -8,6 +8,7 @@
 import {
   ERROR_OUTPUT,
   containsVar,
+  emptyValue,
   createCatalog,
   findFlow,
   NodeError,
@@ -16,6 +17,7 @@ import {
   scopeForFlow,
   substituteTypeVars,
   validateNodeConfig,
+  variantDefinition,
   CONTEXT_FORMAT,
   CONTEXT_FORMAT_VERSION,
   type AnyNodeDefinition,
@@ -35,6 +37,16 @@ import {
 } from "@briarflow/core";
 import { memoryMediaStore } from "./fixtures/media.js";
 
+function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): void {
+  if (value === null || value === undefined) return;
+  if (type.kind === "optional") return collectSecretRefs(value, type.of, out);
+  if (type.kind === "list" && Array.isArray(value)) {
+    for (const item of value) collectSecretRefs(item, type.of, out);
+    return;
+  }
+  if (type.kind === "primitive" && type.name === "secret" && typeof value === "string") out.add(value);
+}
+
 /** One captured `ctx.progress` call (clamped like the engine; no throttling). */
 export interface CapturedProgress {
   fraction: number;
@@ -50,6 +62,11 @@ export interface CapturedLog {
 
 /** Options of {@link runNode}. */
 export interface RunNodeOptions {
+  /**
+   * Variant of a node type with variants. Default: the variant `def` is (a definition from
+   * `variantDefinition`), else the type's default variant.
+   */
+  variant?: string;
   /** Node config (validated; defaults applied). */
   config?: Record<string, unknown>;
   /**
@@ -70,6 +87,10 @@ export interface RunNodeOptions {
   media?: MediaStore;
   /** Secret values by name. Declared secrets missing here fail with `node.missing_secret`. */
   secrets?: Record<string, string>;
+  /** Vault secret values by name, for `ctx.secrets.read` (only names the node was given). */
+  vault?: Record<string, string>;
+  /** Pack settings by name (`ctx.settings.get`). Unset ones give the declared default. */
+  settings?: Record<string, unknown>;
   /** `ctx.globals` by name. Default: the context's global values. */
   globals?: Record<string, unknown>;
   /** `ctx.variables` by name. Default: the flow variables' defaults. */
@@ -146,6 +167,7 @@ function catalogWith(def: AnyNodeDefinition, packs: readonly NodePack[]): NodeCa
     namespaces: [def.type.split(".")[0] ?? "runnode"],
     types: [],
     nodes: [def],
+    settings: [],
   };
   return {
     packs: base.packs,
@@ -170,7 +192,7 @@ function firstMessage(diagnostics: readonly { message: string }[], fallback: str
  *
  * @example
  * ```ts
- * const { outputs } = await runNode(textTemplate, { name: "Aria" }, { config: { template: "Hi {name}" } });
+ * const { outputs } = await runNode(textTemplate, { name: "Aria" }, { config: { template: "Hi {{name}}" } });
  * expect(outputs.text).toBe("Hi Aria");
  * ```
  */
@@ -182,9 +204,13 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
   const given = def as unknown as AnyNodeDefinition;
   const packs = options.packs ?? [];
   // Prefer the pack's copy (definePack qualifies bare pack-type refs in ports).
-  const packed = packs.flatMap((p) => p.nodes).find((n) => n.type === given.type && n.run === given.run);
-  const definition = packed ?? given;
-  const catalog = catalogWith(definition, packs);
+  const sameNode = (n: AnyNodeDefinition) => n.run === given.run || (n.variants?.options.some((o) => o.definition.run === given.run) ?? false);
+  const packed = packs.flatMap((p) => p.nodes).find((n) => n.type === given.type && sameNode(n));
+  const typeDefinition = packed ?? given;
+  const variant = options.variant ?? given.variant;
+  const definition = variantDefinition(typeDefinition, variant);
+  if (!definition) throw new Error(`runNode: node type "${given.type}" has no variant "${String(variant)}".`);
+  const catalog = catalogWith(typeDefinition, packs);
   const nodeId = options.nodeId ?? "n_test";
 
   // Place the node in a flow of a (copied) context.
@@ -197,6 +223,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
   const flow = findFlow(doc, flowId) as (FlowDocument & { nodes: NodeInstance[] }) | undefined;
   if (!flow) throw new Error(`runNode: flow "${flowId}" does not exist in the given context.`);
   const instance: NodeInstance = { id: nodeId, type: definition.type, position: { x: 0, y: 0 } };
+  if (definition.variant !== undefined) instance.variant = definition.variant;
   if (options.config !== undefined) instance.config = options.config;
   if (options.typeBindings !== undefined) instance.typeBindings = options.typeBindings;
   if (options.title !== undefined) instance.title = options.title;
@@ -221,19 +248,15 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
   const portType = (p: ResolvedPort): TypeRef => substituteTypeVars(p.declaredType, bindings);
   const at = { flowId, nodeId };
 
-  // Inputs: given → port default → null (optional).
+  // Inputs: given → port default → empty value of the type (null for structs, media, …).
   const checkInputs = options.checkInputs !== false;
   const values: Record<string, unknown> = {};
   for (const port of resolved.inputs) {
     let value = inputs[port.name];
-    if (value === undefined) {
-      if (port.hasDefault) value = port.default ?? null;
-      else if (port.declaredType.kind === "optional") value = null;
-      else if (checkInputs) {
-        throw new NodeError("node.invalid_input", `Node ${title} has no value for input "${port.name}". Connect an edge or set a constant.`, {
-          details: { port: port.name },
-        });
-      }
+    if (value === undefined) value = port.hasDefault ? (port.default ?? null) : emptyValue(portType(port));
+    if (value === null) {
+      values[port.name] = null;
+      continue;
     }
     const type = portType(port);
     if (checkInputs && !containsVar(type)) {
@@ -305,6 +328,9 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
       throw new TypeError("runNode: no fetch given (pass options.fetch).");
     });
   const signal = options.signal ?? new AbortController().signal;
+  const allowedSecrets = new Set<string>();
+  for (const port of resolved.inputs) collectSecretRefs(values[port.name], portType(port), allowedSecrets);
+  const packSettings = catalog.packOf(definition.type)?.settings ?? [];
   const ctx: ExecContext = {
     signal,
     runId: tag.runId,
@@ -329,6 +355,26 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
             { details: { secret: name } },
           );
         }
+        return value;
+      },
+      async read(ref: string) {
+        if (!allowedSecrets.has(ref)) {
+          throw new NodeError("node.secret_not_allowed", `Node ${title} asked for secret "${ref}", which none of its inputs or settings gives it.`, { details: { secret: ref } });
+        }
+        const value = options.vault?.[ref];
+        if (value === undefined) {
+          throw new NodeError("node.missing_secret", `Node ${title} needs secret "${ref}", which is not in the vault. Create it in Secrets or pick another one.`, { details: { secret: ref } });
+        }
+        return value;
+      },
+    },
+    settings: {
+      async get(name: string) {
+        const decl = packSettings.find((s) => s.name === name);
+        if (!decl) throw new NodeError("node.unknown_setting", `Node ${title} asked for setting "${name}", which its pack does not declare.`, { details: { setting: name } });
+        const given = options.settings?.[name];
+        const value = given === undefined || given === null ? (decl.default ?? null) : given;
+        collectSecretRefs(value, decl.type, allowedSecrets);
         return value;
       },
     },

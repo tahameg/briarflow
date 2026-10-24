@@ -133,7 +133,7 @@ export function portraitContext(): ContextDocument {
         nodes: [
           ...flow.nodes,
           node("n_brk", "briar.struct.break", { config: { typeId: "ty_char" } }),
-          node("n_tpl", "text.template", { config: { template: "Draw {name} in {style} style" } }),
+          node("n_tpl", "text.template", { config: { template: "Draw {{name}} in {{style}} style" } }),
         ],
         edges: [
           edge("e_1", "n_in", "character", "n_brk", "value"),

@@ -11,19 +11,26 @@ import {
   FLOW_INPUT_NODE_TYPE,
   FLOW_OUTPUT_NODE_TYPE,
   VARIABLE_NODE_TYPES,
+  MEMBER_NODE_TYPES,
+  bindTypeVars,
   containsVar,
   createCatalog,
+  findConversions,
   formatType,
+  nodeDefinition,
   isAssignable,
+  substituteTypeVars,
   resolveFlowPorts,
   scopeForFlow,
 } from "@briarflow/core";
 import type {
   AnyNodeDefinition,
   ContextDocument,
+  ConversionMatch,
   ExecPorts,
   Diagnostic,
   FlowDocument,
+  MediaRef,
   NodeCatalog,
   NodeInstance,
   PortWidget,
@@ -34,6 +41,7 @@ import type {
 } from "@briarflow/core";
 import type { NodeRunState, RunState } from "@briarflow/editor";
 import { isListType, ledFamily, nodeAccent, typeStyle } from "./theme.js";
+import { isMediaRef } from "./values.js";
 import type { BriarToken, LedFamily, NamedKindLookup, TypeStyle } from "./theme.js";
 
 /** One port of a node on the canvas. */
@@ -42,6 +50,8 @@ export interface PortView {
   title: string;
   description?: string;
   type: TypeRef;
+  /** The definition's type, before generics are bound (`$T`). */
+  declaredType: TypeRef;
   /** Shorthand (`list<Character?>`). */
   typeText: string;
   style: TypeStyle;
@@ -88,7 +98,10 @@ export interface NodeView {
   execLinked: readonly string[];
   /** The flow has execution lines and this node is not on them (nor read by a node that is): it never runs. */
   idle: boolean;
+  /** The definition in the node's variant (undefined for unknown types and variants). */
   definition: AnyNodeDefinition | undefined;
+  /** Nodes with variants: the selector (`Model`), the picked variant and the choices. */
+  variant?: VariantView;
   instance: NodeInstance;
   position: Position;
   inputs: PortView[];
@@ -99,6 +112,27 @@ export interface NodeView {
   run: NodeRunState | undefined;
   /** Optional muted preview (e.g. a template). */
   preview?: string;
+  /** Image / video outputs, with what the last run produced on them (preview window). */
+  media?: MediaPreview[];
+}
+
+/** An image or video output of a node and the media the last run put on it. */
+export interface MediaPreview {
+  port: string;
+  title: string;
+  kind: "image" | "video";
+  /** Empty before a run (or when the output was none). */
+  refs: MediaRef[];
+}
+
+/** The variant selector of a node. */
+export interface VariantView {
+  title: string;
+  /** Picked variant name (the node's, or the type's default). */
+  current: string;
+  /** False when the node names a variant its type does not have. */
+  known: boolean;
+  options: { name: string; title: string; description?: string; deprecated?: string }[];
 }
 
 /** One edge on the canvas. */
@@ -171,6 +205,9 @@ export function nodeTitle(doc: ContextDocument, flow: FlowDocument, node: NodeIn
     const g = doc.globals.find((x) => x.id === cfg.globalId);
     return `${node.type.endsWith(".get") ? "GET" : "SET"} ${g?.name ?? "?"}`;
   }
+  if ((node.type === MEMBER_NODE_TYPES.get || node.type === MEMBER_NODE_TYPES.set) && typeof cfg.path === "string" && cfg.path !== "") {
+    return `${node.type === MEMBER_NODE_TYPES.get ? "Get" : "Set"} .${cfg.path}`;
+  }
   return def?.title ?? node.type;
 }
 
@@ -218,7 +255,7 @@ export function buildFlowView(
   const runNodes = run && run.flowId === flowId ? run.nodes : undefined;
 
   const titles = new Map<string, string>();
-  for (const node of flow.nodes) titles.set(node.id, nodeTitle(doc, flow, node, cat.get(node.type)));
+  for (const node of flow.nodes) titles.set(node.id, nodeTitle(doc, flow, node, nodeDefinition(cat, node) ?? cat.get(node.type)));
 
   const incoming = new Map<string, { nodeId: string; port: string; edgeId: string }>();
   const outgoing = new Map<string, number>();
@@ -233,6 +270,7 @@ export function buildFlowView(
       name: p.name,
       title: p.title,
       type: p.type,
+      declaredType: p.declaredType,
       typeText: formatType(p.type, scope),
       style: typeStyle(p.type, kindOf),
       led: ledFamily(p.type),
@@ -250,6 +288,8 @@ export function buildFlowView(
       if (src) {
         view.source = { ...src, label: `${titles.get(src.nodeId) ?? src.nodeId}.${src.port}` };
         view.links = 1;
+      } else if (p.declaredType.kind === "var" && p.declaredType.oneOf) {
+        view.typeText = p.declaredType.oneOf.map((t) => formatType(t, scope)).join(" | ");
       }
       const values = node.values ?? {};
       if (Object.prototype.hasOwnProperty.call(values, p.name)) {
@@ -269,7 +309,8 @@ export function buildFlowView(
     }
   }
   const nodes: NodeView[] = flow.nodes.map((node) => {
-    const def = cat.get(node.type);
+    const typeDef = cat.get(node.type);
+    const def = nodeDefinition(cat, node);
     const resolved = ports?.nodes.get(node.id);
     const builtin = node.type === FLOW_INPUT_NODE_TYPE || node.type === FLOW_OUTPUT_NODE_TYPE;
     const diags = flowDiags.filter((d) => d.path.nodeId === node.id);
@@ -278,13 +319,13 @@ export function buildFlowView(
       id: node.id,
       type: node.type,
       title: titles.get(node.id) ?? node.id,
-      typeTitle: builtin ? (node.type === FLOW_INPUT_NODE_TYPE ? "flow inputs" : "flow outputs") : (def?.title ?? node.type),
-      accent: builtin ? "yellow" : variable ? "pink" : nodeAccent(def?.color, def?.category),
+      typeTitle: builtin ? (node.type === FLOW_INPUT_NODE_TYPE ? "flow inputs" : "flow outputs") : (typeDef?.title ?? node.type),
+      accent: builtin ? "yellow" : variable ? "pink" : nodeAccent(typeDef?.color, typeDef?.category),
       builtin,
       variable,
-      unknownType: !builtin && def === undefined,
-      frontend: def?.frontend === true,
-      exec: flow.execEdges === undefined ? { inputs: [], outputs: [] } : execPortsOf(node.type, def),
+      unknownType: !builtin && typeDef === undefined,
+      frontend: typeDef?.frontend === true,
+      exec: flow.execEdges === undefined ? { inputs: [], outputs: [] } : execPortsOf(node.type, def ?? typeDef),
       idle: live !== undefined && !live.has(node.id),
       execLinked: [
         ...new Set((flow.execEdges ?? []).flatMap((e) => [...(e.from.node === node.id ? [e.from.port] : []), ...(e.to.node === node.id ? [e.to.port] : [])])),
@@ -299,6 +340,20 @@ export function buildFlowView(
       warningCount: diags.filter((d) => d.severity === "warning").length,
       run: runNodes?.[node.id],
     };
+    if (typeDef?.variants) {
+      const v = typeDef.variants;
+      view.variant = {
+        title: v.title,
+        current: node.variant ?? v.default,
+        known: def !== undefined,
+        options: v.options.map((o) => ({
+          name: o.name,
+          title: o.title,
+          ...(o.description === undefined ? {} : { description: o.description }),
+          ...(o.deprecated === undefined ? {} : { deprecated: o.deprecated }),
+        })),
+      };
+    }
     if (def?.canFail) {
       const i = view.outputs.findIndex((p) => p.name === ERROR_OUTPUT);
       const [error] = i >= 0 ? view.outputs.splice(i, 1) : [];
@@ -306,6 +361,8 @@ export function buildFlowView(
     }
     const preview = node.type === "text.template" ? (node.config?.template as string | undefined) : previewOf(node);
     if (preview) view.preview = preview;
+    const media = view.builtin ? [] : mediaPreviews(view.outputs, view.run);
+    if (media.length > 0) view.media = media;
     return view;
   });
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -343,16 +400,65 @@ export function buildFlowView(
   return { flowId, flow, scope, kindOf, nodes, edges, execEdges, hasLines: flow.execEdges !== undefined, byId };
 }
 
+/** How a wire joins two ports: directly, or through a conversion node put in between. */
+export type ConnectionPlan = { kind: "direct" } | { kind: "convert"; conversion: ConversionMatch };
+
 /**
- * Instant connection check for drag feedback: output → input, different nodes, and
- * `isAssignable` when both types are concrete. Generic (`$T`) ends are allowed; the
- * `edge.connect` command makes the final decision.
+ * How `from` (an output) can feed `to` (an input): `direct` when the types fit (or a generic
+ * end can take it), `convert` when a conversion node of `catalog` turns one into the other,
+ * `undefined` when neither. Execution lines are not handled here. The `edge.connect` command
+ * makes the final decision.
  */
-export function canConnect(view: FlowView, from: { node: string; port: string }, to: { node: string; port: string }): boolean {
-  if (from.node === to.node) return false;
+export function planConnection(view: FlowView, catalog: NodeCatalog | undefined, from: { node: string; port: string }, to: { node: string; port: string }): ConnectionPlan | undefined {
+  if (from.node === to.node) return undefined;
   const out = view.byId.get(from.node)?.outputs.find((p) => p.name === from.port);
   const inp = view.byId.get(to.node)?.inputs.find((p) => p.name === to.port);
-  if (!out || !inp) return false;
-  if (containsVar(out.type) || containsVar(inp.type)) return true;
-  return isAssignable(out.type, inp.type);
+  if (!out || !inp) return undefined;
+  if (containsVar(out.type)) return { kind: "direct" };
+  const convert = (target: TypeRef): ConnectionPlan | undefined => {
+    const c = catalog ? findConversions(catalog, out.type, target)[0] : undefined;
+    return c ? { kind: "convert", conversion: c } : undefined;
+  };
+  if (containsVar(inp.declaredType)) {
+    const r = bindTypeVars([{ port: inp.name, direction: "input", pattern: inp.declaredType, other: out.type }]);
+    if (r.ok) {
+      const bound = substituteTypeVars(inp.declaredType, r.bindings);
+      if (containsVar(bound) || isAssignable(out.type, bound)) return { kind: "direct" };
+    }
+    const options = inp.declaredType.kind === "var" ? (inp.declaredType.oneOf ?? []) : [];
+    for (const o of options) {
+      const plan = convert(o);
+      if (plan) return plan;
+    }
+    return undefined;
+  }
+  if (isAssignable(out.type, inp.type)) return { kind: "direct" };
+  return convert(inp.type);
+}
+
+/**
+ * Instant connection check for drag feedback: {@link planConnection} finds a way (directly
+ * or through a conversion node).
+ */
+export function canConnect(view: FlowView, from: { node: string; port: string }, to: { node: string; port: string }, catalog?: NodeCatalog): boolean {
+  return planConnection(view, catalog, from, to) !== undefined;
+}
+
+/** Visual media kind of a port type (`image`, `image?`, `list<video>`), if any. */
+export function visualMediaKind(type: TypeRef): "image" | "video" | undefined {
+  const inner = type.kind === "optional" || type.kind === "list" ? type.of : type;
+  if (inner.kind === "optional" || inner.kind === "list") return visualMediaKind(inner);
+  return inner.kind === "primitive" && (inner.name === "image" || inner.name === "video") ? inner.name : undefined;
+}
+
+function mediaPreviews(outputs: readonly PortView[], run: NodeRunState | undefined): MediaPreview[] {
+  const out: MediaPreview[] = [];
+  for (const p of outputs) {
+    const kind = visualMediaKind(p.type);
+    if (!kind) continue;
+    const value = run?.outputs?.[p.name];
+    const refs = (Array.isArray(value) ? value.flat() : [value]).filter(isMediaRef);
+    out.push({ port: p.name, title: p.title, kind, refs });
+  }
+  return out;
 }

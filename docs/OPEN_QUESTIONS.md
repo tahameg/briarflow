@@ -106,6 +106,24 @@ messages only. Later: `node.partial` events.
 `@briarflow/testing`. Default: add it in phase 3/4 (in-memory media, fake secrets, fixed clock).
 > lead: agreed; noted in ARCHITECTURE §4.8 and DECISIONS #27.
 
+**Q-NODE-10. Nested variants** (node-api.md §1.2; planned after 2026-10-24). v1 has one
+selector per node. Some nodes have two independent choices whose combination decides the
+shape (OpenAI image: model × generate/edit; a provider node: provider × model). Proposed:
+
+- A variant may itself declare `variants` (same `VariantsInput`), up to a small depth (2).
+  The pick becomes a path: `NodeInstance.variant: "gpt-image-1/edit"` (`/` is not allowed in
+  variant names today, so stored v1 values stay valid and a flat name is a path of one).
+- Shape and `run` live on the leaves; inner levels carry only `title`, `description` and the
+  next selector. Each level is a dropdown; picking an inner one moves its child to that
+  level's default.
+- `node.setVariant` takes the path; carry-over and wire removal work on the leaf definitions,
+  as now. Descriptors nest `variants` inside options. `variantDefinition(def, "a/b")`.
+- Alternatives considered: several independent selectors on one node (combinations explode,
+  some are invalid), or computed shapes from two config fields through `resolvePorts` (loses
+  static typing, descriptors and the drop-wire matching).
+
+Until then, flatten: one option per combination (`gpt-image-1 · edit`).
+
 ## Runtime (`docs/specs/runtime.md`)
 
 **Q-RUN-1. Do unused nodes run?** (nodes whose outputs reach no output/set node.)

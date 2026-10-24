@@ -17,7 +17,11 @@ export type AuthorizeAction =
   | "runs.cancel"
   | "nodeTypes.read"
   | "media.upload"
-  | "media.read";
+  | "media.read"
+  | "secrets.list"
+  | "secrets.write"
+  | "settings.read"
+  | "settings.write";
 
 /** Resolved ids of the resource a request targets. */
 export interface AuthorizeResource {

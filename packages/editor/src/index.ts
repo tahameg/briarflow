@@ -22,8 +22,8 @@ export type { CatalogFromNodeTypesOptions, NodeTypesCatalog } from "./catalog.js
 export { createCatalogFromDescriptors } from "@briarflow/core";
 export type { DescriptorCatalog } from "@briarflow/core";
 export { completeRun, reduceRunEvent } from "./run-state.js";
-export { CONSOLE_LIMIT, DEFAULT_FRONTEND_NODES, printNode } from "./frontend.js";
-export type { ConsoleLine, FrontendNodeCall, FrontendNodeHandler } from "./frontend.js";
+export { CONSOLE_LIMIT, DEFAULT_FRONTEND_NODES, PRINT_NONE, printNode } from "./frontend.js";
+export type { ConsoleKind, ConsoleLine, FrontendNodeCall, FrontendNodeHandler } from "./frontend.js";
 export type { EditorRunStatus, NodeRunState, NodeRunStatus, RunState } from "./run-state.js";
 export type {
   CommandApplier,
@@ -35,6 +35,7 @@ export type {
   EditorStore,
   EditorStoreOptions,
   HistoryState,
+  KeyValueStorage,
   SelectMode,
   Selection,
   StartRunOptions,

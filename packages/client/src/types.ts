@@ -5,6 +5,7 @@ import type {
   FlowDocument,
   FlowSignatureSchema,
   NodeDescriptor,
+  PackSetting,
   RunResult,
   RunStatus,
   TypeDecl,
@@ -124,6 +125,15 @@ export interface PackInfo {
   name: string;
   version: string;
   title?: string;
+  description?: string;
+  /** Settings the pack adds to the settings screen. */
+  settings?: PackSetting[];
+}
+
+/** Response of `GET /settings`: declared settings (with their packs) and stored values by key. */
+export interface SettingsInfo {
+  settings: (PackSetting & { pack: string; packTitle: string })[];
+  values: Record<string, unknown>;
 }
 
 /** Response of `GET /node-types`. */

@@ -8,7 +8,7 @@ import { join, relative } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
 
-const SHARED_PACKAGES = ["core", "authoring", "runtime", "nodes-std", "nodes-mock", "nodes-anthropic", "client", "editor"];
+const SHARED_PACKAGES = ["core", "authoring", "runtime", "nodes-std", "nodes-mock", "nodes-anthropic", "nodes-openai", "client", "editor"];
 
 /** Node-only or UI packages that shared code must never import. */
 const FORBIDDEN_PACKAGES = [

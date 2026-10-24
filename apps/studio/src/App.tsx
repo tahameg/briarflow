@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { clientBackend, createEditorStore } from "@briarflow/editor";
 import type { EditorStore } from "@briarflow/editor";
 import type { ContextSummary } from "@briarflow/core";
-import { Button, EditorProvider } from "@briarflow/editor-react";
+import { Button, EditorProvider, VaultProvider } from "@briarflow/editor-react";
 import { mockPack } from "@briarflow/nodes-mock";
 import { stdPack } from "@briarflow/nodes-std";
 import { API_BASE, client, fetchStudioStart, useContexts } from "./client";
@@ -63,7 +63,7 @@ export function App() {
     if (!contextId) return;
     const flowId = startFlow.current?.contextId === contextId ? startFlow.current.flowId : undefined;
     startFlow.current = undefined;
-    const s = createEditorStore({ backend, contextId, localPacks: [stdPack, mockPack], ...(flowId ? { flowId } : {}) });
+    const s = createEditorStore({ backend, contextId, localPacks: [stdPack, mockPack], ...runStorage(), ...(flowId ? { flowId } : {}) });
     setStore(s);
     writeLast(contextId);
     return () => {
@@ -135,12 +135,16 @@ export function App() {
       onDeleteContext={deleteContext}
     />
   );
-  return store ? (
-    <EditorProvider store={store} mediaUrl={mediaUrl} uploadMedia={uploadMedia}>
-      {workspace}
-    </EditorProvider>
-  ) : (
-    workspace
+  return (
+    <VaultProvider vault={client.secrets}>
+      {store ? (
+        <EditorProvider store={store} mediaUrl={mediaUrl} uploadMedia={uploadMedia}>
+          {workspace}
+        </EditorProvider>
+      ) : (
+        workspace
+      )}
+    </VaultProvider>
   );
 }
 
@@ -160,4 +164,13 @@ function Splash({ title, text, detail, onRetry }: { title: string; text: string;
       </div>
     </main>
   );
+}
+
+/** Keeps typed run inputs in `localStorage`, unless reading it throws (blocked site data). */
+function runStorage(): { runInputsStorage?: Storage } {
+  try {
+    return { runInputsStorage: window.localStorage };
+  } catch {
+    return {};
+  }
 }

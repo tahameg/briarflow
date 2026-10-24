@@ -85,7 +85,11 @@ export interface EditorState {
   /** Live canvas viewports by flow id (persisted to the document debounced). */
   readonly viewports: Readonly<Record<string, Viewport>>;
   readonly run: RunState | undefined;
-  /** Lines written by frontend nodes (`debug.print`), oldest first, capped. */
+  /** Run inputs typed in the editor, by flow id, then input name. Kept across runs. */
+  readonly runInputs: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /** Whether runs started without `useCache` use the cache. Default true. */
+  readonly useCache: boolean;
+  /** What runs report (prints, errors, outputs, run start / end), oldest first, capped. */
   readonly console: readonly ConsoleLine[];
   readonly notices: readonly EditorNotice[];
 }
@@ -117,13 +121,23 @@ export interface EditorStoreOptions {
   applier?: CommandApplier;
   /** Handlers of frontend node types, by type. Default: `DEFAULT_FRONTEND_NODES` (`debug.print`). */
   frontendNodes?: Readonly<Record<string, FrontendNodeHandler>>;
+  /** Keeps `runInputs` across reloads (e.g. `localStorage`). Values that are not JSON are dropped. */
+  runInputsStorage?: KeyValueStorage;
+}
+
+/** The part of `Storage` the store uses. Errors (private mode, quota) are ignored. */
+export interface KeyValueStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
 }
 
 /** Options of {@link EditorStore.startRun}. */
 export interface StartRunOptions {
   /** Default: the active flow. */
   flowId?: string;
+  /** Default: `state.runInputs[flowId]` (only names the flow still declares). */
   inputs?: Record<string, unknown>;
+  /** Default: `state.useCache`. */
   useCache?: boolean;
 }
 
@@ -168,6 +182,9 @@ export interface EditorStore {
   /** Cancels the current run (no-op when none or finished). */
   cancelRun(reason?: string): void;
   clearRun(): void;
+  /** Sets (or with `undefined` clears) a run input of a flow in `state.runInputs`. */
+  setRunInput(flowId: string, name: string, value: unknown): void;
+  setUseCache(useCache: boolean): void;
   /** Empties the console. */
   clearConsole(): void;
   dismissNotice(id: number): void;

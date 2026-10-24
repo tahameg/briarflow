@@ -5,17 +5,31 @@
  * calls its handler. The built-in `debug.print` writes to the editor console.
  */
 
-/** One line of the editor console. */
+/**
+ * Kinds of console lines: `print` (frontend nodes), `info` (run started / finished),
+ * `warning` (retries), `error` (failed nodes, rejected or failed runs), `output` (a run output).
+ */
+export type ConsoleKind = "print" | "info" | "warning" | "error" | "output";
+
+/** One line of the editor console: everything a run reports, in one list. */
 export interface ConsoleLine {
   /** Unique within the store. */
   readonly id: number;
+  readonly kind: ConsoleKind;
   /** ISO time the line was written. */
   readonly at: string;
   readonly runId: string | undefined;
-  readonly nodeId: string;
-  /** Node title at the time. */
+  /** The node the line is about, when there is one. */
+  readonly nodeId?: string;
+  /** Node type of `nodeId`. */
+  readonly nodeType?: string;
+  /** Node title at the time, or the flow / output name for run lines. */
   readonly title: string;
   readonly text: string;
+  /** Error or diagnostic code (`error` / `warning`). */
+  readonly code?: string;
+  /** Raw value of an `output` line (media previews). */
+  readonly value?: unknown;
 }
 
 /** What a frontend node handler receives. */
@@ -32,9 +46,12 @@ export interface FrontendNodeCall {
 /** Runs a frontend node's effect in the editor. */
 export type FrontendNodeHandler = (call: FrontendNodeCall) => void;
 
+/** What `debug.print` writes when its text has no value. */
+export const PRINT_NONE = "[none]";
+
 /**
  * `debug.print`: the text goes to the editor console, and to `console.log` when its
- * `browserConsole` input is on.
+ * `browserConsole` input is on. A missing or `null` text prints {@link PRINT_NONE}.
  *
  * @example
  * ```ts
@@ -42,7 +59,8 @@ export type FrontendNodeHandler = (call: FrontendNodeCall) => void;
  * ```
  */
 export const printNode: FrontendNodeHandler = ({ title, inputs, print }) => {
-  const text = typeof inputs.text === "string" ? inputs.text : JSON.stringify(inputs.text ?? null);
+  const value = inputs.text;
+  const text = value === null || value === undefined ? PRINT_NONE : typeof value === "string" ? value : JSON.stringify(value);
   print(text);
   if (inputs.browserConsole === true) console.log(`[${title}] ${text}`);
 };

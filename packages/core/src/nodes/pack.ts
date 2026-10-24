@@ -3,12 +3,13 @@
  */
 import type { TypeDecl } from "../documents/model.js";
 import { PackDefinitionError } from "../errors.js";
-import type { EnumType, StructType } from "../types/builder.js";
+import type { EnumType, StructType, TypeSpec } from "../types/builder.js";
 import { isTypeSpec } from "../types/builder.js";
 import type { TypeRef } from "../types/ir.js";
 import { createTypeScope } from "../types/scope.js";
-import { collectNamedIds, mapNamedIds } from "../types/walk.js";
-import { isValidPackName, PACK_NAME_PATTERN } from "../util/names.js";
+import { collectNamedIds, containsVar, mapNamedIds } from "../types/walk.js";
+import { isValidFieldName, isValidPackName, PACK_NAME_PATTERN } from "../util/names.js";
+import { titleFromName } from "../util/titles.js";
 import { checkValue } from "../values/validate.js";
 import type { AnyNodeDefinition, PortMap } from "./define.js";
 import { portParts } from "./define.js";
@@ -28,6 +29,31 @@ export interface PackDefinitionInput {
   /** Pack types from `defineStruct` / `defineEnum`. Ids become `<name>.<TypeName>`. */
   types?: readonly (StructType | EnumType)[];
   nodes: readonly AnyNodeDefinition[];
+  /**
+   * Settings the pack adds to the settings screen, by name (key `<pack>.<name>`). Nodes read
+   * them with `ctx.settings.get(name)`. Types: primitives, lists and optionals of them.
+   */
+  settings?: Readonly<Record<string, TypeSpec | PackSettingInput>>;
+}
+
+/** One pack setting in `definePack({ settings })`. */
+export interface PackSettingInput {
+  type: TypeSpec;
+  /** Default: the name split into words. */
+  title?: string;
+  description?: string;
+  default?: unknown;
+}
+
+/** A validated pack setting. */
+export interface PackSetting {
+  /** `<pack>.<name>`, the key in the settings store. */
+  readonly key: string;
+  readonly name: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly type: TypeRef;
+  readonly default?: unknown;
 }
 
 /** A validated pack. Type ids and named refs in node ports are qualified. */
@@ -41,6 +67,8 @@ export interface NodePack {
   readonly namespaces: readonly string[];
   readonly types: readonly TypeDecl[];
   readonly nodes: readonly AnyNodeDefinition[];
+  /** Declared settings; `[]` when none. */
+  readonly settings: readonly PackSetting[];
 }
 
 /**
@@ -158,6 +186,25 @@ export function definePack(input: PackDefinitionInput): NodePack {
     return { ...def, inputs, outputs } as AnyNodeDefinition;
   });
 
+  const settings: PackSetting[] = [];
+  for (const [settingName, raw] of Object.entries(input.settings ?? {})) {
+    const where = `setting "${settingName}"`;
+    if (!isValidFieldName(settingName)) fail(`${where} is not a valid name (letters, digits and _; start with a letter or _).`);
+    const parts: PackSettingInput | undefined = isTypeSpec(raw) ? { type: raw } : typeof raw === "object" && raw !== null && isTypeSpec((raw as PackSettingInput).type) ? (raw as PackSettingInput) : undefined;
+    if (!parts) return fail(`${where} must be a type from t (e.g. t.secret()) or { type, title?, description?, default? }.`);
+    const ref = parts.type.ref;
+    if (collectNamedIds(ref).length > 0 || containsVar(ref)) fail(`${where} must use primitives, lists or optionals; named and generic types are not supported.`);
+    const setting: { -readonly [K in keyof PackSetting]: PackSetting[K] } = { key: `${name}.${settingName}`, name: settingName, title: parts.title ?? titleFromName(settingName), type: ref };
+    if (parts.description !== undefined) setting.description = parts.description;
+    if (parts.default !== undefined) {
+      const r = checkValue(parts.default, ref, scope, { path: "default" });
+      const first = r.diagnostics[0];
+      if (first) fail(`${where} has an invalid default: ${first.message}.`);
+      setting.default = parts.default;
+    }
+    settings.push(setting);
+  }
+
   return {
     kind: "nodePack",
     name,
@@ -167,6 +214,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
     namespaces,
     types,
     nodes,
+    settings,
   };
 }
 

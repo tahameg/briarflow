@@ -28,7 +28,7 @@ async function quickStart(briar: Briar) {
   flow.inputs.add("character", "Character");
   flow.outputs.add("reply", "text");
   const brk = flow.nodes.add("briar.struct.break", { config: { typeId: ctx.types.get("Character").id } });
-  const tpl = flow.nodes.add("text.template", { at: [300, 100], config: { template: "Portrait of {name}, {style} style" } });
+  const tpl = flow.nodes.add("text.template", { at: [300, 100], config: { template: "Portrait of {{name}}, {{style}} style" } });
   const llm = flow.nodes.add("mock.llm", { values: { seed: 7 } });
   flow.connect(flow.input.port("character"), brk.port("value"));
   flow.connect(brk.port("name"), tpl.port("name"));

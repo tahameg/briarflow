@@ -15,7 +15,7 @@ function portraitDoc() {
         outputs: [field("description", ir.text()), field("portrait", ir.image())],
         nodes: [
           node("n_brk", "briar.struct.break", { config: { typeId: "ty_char" } }),
-          node("n_tpl", "text.template", { config: { template: "Portrait of {name}, age {age}, in {style} style." } }),
+          node("n_tpl", "text.template", { config: { template: "Portrait of {{name}}, age {{age}}, in {{style}} style." } }),
           node("n_llm", "mock.llm", { values: { seed: 7 } }),
           node("n_img", "mock.image", { values: { width: 256, height: 128 } }),
         ],
@@ -96,7 +96,7 @@ describe("phase 3 exit: Character → template → mock LLM → mock image → o
     const [second, events] = await Promise.all([run2.result, collect(run2.events())]);
     expect(second.outputs).toEqual(first.outputs);
     const cached = events.filter((e) => e.type === "node.completed" && e.cached).map((e) => (e as { nodeId: string }).nodeId);
-    expect(cached).toEqual(["n_brk", "n_tpl", "n_llm", "n_img"]);
+    expect(cached).toEqual(["n_brk", "n_llm", "n_img"]);
     expect(media.items.size).toBe(1);
   });
 });

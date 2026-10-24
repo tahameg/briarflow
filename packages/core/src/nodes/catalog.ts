@@ -4,6 +4,7 @@
 import type { TypeDecl } from "../documents/model.js";
 import { CatalogError } from "../errors.js";
 import type { AnyNodeDefinition } from "./define.js";
+import { variantDefinition } from "./define.js";
 import type { NodeDescriptor } from "./descriptor.js";
 import { toNodeDescriptor } from "./descriptor.js";
 import type { NodePack } from "./pack.js";
@@ -74,4 +75,18 @@ export function createCatalog(packs: readonly NodePack[]): NodeCatalog {
     getType: (id) => typeById.get(id),
     descriptors: () => frozenPacks.flatMap((p) => p.nodes.map((def) => toNodeDescriptor(def, p))),
   };
+}
+
+/**
+ * The definition a placed node uses: its type in its variant (node-api.md §1.2). `undefined`
+ * for an unknown type or variant.
+ *
+ * @example
+ * ```ts
+ * nodeDefinition(catalog, { type: "openai.image", variant: "dall-e-3" })?.inputs;
+ * ```
+ */
+export function nodeDefinition(catalog: NodeCatalog, node: { type: string; variant?: string }): AnyNodeDefinition | undefined {
+  const def = catalog.get(node.type);
+  return def ? variantDefinition(def, node.variant) : undefined;
 }

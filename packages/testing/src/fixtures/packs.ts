@@ -14,6 +14,7 @@ import {
   defineStruct,
   isValidFieldName,
   t,
+  variant,
   type AnyNodeDefinition,
   type NodeCatalog,
   type NodePack,
@@ -45,36 +46,31 @@ function portFromRef(type: TypeRef, extra: { description?: string; default?: unk
 
 /**
  * Placeholders of a `text.template` template in order of first appearance (node-api.md §9):
- * `{name}` is a placeholder, `{{` / `}}` are literal braces. Returns a `PortError` for an
- * unclosed brace or an invalid placeholder name.
+ * `{{name}}` is a placeholder, `\{{` is a literal `{{`. Returns a `PortError` for an
+ * unclosed `{{` or an invalid placeholder name.
  */
 export function templatePlaceholders(template: string): string[] | PortError {
   const names: string[] = [];
   let i = 0;
   while (i < template.length) {
-    const ch = template[i];
-    if (ch === "{" && template[i + 1] === "{") {
-      i += 2;
+    if (template.startsWith("\\{{", i)) {
+      i += 3;
       continue;
     }
-    if (ch === "}" && template[i + 1] === "}") {
-      i += 2;
-      continue;
-    }
-    if (ch === "{") {
-      const end = template.indexOf("}", i + 1);
-      if (end < 0) return { error: { code: "text.invalid_template", message: `Unclosed "{" at position ${i}.` } };
-      const name = template.slice(i + 1, end);
+    if (template.startsWith("{{", i)) {
+      const end = template.indexOf("}}", i + 2);
+      if (end < 0) return { error: { code: "text.invalid_template", message: `Unclosed "{{" at position ${i}.` } };
+      const name = template.slice(i + 2, end).trim();
       if (!isValidFieldName(name)) {
         return {
           error: {
             code: "text.invalid_placeholder",
-            message: `"{${name}}" is not a valid placeholder. Use letters, digits and _; start with a letter or _.`,
+            message: `"{{${name}}}" is not a valid placeholder. Use letters, digits and _; start with a letter or _.`,
           },
         };
       }
       if (!names.includes(name)) names.push(name);
-      i = end + 1;
+      i = end + 2;
       continue;
     }
     i += 1;
@@ -344,6 +340,28 @@ function createKitPack(): NodePack {
       },
       outputs: { text: t.text() },
       run: ({ config }) => ({ text: `${config.mode}${config.count}` }),
+    }),
+    defineNode({
+      type: "kit.shaped",
+      pure: true,
+      variants: {
+        title: "Shape",
+        options: {
+          text: variant({
+            config: { mode: cfg.choice(["a", "b"], { default: "a" }), label: cfg.text({ optional: true }) },
+            inputs: { value: t.text(), extra: { type: t.int(), default: 0 } },
+            outputs: { out: t.text() },
+            run: ({ inputs, config }) => ({ out: `${config.mode}:${inputs.value}` }),
+          }),
+          number: variant({
+            title: "Number",
+            config: { mode: cfg.choice(["a", "c"], { default: "c" }) },
+            inputs: { value: t.int() },
+            outputs: { out: t.int(), double: t.int() },
+            run: ({ inputs }) => ({ out: inputs.value, double: inputs.value * 2 }),
+          }),
+        },
+      },
     }),
   ] as unknown as AnyNodeDefinition[];
 

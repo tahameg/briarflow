@@ -2,6 +2,7 @@
  * toText rules and template parsing (docs/specs/node-api.md §9).
  */
 import { canonicalJson, isValidFieldName, MEDIA_PRIMITIVE_NAMES, NodeError, type PortError, type TypeRef } from "@briarflow/core";
+import { getAt, parsePath, type PathSegment } from "./json-path.js";
 
 const MEDIA_REF_KEYS = new Set(["uri", "mime", "bytes", "hash", "meta"]);
 
@@ -38,85 +39,146 @@ export function valueToText(value: unknown, type?: TypeRef): string {
   return canonicalJson(value);
 }
 
-type Segment = { literal: string } | { placeholder: string };
+/** A `{{…}}` slot: a node input (`{{name}}`, `{{name.path}}`) or a variable (`{{$(name)}}`). */
+interface Slot {
+  kind: "input" | "variable";
+  name: string;
+  path: PathSegment[];
+}
+
+type Segment = { literal: string } | { slot: Slot };
+
+const INPUT_NAME = /^[A-Za-z_][A-Za-z0-9_]*/;
+
+function badSlot(expr: string, why: string): PortError {
+  return { error: { code: "text.invalid_placeholder", message: `"{{${expr}}}" is not a valid placeholder: ${why}` } };
+}
+
+function parseSlot(raw: string): Slot | PortError {
+  const expr = raw.trim();
+  let kind: Slot["kind"];
+  let name: string;
+  let rest: string;
+  if (expr.startsWith("$(")) {
+    const close = expr.indexOf(")");
+    if (close < 0) return badSlot(expr, 'close the variable name with ")", e.g. {{$(user)}}.');
+    kind = "variable";
+    name = expr.slice(2, close).trim();
+    if (name === "") return badSlot(expr, "write a variable name inside $( ).");
+    rest = expr.slice(close + 1).trim();
+  } else {
+    const m = INPUT_NAME.exec(expr);
+    if (!m || !isValidFieldName(m[0])) return badSlot(expr, "use letters, digits and _; start with a letter or _. Variables are written {{$(name)}}.");
+    kind = "input";
+    name = m[0];
+    rest = expr.slice(m[0].length).trim();
+  }
+  if (rest === "") return { kind, name, path: [] };
+  if (rest[0] !== "." && rest[0] !== "[") return badSlot(expr, `unexpected "${rest}". A field path starts with "." or "[".`);
+  const path = parsePath(rest[0] === "." ? rest.slice(1) : rest);
+  if (!Array.isArray(path)) return badSlot(expr, path.problem);
+  if (path.length === 0) return badSlot(expr, 'write a field name after ".".');
+  return { kind, name, path };
+}
 
 function parseTemplate(template: string): Segment[] | PortError {
   const segments: Segment[] = [];
   let literal = "";
   let i = 0;
   while (i < template.length) {
-    const ch = template[i];
-    if (ch === "{" && template[i + 1] === "{") {
-      literal += "{";
-      i += 2;
+    if (template.startsWith("\\{{", i)) {
+      literal += "{{";
+      i += 3;
       continue;
     }
-    if (ch === "}" && template[i + 1] === "}") {
-      literal += "}";
-      i += 2;
-      continue;
-    }
-    if (ch === "{") {
-      const end = template.indexOf("}", i + 1);
-      if (end < 0) return { error: { code: "text.invalid_template", message: `Unclosed "{" at position ${i}. Close it with "}" or write "{{" for a literal brace.` } };
-      const name = template.slice(i + 1, end);
-      if (!isValidFieldName(name)) {
-        return {
-          error: {
-            code: "text.invalid_placeholder",
-            message: `"{${name}}" is not a valid placeholder. Use letters, digits and _; start with a letter or _.`,
-          },
-        };
+    if (template.startsWith("{{", i)) {
+      const end = template.indexOf("}}", i + 2);
+      if (end < 0) {
+        return { error: { code: "text.invalid_template", message: `Unclosed "{{" at position ${i}. Close it with "}}" or write \\{{ for literal braces.` } };
       }
+      const slot = parseSlot(template.slice(i + 2, end));
+      if ("error" in slot) return slot;
       if (literal !== "") segments.push({ literal });
       literal = "";
-      segments.push({ placeholder: name });
-      i = end + 1;
+      segments.push({ slot });
+      i = end + 2;
       continue;
     }
-    literal += ch;
+    literal += template[i];
     i += 1;
   }
   if (literal !== "") segments.push({ literal });
   return segments;
 }
 
-/**
- * Placeholders of a `text.template` template in order of first appearance. `{{` / `}}` are
- * literal braces. Returns a `PortError` (`text.invalid_template` for an unclosed brace,
- * `text.invalid_placeholder` for a bad name).
- *
- * @example
- * ```ts
- * templatePlaceholders("Draw {name} in {style} style, {name}!"); // ["name", "style"]
- * ```
- */
-export function templatePlaceholders(template: string): string[] | PortError {
-  const segments = parseTemplate(template);
-  if (!Array.isArray(segments)) return segments;
-  const names: string[] = [];
-  for (const s of segments) if ("placeholder" in s && !names.includes(s.placeholder)) names.push(s.placeholder);
-  return names;
+/** What a template needs: its input pins (in order of first appearance) and the variables it reads. */
+export interface TemplateNeeds {
+  /** `json` when the template reads a field path of it (`{{user.name}}`), else any type (rendered with toText). */
+  inputs: { name: string; json: boolean }[];
+  /** Names inside `{{$(…)}}`: flow variables first, then globals. */
+  variables: string[];
 }
 
 /**
- * Renders a template: each `{name}` becomes `valueToText(values[name], types?.[name])`;
- * `{{` / `}}` become literal braces. Throws `NodeError("text.invalid_template")` for an
- * invalid template.
+ * Inputs and variables of a Template builder template. `{{name}}` is an input of any type,
+ * `{{name.field[0]}}` makes `name` a json input, `{{$(name)}}` reads a variable (no input),
+ * `\{{` is a literal `{{`. Returns a `PortError` (`text.invalid_template` for an unclosed
+ * `{{`, `text.invalid_placeholder` for a bad slot).
  *
  * @example
  * ```ts
- * renderTemplate("Hi {name} {{ok}}", { name: "Aria" }); // "Hi Aria {ok}"
+ * templatePlaceholders("Hi {{name}} from {{user.city}} {{$(greeting)}}");
+ * // { inputs: [{ name: "name", json: false }, { name: "user", json: true }], variables: ["greeting"] }
+ * ```
+ */
+export function templatePlaceholders(template: string): TemplateNeeds | PortError {
+  const segments = parseTemplate(template);
+  if (!Array.isArray(segments)) return segments;
+  const needs: TemplateNeeds = { inputs: [], variables: [] };
+  for (const s of segments) {
+    if (!("slot" in s)) continue;
+    const { kind, name, path } = s.slot;
+    if (kind === "variable") {
+      if (!needs.variables.includes(name)) needs.variables.push(name);
+      continue;
+    }
+    const known = needs.inputs.find((x) => x.name === name);
+    if (known) known.json ||= path.length > 0;
+    else needs.inputs.push({ name, json: path.length > 0 });
+  }
+  return needs;
+}
+
+/**
+ * Renders a template with the toText rules. Input slots read `values` (with their bound
+ * `types` when known), variable slots call `variable(name)`; a field path that does not exist
+ * throws `NodeError("json.field_missing")`.
+ * Throws `NodeError("text.invalid_template")` for an invalid template.
+ *
+ * @example
+ * ```ts
+ * renderTemplate("Hi {{name}}, {{user.age}} \\{{ok}}", { name: "Aria", user: { age: 9 } }); // "Hi Aria, 9 {{ok}}"
  * ```
  */
 export function renderTemplate(
   template: string,
   values: Readonly<Record<string, unknown>>,
   types?: Readonly<Record<string, TypeRef>>,
+  variable: (name: string) => unknown = (name) => {
+    throw new NodeError("variable.unknown", `Variable "${name}" is not available here.`);
+  },
 ): string {
   const segments = parseTemplate(template);
   if (!Array.isArray(segments)) throw new NodeError("text.invalid_template", segments.error.message);
   let out = "";
-  for (const s of segments) out += "literal" in s ? s.literal : valueToText(values[s.placeholder], types?.[s.placeholder]);
+  for (const s of segments) {
+    if ("literal" in s) {
+      out += s.literal;
+      continue;
+    }
+    const { kind, name, path } = s.slot;
+    if (path.length > 0) out += valueToText(getAt(kind === "variable" ? variable(name) : values[name], path));
+    else out += kind === "variable" ? valueToText(variable(name)) : valueToText(values[name], types?.[name]);
+  }
   return out;
 }

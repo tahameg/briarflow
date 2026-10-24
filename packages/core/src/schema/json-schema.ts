@@ -161,6 +161,10 @@ class SchemaCompiler {
           }
           case "boolean":
             return { type: "boolean" };
+          case "json":
+            return {};
+          case "secret":
+            return { type: "string", minLength: 1 };
           case "error":
             return {
               type: "object",

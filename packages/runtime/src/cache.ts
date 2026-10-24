@@ -71,6 +71,8 @@ export function createMemoryCache(options: MemoryCacheOptions = {}): MemoryCache
 /** What a cache key is computed from (runtime.md §6). */
 export interface CacheKeyInput {
   nodeType: string;
+  /** Variant of a node type with variants. */
+  variant?: string;
   /** `"<pack name>@<pack version>"`. */
   pack: string;
   cacheVersion: string;
@@ -82,7 +84,7 @@ export interface CacheKeyInput {
 
 /**
  * Cache key: lowercase hex sha-256 of the canonical JSON of
- * `{ v: 1, nodeType, pack, cacheVersion, config, typeBindings, inputs }`.
+ * `{ v: 1, nodeType, variant?, pack, cacheVersion, config, typeBindings, inputs }`.
  *
  * @example
  * ```ts
@@ -94,6 +96,7 @@ export function computeCacheKey(input: CacheKeyInput): Promise<string> {
     canonicalJson({
       v: 1,
       nodeType: input.nodeType,
+      ...(input.variant === undefined ? {} : { variant: input.variant }),
       pack: input.pack,
       cacheVersion: input.cacheVersion,
       config: input.config,

@@ -61,7 +61,7 @@ const SECTION_10: Command[] = [
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
   { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "text" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
-  { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Draw {name} in {style} style" } },
+  { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Draw {{name}} in {{style}} style" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_in", port: "character" }, to: { node: "n_brk", port: "value" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_2", from: { node: "n_brk", port: "name" }, to: { node: "n_tpl", port: "name" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_3", from: { node: "n_brk", port: "style" }, to: { node: "n_tpl", port: "style" } },

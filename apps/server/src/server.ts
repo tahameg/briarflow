@@ -1,16 +1,17 @@
 /**
  * Builds and starts the Briarflow server from a {@link ServerConfig}: SQLite contexts and
- * filesystem media under the data dir, std + mock packs, optional Python and provider packs,
+ * filesystem media under the data dir, std + image + mock packs, optional Python and provider packs,
  * the REST + SSE API, `/health`, the studio start target (`/api/studio`) and the studio UI with
  * SPA fallback.
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import type { Logger, LogData, NodePack } from "@briarflow/core";
+import { imagePack } from "@briarflow/nodes-image";
 import { mockPack } from "@briarflow/nodes-mock";
 import { createBriarApp, serve, type BriarServer } from "@briarflow/server";
 import { FsMediaStore } from "@briarflow/storage-fs";
-import { SqliteContextStore } from "@briarflow/storage-sqlite";
+import { SqliteContextStore, SqliteSecretVault, SqliteSettingsStore, loadVaultKey, parseVaultKey } from "@briarflow/storage-sqlite";
 import { createBriar, envSecrets, type Briar } from "briarflow";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { isLoopback, type ServerConfig } from "./config.js";
@@ -51,7 +52,7 @@ export async function startServer(config: ServerConfig, logger: Logger): Promise
   const dataDir = resolve(config.dataDir);
   mkdirSync(join(dataDir, "media"), { recursive: true });
 
-  const packs: NodePack[] = [];
+  const packs: NodePack[] = [imagePack];
   if (config.mock) packs.push(mockPack);
   if (config.python) {
     // Loaded lazily: only deployments with a worker need the bridge. `briar.close()` closes it.
@@ -60,10 +61,14 @@ export async function startServer(config: ServerConfig, logger: Logger): Promise
   }
   packs.push(...loadProviderPacks(config));
 
+  const dbFile = join(dataDir, "briarflow.db");
+  const vaultKey = config.vaultKey !== undefined ? parseVaultKey(config.vaultKey, "BRIAR_VAULT_KEY") : loadVaultKey(join(dataDir, "vault.key"));
   const briar = createBriar({
-    store: new SqliteContextStore({ file: join(dataDir, "briarflow.db") }),
+    store: new SqliteContextStore({ file: dbFile }),
     media: new FsMediaStore({ dir: join(dataDir, "media") }),
     secrets: envSecrets(),
+    vault: new SqliteSecretVault({ file: dbFile, key: vaultKey }),
+    settings: new SqliteSettingsStore({ file: dbFile }),
     packs,
     logger,
   });

@@ -1,4 +1,4 @@
-import type { ContextDocument, ContextSummary, MediaRef, Page, RunResult, RunStatus } from "@briarflow/core";
+import type { ContextDocument, ContextSummary, MediaRef, NewSecret, Page, RunResult, RunStatus, SecretInfo } from "@briarflow/core";
 import { InvalidRequestError } from "./errors.js";
 import { Http, readJson, seg } from "./http.js";
 import { DEFAULT_RECONNECT, RemoteRun } from "./remote-run.js";
@@ -16,6 +16,7 @@ import type {
   RequestOptions,
   RunFlowOptions,
   RunInfo,
+  SettingsInfo,
   UploadMediaOptions,
 } from "./types.js";
 
@@ -77,6 +78,26 @@ export interface MediaApi {
   url(mediaId: string): string;
 }
 
+/**
+ * Vault endpoints. Values go to the server and never come back: `list` gives names and kinds.
+ */
+export interface SecretsApi {
+  list(options?: RequestOptions): Promise<SecretInfo[]>;
+  /** `409 secret.exists` → `ConflictError`; a bad name, kind or value → 422 `secret.invalid`. */
+  create(secret: NewSecret, options?: RequestOptions): Promise<SecretInfo>;
+  /** Replaces the value (the kind stays). */
+  update(name: string, value: string, options?: RequestOptions): Promise<SecretInfo>;
+  delete(name: string, options?: RequestOptions): Promise<void>;
+}
+
+/** Settings endpoints. */
+export interface SettingsApi {
+  /** Declared settings (with their packs) and stored values. */
+  get(options?: RequestOptions): Promise<SettingsInfo>;
+  /** Sets one setting; `null` clears it. Returns the new state. */
+  set(key: string, value: unknown, options?: RequestOptions): Promise<SettingsInfo>;
+}
+
 /** Typed client of the Briarflow REST + SSE API. */
 export interface BriarClient {
   readonly baseUrl: string;
@@ -85,6 +106,8 @@ export interface BriarClient {
   readonly runs: RunsApi;
   readonly nodeTypes: NodeTypesApi;
   readonly media: MediaApi;
+  readonly secrets: SecretsApi;
+  readonly settings: SettingsApi;
 }
 
 /**
@@ -240,5 +263,29 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
     },
   };
 
-  return { baseUrl: options.baseUrl, contexts, flows, runs, nodeTypes, media };
+  const secrets: SecretsApi = {
+    async list(o) {
+      return (await http.json<{ items: SecretInfo[] }>({ method: "GET", path: "/secrets", ...sig(o) })).items;
+    },
+    create(secret, o) {
+      return http.json<SecretInfo>({ method: "POST", path: "/secrets", json: { name: secret.name, kind: secret.kind, value: secret.value }, ...sig(o) });
+    },
+    update(name, value, o) {
+      return http.json<SecretInfo>({ method: "POST", path: `/secrets/${seg(name)}`, json: { value }, ...sig(o) });
+    },
+    async delete(name, o) {
+      await http.send({ method: "DELETE", path: `/secrets/${seg(name)}`, ...sig(o) });
+    },
+  };
+
+  const settings: SettingsApi = {
+    get(o) {
+      return http.json<SettingsInfo>({ method: "GET", path: "/settings", ...sig(o) });
+    },
+    set(key, value, o) {
+      return http.json<SettingsInfo>({ method: "POST", path: "/settings", json: { key, value: value === undefined ? null : value }, ...sig(o) });
+    },
+  };
+
+  return { baseUrl: options.baseUrl, contexts, flows, runs, nodeTypes, media, secrets, settings };
 }

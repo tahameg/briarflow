@@ -40,6 +40,7 @@ export function createPortsCache(catalog: NodeCatalog): PortsOf {
 
 const PORTLESS_CODES = new Set([
   "node.unknown_type",
+  "node.unknown_variant",
   "config.invalid",
   "config.unknown_ref",
   "node.ports_unresolved",

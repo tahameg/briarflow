@@ -96,9 +96,10 @@ npm workspaces monorepo. Scope: `@briarflow/*`, plus the unscoped facade `briarf
 | `@briarflow/core` | plain TS | Type IR, `t` type builder, shorthand parser, assignability, generics, value validation, JSON Schema export, document model (context/flow), **serialization + format migrations**, node definition API (`defineNode`, `definePack`), node catalog, flow validation → diagnostics, extension interfaces (`ContextStore`, `MediaStore`, `SecretResolver`, `Logger`), error classes. |
 | `@briarflow/authoring` | plain TS | **Layer 2.** The command set and `ContextEditor`: create flows, define/change types, create local and global variables, set access levels, change types, add/move/remove nodes, connect/disconnect, undo/redo. Pure functions over `ContextDocument`. |
 | `@briarflow/runtime` | plain TS | Execution engine: scheduling, `Run`, events, cancellation, retries, timeouts, caching, concurrency limits, globals snapshot and variable semantics. |
-| `@briarflow/nodes-std` | plain TS | Built-in nodes: flow input/output, variables, globals, struct make/break, list ops, text template, conversions, constants. |
+| `@briarflow/nodes-std` | plain TS | Built-in nodes: flow input/output, variables, globals, struct make/break, member get/set (`value.member`, types.md §12), list ops, text template, conversions, constants. |
+| `@briarflow/nodes-image` | plain TS (+ fast-png, jpeg-js) | Image processing pack `image`: make, split channels, resize, crop, rotate/flip, grayscale, invert, convert (PNG/JPEG). |
 | `@briarflow/nodes-mock` | plain TS | Deterministic fake AI nodes (fake LLM, SVG image generator, fake 3D) for tests and demos without API keys. |
-| `@briarflow/nodes-anthropic` (done), `nodes-openai` (later) | plain TS | Provider node packs over plain `fetch` (portable). |
+| `@briarflow/nodes-anthropic`, `@briarflow/nodes-openai` | plain TS | Provider node packs over plain `fetch` (portable). |
 | `briarflow` | plain TS (+ Node optional) | **Layer 1 facade.** `createBriar()`: wires stores, packs, secrets, runtime. Context index (list/get/find flow), fluent authoring handles, run registry, `MemoryContextStore`, `MemoryMediaStore`, `envSecrets()`. |
 | `@briarflow/storage-fs` | Node | `FsContextStore` (JSON files) and `FsMediaStore` (files on disk). |
 | `@briarflow/storage-sqlite` | Node | `SqliteContextStore`. |
@@ -262,6 +263,7 @@ interface NodeInstance {
   type: string;                               // node definition type, e.g. "text.template"
   title?: string;
   position: { x: number; y: number };
+  variant?: string;                           // picked variant of a type with variants (node-api.md §1.2)
   config?: Record<string, unknown>;           // validated against the definition's cfg fields
   values?: Record<string, unknown>;           // constants of input ports; kept (ignored) while connected
   typeBindings?: Record<string, TypeRef>;     // resolved generics
@@ -492,7 +494,7 @@ Command set (v1; authoritative list and payloads in `docs/specs/commands.md`):
 | flows | `flow.create`, `flow.rename`, `flow.setDescription`, `flow.duplicate`, `flow.delete` |
 | signature | `flow.input.add/remove/rename/setType/reorder/setDescription/setDefault/clearDefault`, `flow.output.add/remove/rename/setType/reorder/setDescription` |
 | flow variables | `flow.variable.create/rename/setType/setAccess/setDefault/clearDefault/setDescription/delete` |
-| nodes | `node.add`, `node.remove`, `node.move`, `node.setTitle`, `node.setValue`, `node.clearValue`, `node.setConfig` |
+| nodes | `node.add`, `node.remove`, `node.move`, `node.setTitle`, `node.setValue`, `node.clearValue`, `node.setConfig`, `node.setVariant` |
 | edges | `edge.connect` (replaces an existing edge into the same input), `edge.disconnect` |
 | ui | `flow.setViewport` (does not create an undo step) |
 

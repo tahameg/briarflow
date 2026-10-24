@@ -11,6 +11,8 @@ import {
   type NodeCatalog,
   type Run,
   type SecretResolver,
+  type SecretVault,
+  type SettingsStore,
 } from "@briarflow/core";
 import { createMemoryCache, type RunCache } from "./cache.js";
 import { LocalRun, type RunServices } from "./run.js";
@@ -39,6 +41,10 @@ export interface EngineOptions {
   fetch?: typeof fetch;
   /** How long cancelled nodes may take to settle. Default 5000 ms. */
   cancelGraceMs?: number;
+  /** Where `ctx.secrets.read` finds vault secrets. Default: none (every read fails `node.missing_secret`). */
+  vault?: SecretVault;
+  /** Where `ctx.settings.get` finds pack settings. Default: none (declared defaults). */
+  settings?: SettingsStore;
 }
 
 /** Options of {@link Engine.run}. */
@@ -132,6 +138,8 @@ export function createEngine(options: EngineOptions): Engine {
     catalog: options.catalog,
     media: options.media,
     secrets: options.secrets,
+    ...(options.vault ? { vault: options.vault } : {}),
+    ...(options.settings ? { settings: options.settings } : {}),
     logger: options.logger ?? noopLogger,
     cache: options.cache ?? createMemoryCache({ maxEntries: 500 }),
     clock: options.clock ?? (() => new Date()),

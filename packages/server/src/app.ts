@@ -12,6 +12,7 @@ import { registerContextRoutes } from "./routes/contexts.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerNodeTypeRoutes } from "./routes/node-types.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { registerSecretRoutes } from "./routes/secrets.js";
 
 /** CORS settings of {@link createBriarApp}. */
 export interface BriarCorsOptions {
@@ -108,6 +109,7 @@ export function createBriarApp<E extends Env = Env>(briar: Briar, options: Briar
   registerRunRoutes(kit);
   registerNodeTypeRoutes(kit);
   registerMediaRoutes(kit);
+  registerSecretRoutes(kit);
 
   app.notFound((c) => {
     const path = new URL(c.req.url).pathname;

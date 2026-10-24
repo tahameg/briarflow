@@ -436,6 +436,8 @@ export interface NodeAddCommand extends CommandBase {
   type: string;
   position: Position;
   id?: string;
+  /** Variant of a node type with variants (default: the type's default variant). */
+  variant?: string;
   title?: string;
   /** Validated against the definition's config fields. `cfg.type()` fields accept shorthand. */
   config?: Readonly<Record<string, unknown>>;
@@ -482,6 +484,20 @@ export interface NodeSetConfigCommand extends CommandBase {
   flowId: string;
   nodeId: string;
   config: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Switches a node to another variant of its type (node-api.md §1.2). Without `config`, config
+ * fields the new variant shares (same key and kind, still valid) are kept; the rest is dropped.
+ * Wires and constants of ports the new variant does not have are removed.
+ */
+export interface NodeSetVariantCommand extends CommandBase {
+  op: "node.setVariant";
+  flowId: string;
+  nodeId: string;
+  variant: string;
+  /** Replaces the whole config instead of carrying it over. */
+  config?: Readonly<Record<string, unknown>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -603,6 +619,7 @@ export type Command =
   | NodeSetValueCommand
   | NodeClearValueCommand
   | NodeSetConfigCommand
+  | NodeSetVariantCommand
   | EdgeConnectCommand
   | EdgeDisconnectCommand
   | ExecConnectCommand
@@ -681,6 +698,7 @@ export const COMMAND_OPS: readonly CommandOp[] = [
   "node.setValue",
   "node.clearValue",
   "node.setConfig",
+  "node.setVariant",
   "edge.connect",
   "edge.disconnect",
   "exec.connect",

@@ -1,7 +1,7 @@
 /**
  * Struct and constant nodes (docs/specs/node-api.md §9).
  */
-import { cfg, defineNode, t, type PortError, type PortMap, type PortOptions, type UnknownValue } from "@briarflow/core";
+import { cfg, defineNode, memberAt, readMember, t, writeMember, type PortError, type PortMap, type PortOptions, type PortScope, type TypeRef, type UnknownValue } from "@briarflow/core";
 
 function notAStruct(id: string): PortError {
   return { error: { code: "config.unknown_ref", message: `Struct type "${id}" does not exist in this flow. Pick a struct type for this node.` } };
@@ -94,4 +94,67 @@ export const errorBreak = defineNode({
     nodeId: t.optional(t.text()),
   },
   run: ({ inputs }) => ({ code: inputs.error.code, message: inputs.error.message, node: inputs.error.node ?? null, nodeId: inputs.error.nodeId ?? null }),
+});
+
+const memberConfig = {
+  type: cfg.type({ title: "Of type", description: "Type of the value the member is read from." }),
+  path: cfg.text({ title: "Member", description: "Member name, or a dotted path to a nested one (portrait.width)." }),
+};
+
+const pathOf = (path: string) => path.split(".").map((s) => s.trim());
+
+function resolveMember(type: TypeRef, path: string, scope: Pick<PortScope, "resolveType">) {
+  const m = memberAt(type, pathOf(path), (id) => scope.resolveType(id));
+  if ("error" in m) return { error: { code: "config.invalid", message: `${m.error} Pick a member of the value's type.` } } satisfies PortError;
+  return m;
+}
+
+const portOf = (type: TypeRef, title: string, description: string | undefined): PortOptions => ({ type: t.fromRef(type), title, ...(description === undefined ? {} : { description }) });
+
+/** `briar.member.get`: `value.path` (types.md §12). Offered for every member when a wire is dropped on empty canvas. */
+export const memberGet = defineNode({
+  type: "briar.member.get",
+  pure: true,
+  title: "Get member",
+  category: "Data",
+  icon: "braces",
+  color: "sky",
+  description: "Reads a member of a value, like value.member in code: a struct field, or a property of a media value, an error, text or a list.",
+  config: memberConfig,
+  inputs: { value: t.var("V") },
+  resolvePorts({ config, scope }) {
+    const m = resolveMember(config.type, config.path, scope);
+    if ("error" in m) return m;
+    const name = m.path[m.path.length - 1]!;
+    return { inputs: { value: t.fromRef(config.type) }, outputs: { [name]: portOf(m.type, m.titles[m.titles.length - 1]!, m.description) } };
+  },
+  run: ({ inputs, config, ctx }) => {
+    const path = pathOf(config.path);
+    const out: Record<string, UnknownValue> = { [path[path.length - 1]!]: readMember(inputs.value, config.type, path, (id) => ctx.resolveType(id)) as UnknownValue };
+    return out;
+  },
+});
+
+/** `briar.member.set`: a copy of a struct with one (possibly nested) field replaced. */
+export const memberSet = defineNode({
+  type: "briar.member.set",
+  pure: true,
+  title: "Set member",
+  category: "Data",
+  icon: "braces",
+  color: "sky",
+  description: "Returns a copy of a struct with one field replaced, like value.field = x in code. Only struct fields can be set; other members are read-only.",
+  config: memberConfig,
+  inputs: { value: t.var("V"), to: t.var("M") },
+  outputs: { value: t.var("V") },
+  resolvePorts({ config, scope }) {
+    const m = resolveMember(config.type, config.path, scope);
+    if ("error" in m) return m;
+    if (!m.writable) return { error: { code: "config.invalid", message: `${config.path} is read-only: only struct fields can be set.` } };
+    return {
+      inputs: { value: t.fromRef(config.type), to: portOf(m.type, m.titles[m.titles.length - 1]!, m.description) },
+      outputs: { value: t.fromRef(config.type) },
+    };
+  },
+  run: ({ inputs, config, ctx }) => ({ value: writeMember(inputs.value, config.type, pathOf(config.path), inputs.to, (id) => ctx.resolveType(id)) as UnknownValue }),
 });

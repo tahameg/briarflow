@@ -9,6 +9,7 @@ import {
   type FlowVariable,
   type GlobalVariable,
   type TypeRef,
+  nodeDefinition,
 } from "@briarflow/core";
 import type { Command } from "../../commands.js";
 import {
@@ -37,7 +38,7 @@ function nodesUsing(ctx: Ctx, kind: "global" | "flowVariable", id: string, onlyF
   for (const flow of ctx.doc.flows) {
     if (onlyFlow !== undefined && flow.id !== onlyFlow) continue;
     for (const n of flow.nodes) {
-      const def = ctx.catalog.get(n.type);
+      const def = nodeDefinition(ctx.catalog, n);
       const fields = configFields(def);
       const keys = def ? Object.keys(fields).filter((k) => fields[k]?.kind === kind) : [kind === "global" ? "globalId" : "variableId"];
       if (keys.some((k) => n.config?.[k] === id)) out.push({ flowId: flow.id, nodeId: n.id, label: label(ctx, n) });

@@ -78,7 +78,7 @@ describe("Get / Set", () => {
       nodes: [
         n("n_get0", "briar.variable.get", { config: { variableId: "var_x" } }),
         n("n_set1", "briar.variable.set", { config: { variableId: "var_x" }, values: { value: "one" } }),
-        n("n_tpl", "text.template", { config: { template: "{a}-two" } }),
+        n("n_tpl", "text.template", { config: { template: "{{a}}-two" } }),
         n("n_set2", "briar.variable.set", { config: { variableId: "var_x" } }),
         n("n_get2", "briar.variable.get", { config: { variableId: "var_x" } }),
       ],

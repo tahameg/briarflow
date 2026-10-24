@@ -24,7 +24,7 @@ const PORTRAIT_COMMANDS = [
   { op: "flow.output.add", flowId: "flow_p", name: "description", type: "text" },
   { op: "flow.output.add", flowId: "flow_p", name: "image", type: "image" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
-  { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Portrait of {name} in {style} style" } },
+  { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Portrait of {{name}} in {{style}} style" } },
   { op: "node.add", flowId: "flow_p", id: "n_llm", type: "mock.llm", position: { x: 640, y: 0 } },
   { op: "node.add", flowId: "flow_p", id: "n_img", type: "mock.image", position: { x: 860, y: 0 } },
   { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_in", port: "character" }, to: { node: "n_brk", port: "value" } },

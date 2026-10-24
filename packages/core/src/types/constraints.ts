@@ -1,6 +1,7 @@
 /**
  * Internal: validation of constraint definitions (types.md §6, `type.invalid_constraint`).
  */
+import { SECRET_KINDS } from "./ir.js";
 import type { TypeRef } from "./ir.js";
 import type { Diagnostic, DiagnosticPath } from "../validation/diagnostic.js";
 
@@ -19,6 +20,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   int: ["min", "max"],
   float: ["min", "max"],
   boolean: [],
+  secret: ["kind"],
   image: ["formats", "maxBytes", "minWidth", "maxWidth", "minHeight", "maxHeight"],
   video: ["formats", "maxBytes", "maxDurationSec"],
   audio: ["formats", "maxBytes", "maxDurationSec"],
@@ -85,7 +87,15 @@ export function constraintProblems(type: TypeRef): ConstraintProblem[] {
       checkOrder(out, on, "min", "max", c["min"], c["max"]);
       break;
     case "boolean":
+    case "json":
       break;
+    case "secret": {
+      const k = c["kind"];
+      if (k !== undefined && !(SECRET_KINDS as readonly unknown[]).includes(k)) {
+        out.push({ constraint: "kind", on, reason: `it must be one of ${SECRET_KINDS.join(", ")}` });
+      }
+      break;
+    }
     default: {
       const f = c["formats"];
       if (f !== undefined) {

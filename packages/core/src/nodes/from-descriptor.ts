@@ -9,9 +9,10 @@ import { cloneJson } from "../util/json.js";
 import type { NodeCatalog } from "./catalog.js";
 import { createCatalog } from "./catalog.js";
 import type { ConfigField, ConfigMap } from "./config.js";
-import type { AnyNodeDefinition, PortMap, PortOptions } from "./define.js";
+import type { AnyNodeDefinition, PortMap, PortOptions, VariantOption } from "./define.js";
+import { linkVariants } from "./define.js";
 import type { ConfigDescriptor, NodeDescriptor, PortDescriptor } from "./descriptor.js";
-import type { NodePack } from "./pack.js";
+import type { NodePack, PackSetting } from "./pack.js";
 
 /** Pack metadata as listed by `GET /node-types` (`packs[]`). */
 export interface PackDescriptor {
@@ -19,6 +20,8 @@ export interface PackDescriptor {
   version: string;
   title?: string;
   description?: string;
+  /** Settings the pack declares. */
+  settings?: PackSetting[];
 }
 
 /** What `GET /node-types` returns: packs, node descriptors and pack types. */
@@ -59,6 +62,13 @@ export interface DescriptorCatalog extends NodeCatalog {
  * ```
  */
 export function definitionFromDescriptor(d: NodeDescriptor): AnyNodeDefinition {
+  const run = () => {
+    throw new NodeError(
+      "node.descriptor_only",
+      `Node type "${d.type}" was loaded from a descriptor and cannot run here. Run the flow where pack "${d.pack.name}" is loaded (e.g. on the server).`,
+      { details: { nodeType: d.type, pack: d.pack.name } },
+    );
+  };
   const def: AnyNodeDefinition = {
     kind: "nodeDefinition",
     type: d.type,
@@ -80,15 +90,20 @@ export function definitionFromDescriptor(d: NodeDescriptor): AnyNodeDefinition {
     ...(d.frontend === true ? { frontend: true as const } : {}),
     ...(d.pure === true ? { pure: true as const } : {}),
     ...(d.canFail === true ? { canFail: true as const } : {}),
-    run() {
-      throw new NodeError(
-        "node.descriptor_only",
-        `Node type "${d.type}" was loaded from a descriptor and cannot run here. Run the flow where pack "${d.pack.name}" is loaded (e.g. on the server).`,
-        { details: { nodeType: d.type, pack: d.pack.name } },
-      );
-    },
+    ...(d.conversion === true ? { conversion: true as const } : {}),
+    run,
   };
-  return def;
+  if (!d.variants) return def;
+  const { inputs: _i, outputs: _o, config: _c, run: _r, conversion: _v, ...base } = def;
+  const options: VariantOption[] = d.variants.options.map((o) => ({
+    name: o.name,
+    title: o.title,
+    ...(o.description === undefined ? {} : { description: o.description }),
+    ...(o.deprecated === null ? {} : { deprecated: o.deprecated }),
+    shape: { inputs: portMap(o.inputs), outputs: portMap(o.outputs), config: configMap(o.config), run },
+  }));
+  const selector = { title: d.variants.title, ...(d.variants.description === undefined ? {} : { description: d.variants.description }), default: d.variants.default };
+  return linkVariants(base, selector, options);
 }
 
 /**
@@ -127,6 +142,7 @@ export function packsFromDescriptors(info: NodeTypesDescriptors): NodePack[] {
       namespaces,
       types: info.types.filter((t) => t.id.startsWith(`${meta.name}.`)).map((t) => cloneJson(t)),
       nodes: nodes.map(definitionFromDescriptor),
+      settings: (meta.settings ?? []).map((s) => cloneJson(s)),
     };
   });
 }
@@ -159,7 +175,10 @@ export function createCatalogFromDescriptors(
     packs.push(pack);
   }
   const localNames = new Set((options.localPacks ?? []).map((p) => p.name));
-  for (const d of info.nodes) if (d.dynamicPorts && !localNames.has(d.pack.name)) approximateTypes.push(d.type);
+  for (const d of info.nodes) {
+    const dynamic = d.dynamicPorts || (d.variants?.options.some((o) => o.dynamicPorts) ?? false);
+    if (dynamic && !localNames.has(d.pack.name)) approximateTypes.push(d.type);
+  }
   packs.push(...local.values());
   return { ...createCatalog(packs), approximateTypes };
 }

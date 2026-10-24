@@ -6,13 +6,19 @@ import { describe, expect, it } from "vitest";
 import { createCatalog, isBriarError, toNodeDescriptor, type ContextDocument, type PortError } from "@briarflow/core";
 import {
   constant,
+  convertAsBoolean,
+  convertAsFloat,
+  convertAsInt,
+  convertAsJson,
+  convertAsJsonArray,
   convertFloatToInt,
-  convertParseFloat,
-  convertParseInt,
   convertToText,
   debugPrint,
   globalGet,
   globalSet,
+  jsonAddField,
+  jsonGetField,
+  jsonSetField,
   listGet,
   listLength,
   listMake,
@@ -65,8 +71,8 @@ describe("stdPack", () => {
     expect(RoundingMode.decl.members.map((m) => m.value)).toEqual(["round", "floor", "ceil", "trunc"]);
   });
 
-  it("is pack briar 1.0.0 with namespaces briar, text, list, convert, debug and type briar.RoundingMode", () => {
-    expect(stdPack).toMatchObject({ kind: "nodePack", name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug"] });
+  it("is pack briar 1.0.0 with namespaces briar, text, list, convert, debug, json and type briar.RoundingMode", () => {
+    expect(stdPack).toMatchObject({ kind: "nodePack", name: "briar", version: "1.0.0", namespaces: ["briar", "text", "list", "convert", "debug", "json"] });
     expect(stdPack.types).toEqual([expect.objectContaining({ kind: "enum", id: "briar.RoundingMode", name: "RoundingMode" })]);
   });
 
@@ -77,15 +83,24 @@ describe("stdPack", () => {
         "briar.error.break",
         "briar.global.get",
         "briar.global.set",
+        "briar.member.get",
+        "briar.member.set",
         "briar.struct.break",
         "briar.struct.make",
         "briar.variable.get",
         "briar.variable.set",
+        "convert.asBoolean",
+        "convert.asFloat",
+        "convert.asInt",
+        "convert.asJson",
+        "convert.asJsonArray",
         "convert.floatToInt",
-        "convert.parseFloat",
-        "convert.parseInt",
         "convert.toText",
         "debug.print",
+        "json.addField",
+        "json.construct",
+        "json.getField",
+        "json.setField",
         "list.get",
         "list.length",
         "list.make",
@@ -114,8 +129,11 @@ describe("stdPack", () => {
       "list.length": listLength,
       "list.get": listGet,
       "convert.toText": convertToText,
-      "convert.parseInt": convertParseInt,
-      "convert.parseFloat": convertParseFloat,
+      "convert.asInt": convertAsInt,
+      "convert.asFloat": convertAsFloat,
+      "convert.asBoolean": convertAsBoolean,
+      "convert.asJson": convertAsJson,
+      "convert.asJsonArray": convertAsJsonArray,
       "convert.floatToInt": convertFloatToInt,
     };
     for (const [type, def] of Object.entries(exported)) {
@@ -124,8 +142,10 @@ describe("stdPack", () => {
     }
   });
 
-  it("variable nodes are cache: false; the others are cached", () => {
-    for (const d of stdPack.nodes) expect(d.cache, d.type).toBe(!d.type.startsWith("briar.variable.") && !d.type.startsWith("briar.global."));
+  it("variable nodes and the Template builder (it reads variables) are cache: false; the others are cached", () => {
+    for (const d of stdPack.nodes) {
+      expect(d.cache, d.type).toBe(!d.type.startsWith("briar.variable.") && !d.type.startsWith("briar.global.") && d.type !== "text.template");
+    }
   });
 });
 
@@ -140,16 +160,25 @@ describeNodePack(stdPack, {
     "briar.struct.make": [{ config: { typeId: "ty_char" }, inputs: { name: "Aria" }, outputs: { value: { name: "Aria", age: 30, nick: null } } }],
     "briar.struct.break": [{ config: { typeId: "ty_char" }, inputs: { value: { name: "Aria", age: 4 } }, outputs: { name: "Aria", age: 4, nick: null } }],
     "briar.constant": [{ config: { type: ir.int() }, inputs: { value: 5 }, outputs: { value: 5 } }],
-    "text.template": [{ config: { template: "Hi {name}" }, inputs: { name: "Aria" }, outputs: { text: "Hi Aria" } }],
+    "briar.member.get": [{ config: { type: ir.named("ty_char"), path: "name" }, inputs: { value: { name: "Aria", age: 3, nick: null } }, outputs: { name: "Aria" } }],
+    "briar.member.set": [{ config: { type: ir.named("ty_char"), path: "age" }, inputs: { value: { name: "Aria", age: 3, nick: null }, to: 4 }, outputs: { value: { name: "Aria", age: 4, nick: null } } }],
+    "text.template": [{ config: { template: "Hi {{name}}" }, inputs: { name: "Aria" }, outputs: { text: "Hi Aria" } }],
     "text.join": [{ inputs: { items: ["a", "b"], separator: ", " }, outputs: { text: "a, b" } }],
     "list.make": [{ config: { count: 3 }, inputs: { item1: 1, item2: 2, item3: 3 }, outputs: { list: [1, 2, 3] } }],
     "list.length": [{ inputs: { list: [1, 2] }, outputs: { length: 2 } }],
     "list.get": [{ inputs: { list: ["a", "b"], index: -1 }, outputs: { item: "b" } }],
     "convert.toText": [{ inputs: { value: { b: 1, a: [true] } }, outputs: { text: '{"a":[true],"b":1}' } }],
-    "convert.parseInt": [{ inputs: { text: " 42 " }, outputs: { value: 42 } }],
-    "convert.parseFloat": [{ inputs: { text: "1e3" }, outputs: { value: 1000 } }],
+    "convert.asInt": [{ inputs: { value: " 42 " }, outputs: { value: 42 } }],
+    "convert.asFloat": [{ inputs: { value: "1e3" }, outputs: { value: 1000 } }],
+    "convert.asBoolean": [{ inputs: { value: 0 }, outputs: { value: false } }],
+    "convert.asJson": [{ inputs: { text: '{"a":1}' }, outputs: { json: '{"a":1}' } }],
+    "convert.asJsonArray": [{ inputs: { value: "[1,2]" }, outputs: { items: [1, 2] } }],
     "convert.floatToInt": [{ inputs: { value: 2.5 }, outputs: { value: 3 } }],
     "debug.print": [{ inputs: { text: "hello" }, outputs: {} }],
+    "json.construct": [{ inputs: { value: [1, { a: true }] }, outputs: { json: [1, { a: true }] } }],
+    "json.getField": [{ inputs: { json: { user: { tags: ["a", "b"] } }, path: "user.tags[1]" }, outputs: { value: "b" } }],
+    "json.setField": [{ inputs: { json: { a: 1 }, path: "b.c", value: 2 }, outputs: { json: { a: 1, b: { c: 2 } } } }],
+    "json.addField": [{ inputs: { json: { a: 1 }, path: "a", value: 2 }, errorCode: "json.field_exists" }],
     "briar.error.break": [{ inputs: { error: { code: "node.timeout", message: "Too slow", node: "LLM" } }, outputs: { code: "node.timeout", message: "Too slow", node: "LLM", nodeId: null } }],
   },
 });
@@ -187,40 +216,50 @@ describe("valueToText (toText rules)", () => {
 });
 
 describe("templates", () => {
-  it("placeholders in order of first appearance, distinct", () => {
-    expect(templatePlaceholders("Draw {name} in {style} style, {name}!")).toEqual(["name", "style"]);
-    expect(templatePlaceholders("no placeholders")).toEqual([]);
-    expect(templatePlaceholders("")).toEqual([]);
-    expect(templatePlaceholders("{{literal}} {_x1}")).toEqual(["_x1"]);
-    expect(templatePlaceholders("}} and {{")).toEqual([]);
+  it("lists inputs in order of first appearance; a field path makes an input json; $(…) reads a variable", () => {
+    expect(templatePlaceholders("Draw {{name}} in {{ style }} style, {{name}}!")).toEqual({
+      inputs: [{ name: "name", json: false }, { name: "style", json: false }],
+      variables: [],
+    });
+    expect(templatePlaceholders("{{kamil.ali}} {{kamil}} {{list[0].x}} {{$(user name)}} {{$(user name).city}}")).toEqual({
+      inputs: [{ name: "kamil", json: true }, { name: "list", json: true }],
+      variables: ["user name"],
+    });
+    expect(templatePlaceholders("no placeholders")).toEqual({ inputs: [], variables: [] });
+    expect(templatePlaceholders("\\{{literal}} { single } }}")).toEqual({ inputs: [], variables: [] });
   });
 
-  it("invalid placeholder → text.invalid_placeholder; unclosed brace → text.invalid_template", () => {
-    for (const bad of ["{1abc}", "{a b}", "{}", "{a-b}"]) {
+  it("invalid placeholder → text.invalid_placeholder; unclosed {{ → text.invalid_template", () => {
+    for (const bad of ["{{1abc}}", "{{a b}}", "{{}}", "{{a-b}}", "{{$()}}", "{{$(x}}", "{{a.}}", "{{a[x]}}"]) {
       const r = templatePlaceholders(bad) as PortError;
       expect(r.error.code, bad).toBe("text.invalid_placeholder");
       expect(typeof r.error.message).toBe("string");
     }
-    expect((templatePlaceholders("Hello {name") as PortError).error.code).toBe("text.invalid_template");
+    expect((templatePlaceholders("Hello {{name") as PortError).error.code).toBe("text.invalid_template");
   });
 
-  it("renderTemplate uses toText and literal braces; throws text.invalid_template", () => {
-    expect(renderTemplate("Hi {name} {{ok}} }}", { name: "Aria" })).toBe("Hi Aria {ok} }");
-    expect(renderTemplate("{a}|{b}|{c}|{d}", { a: 1, b: null, c: [1, 2], d: true })).toBe("1||[1,2]|true");
-    expect(renderTemplate("{m}", { m: { uri: "briar-media://m_9", mime: "image/png" } }, { m: ir.image() })).toBe("briar-media://m_9");
-    let thrown: unknown;
-    try {
-      renderTemplate("{oops", {});
-    } catch (error) {
-      thrown = error;
-    }
-    expect((thrown as { code?: string }).code).toBe("text.invalid_template");
+  it("renderTemplate uses toText, field paths, variables and literal braces", () => {
+    expect(renderTemplate("Hi {{name}} \\{{ok}} {x}", { name: "Aria" })).toBe("Hi Aria {{ok}} {x}");
+    expect(renderTemplate("{{a}}|{{b}}|{{c}}|{{d}}", { a: 1, b: null, c: [1, 2], d: true })).toBe("1||[1,2]|true");
+    expect(renderTemplate("{{m}}", { m: { uri: "briar-media://m_9", mime: "image/png" } }, { m: ir.image() })).toBe("briar-media://m_9");
+    expect(renderTemplate("{{u.name}} {{u.tags[1]}} {{u.tags}}", { u: { name: "Aria", tags: ["a", "b"] } })).toBe('Aria b ["a","b"]');
+    expect(renderTemplate("{{$(city)}} {{$(user).age}}", {}, undefined, (n) => (n === "city" ? "Rome" : { age: 9 }))).toBe("Rome 9");
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (error) {
+        return (error as { code?: string }).code;
+      }
+      return undefined;
+    };
+    expect(code(() => renderTemplate("{{oops", {}))).toBe("text.invalid_template");
+    expect(code(() => renderTemplate("{{u.missing}}", { u: {} }))).toBe("json.field_missing");
   });
 });
 
 describe("text.template", () => {
   it("has one generic input per distinct placeholder named T1…Tn, and output text", async () => {
-    const r = await runNode(textTemplate, { name: "Aria", style: 2 }, { config: { template: "{name} in {style}, {name}" } });
+    const r = await runNode(textTemplate, { name: "Aria", style: 2 }, { config: { template: "{{name}} in {{style}}, {{name}}" } });
     expect(r.ports.inputs.map((p) => [p.name, p.declaredType])).toEqual([
       ["name", { kind: "var", name: "T1" }],
       ["style", { kind: "var", name: "T2" }],
@@ -231,19 +270,34 @@ describe("text.template", () => {
 
   it("resolvePorts returns a PortError for bad templates (the node then has no ports)", () => {
     const scope = { flow: { id: "f", inputs: [], outputs: [], variables: [] }, globals: [], resolveType: () => undefined };
-    const bad = textTemplate.resolvePorts!({ config: { template: "{9}" }, scope }) as PortError;
+    const bad = textTemplate.resolvePorts!({ config: { template: "{{9}}" }, scope }) as PortError;
     expect(bad.error.code).toBe("text.invalid_placeholder");
-    const unclosed = textTemplate.resolvePorts!({ config: { template: "{a" }, scope }) as PortError;
+    const unclosed = textTemplate.resolvePorts!({ config: { template: "{{a" }, scope }) as PortError;
     expect(unclosed.error.code).toBe("text.invalid_template");
+    const unknown = textTemplate.resolvePorts!({ config: { template: "{{$(nope)}}" }, scope }) as PortError;
+    expect(unknown.error.code).toBe("text.unknown_variable");
+  });
+
+  it("a field path makes a json input; variables add no input", () => {
+    const scope = {
+      flow: { id: "f", inputs: [], outputs: [], variables: [{ id: "var_c", name: "city", type: ir.text(), access: "private" as const }] },
+      globals: [],
+      resolveType: () => undefined,
+    };
+    const ports = textTemplate.resolvePorts!({ config: { template: "{{who}} from {{user.city}} in {{$(city)}}" }, scope });
+    expect(ports).toEqual({
+      inputs: { who: { kind: "typeSpec", ref: { kind: "var", name: "T1" } }, user: { kind: "typeSpec", ref: { kind: "primitive", name: "json" } } },
+      outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "text" } } },
+    });
   });
 
   it("renders values with toText, using bound media types", async () => {
     const r = await runNode(
       textTemplate,
       { img: { uri: "briar-media://m_1", mime: "image/png" }, list: ["a"], nothing: null },
-      { config: { template: "{img} {list} [{nothing}] {{x}}" }, typeBindings: { T1: ir.image() } },
+      { config: { template: "{{img}} {{list}} [{{nothing}}] \\{{x}}" }, typeBindings: { T1: ir.image() } },
     );
-    expect(r.outputs.text).toBe('briar-media://m_1 ["a"] [] {x}');
+    expect(r.outputs.text).toBe('briar-media://m_1 ["a"] [] {{x}}');
   });
 
   it("a template without placeholders has no inputs", async () => {
@@ -321,16 +375,16 @@ describe("convert nodes", () => {
     ["0", 0],
     ["-0", 0],
     ["007", 7],
-  ])("convert.parseInt %j → %i", async (text, value) => {
-    const r = await runNode(convertParseInt, { text });
+  ])("convert.asInt %j → %i", async (text, value) => {
+    const r = await runNode(convertAsInt, { value: text });
     expect(r.outputs).toEqual({ value });
     expect(Object.is(r.outputs.value, -0)).toBe(false);
   });
 
   it.each(["", " ", "1.5", "12abc", "abc", "0x10", "1e3", "1 2", "9007199254740993", "Infinity", "--1"])(
-    "convert.parseInt %j → convert.invalid_number",
+    "convert.asInt %j → convert.invalid_number",
     async (text) => {
-      const err = await rejects(runNode(convertParseInt, { text }));
+      const err = await rejects(runNode(convertAsInt, { value: text }));
       expect(err.code).toBe("convert.invalid_number");
       expect(err.message).toContain("is not a whole number");
     },
@@ -344,12 +398,54 @@ describe("convert nodes", () => {
     ["5.", 5],
     ["-1.5E-2", -0.015],
     ["+0.0", 0],
-  ])("convert.parseFloat %j → %d", async (text, value) => {
-    expect((await runNode(convertParseFloat, { text })).outputs).toEqual({ value });
+  ])("convert.asFloat %j → %d", async (text, value) => {
+    expect((await runNode(convertAsFloat, { value: text })).outputs).toEqual({ value });
   });
 
-  it.each(["", "abc", "1.2.3", "NaN", "Infinity", "-Infinity", "1e999", "0x1A", "1,5", "."])("convert.parseFloat %j → convert.invalid_number", async (text) => {
-    expect((await rejects(runNode(convertParseFloat, { text }))).code).toBe("convert.invalid_number");
+  it.each(["", "abc", "1.2.3", "NaN", "Infinity", "-Infinity", "1e999", "0x1A", "1,5", "."])("convert.asFloat %j → convert.invalid_number", async (text) => {
+    expect((await rejects(runNode(convertAsFloat, { value: text }))).code).toBe("convert.invalid_number");
+  });
+
+  it("As int / As float read json the same way: through its text", async () => {
+    const json = { typeBindings: { T: ir.json() } };
+    expect((await runNode(convertAsInt, { value: 7 }, json)).outputs).toEqual({ value: 7 });
+    expect((await runNode(convertAsInt, { value: "12" }, json)).outputs).toEqual({ value: 12 });
+    expect((await runNode(convertAsFloat, { value: 1.5 }, json)).outputs).toEqual({ value: 1.5 });
+    expect((await rejects(runNode(convertAsInt, { value: 2.5 }, json))).code).toBe("convert.invalid_number");
+    expect((await rejects(runNode(convertAsInt, { value: true }, json))).code).toBe("convert.invalid_number");
+    expect((await rejects(runNode(convertAsFloat, { value: null }, json))).code).toBe("convert.invalid_number");
+  });
+
+  it("As int / As float take only text or json", () => {
+    const port = convertAsInt.inputs.value;
+    expect(port.ref).toEqual({ kind: "var", name: "T", oneOf: [ir.text(), ir.json()] });
+  });
+
+  it.each([
+    [null, false],
+    [0, false],
+    [3, true],
+    [-1.5, true],
+    ["", false],
+    [" False ", false],
+    ["0", false],
+    ["no", false],
+    ["off", false],
+    ["yes", true],
+    ["anything", true],
+    [[], true],
+    [{}, true],
+    [true, true],
+  ])("convert.asBoolean %j → %s", async (value, expected) => {
+    expect((await runNode(convertAsBoolean, { value }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ value: expected });
+  });
+
+  it("As JSON keeps the text as it is; As JSON array reads an array from text or json", async () => {
+    expect((await runNode(convertAsJson, { text: "{not json" })).outputs).toEqual({ json: "{not json" });
+    expect((await runNode(convertAsJsonArray, { value: ' [1, {"a": 2}] ' })).outputs).toEqual({ items: [1, { a: 2 }] });
+    expect((await runNode(convertAsJsonArray, { value: ["x"] }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ items: ["x"] });
+    expect((await rejects(runNode(convertAsJsonArray, { value: "{}" }))).code).toBe("json.wrong_kind");
+    expect((await rejects(runNode(convertAsJsonArray, { value: "[1," }))).code).toBe("json.invalid_json");
   });
 
   it.each([
@@ -449,5 +545,63 @@ describe("variable nodes outside the engine", () => {
   it("get ports follow the variable type", async () => {
     const r = await runNode(variableSet, { value: 1 }, { config: { variableId: "var_x" }, context: charCtx(), flowId: "flow_s" });
     expect(r.ports.outputs[0]?.type).toEqual(ir.int({ min: 0 }));
+  });
+});
+
+describe("json nodes", () => {
+  const order = { items: [{ id: 1, tags: ["a"] }, { id: 2.5 }], note: "hi", ok: true };
+
+  it("Get field reads object fields and array items; the whole value for an empty path", async () => {
+    expect((await runNode(jsonGetField, { json: order, path: "items[0].tags[0]" })).outputs).toEqual({ value: "a" });
+    expect((await runNode(jsonGetField, { json: [10, 20], path: "[1]" })).outputs).toEqual({ value: 20 });
+    expect((await runNode(jsonGetField, { json: order, path: "" })).outputs).toEqual({ value: order });
+  });
+
+  it("Get field fails at run time for a missing field or a bad path", async () => {
+    const missing = await rejects(runNode(jsonGetField, { json: order, path: "items[5].id" }));
+    expect(missing.code).toBe("json.field_missing");
+    expect(missing.message).toContain("items has 2 items");
+    expect((await rejects(runNode(jsonGetField, { json: order, path: "ok.length" }))).code).toBe("json.field_missing");
+    // A string is JSON text until read: going into one parses it.
+    expect((await rejects(runNode(jsonGetField, { json: order, path: "note.length" }))).code).toBe("json.invalid_json");
+    expect((await rejects(runNode(jsonGetField, { json: order, path: "items[x]" }))).code).toBe("json.invalid_path");
+    expect((await rejects(runNode(jsonGetField, { json: order, path: "a..b" }))).code).toBe("json.invalid_path");
+  });
+
+  it("Set field replaces, creates missing objects and appends one past the end; the input is not changed", async () => {
+    const input = { a: { b: 1 }, list: [1] };
+    expect((await runNode(jsonSetField, { json: input, path: "a.b", value: 2 })).outputs).toEqual({ json: { a: { b: 2 }, list: [1] } });
+    expect((await runNode(jsonSetField, { json: input, path: "x.y.z", value: true })).outputs.json).toMatchObject({ x: { y: { z: true } } });
+    expect((await runNode(jsonSetField, { json: input, path: "list[1]", value: 2 })).outputs.json).toMatchObject({ list: [1, 2] });
+    expect((await rejects(runNode(jsonSetField, { json: input, path: "list[3]", value: 2 }))).code).toBe("json.field_missing");
+    expect(input).toEqual({ a: { b: 1 }, list: [1] });
+  });
+
+  it("Add field fails on an existing field unless overwrite is on", async () => {
+    expect((await runNode(jsonAddField, { json: { a: 1 }, path: "b", value: 2 })).outputs).toEqual({ json: { a: 1, b: 2 } });
+    expect((await rejects(runNode(jsonAddField, { json: { a: 1 }, path: "a", value: 2 }))).code).toBe("json.field_exists");
+    expect((await runNode(jsonAddField, { json: { a: 1 }, path: "a", value: 2, overwrite: true })).outputs).toEqual({ json: { a: 2 } });
+  });
+
+  it("text from As JSON is parsed when a field is read: valid text works, invalid text fails there", async () => {
+    const text = (await runNode(convertAsJson, { text: '{"ali": "kamil", "n": [1, 2]}' })).outputs.json;
+    const ali = (await runNode(jsonGetField, { json: text, path: "ali" })).outputs.value;
+    expect(ali).toBe("kamil");
+    expect((await runNode(convertToText, { value: ali }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "kamil" });
+    expect((await runNode(jsonGetField, { json: text, path: "n[1]" })).outputs).toEqual({ value: 2 });
+    expect((await runNode(jsonSetField, { json: text, path: "n[2]", value: 3 })).outputs.json).toEqual({ ali: "kamil", n: [1, 2, 3] });
+    const bad = await rejects(runNode(jsonGetField, { json: "{ali:", path: "ali" }));
+    expect(bad.code).toBe("json.invalid_json");
+    expect(bad.message).toContain("is text that is not valid JSON");
+    expect((await runNode(jsonGetField, { json: "{ali:", path: "" })).outputs).toEqual({ value: "{ali:" });
+  });
+
+  it("As text renders any JSON without failing", async () => {
+    expect((await runNode(convertToText, { value: { b: [1], a: "x" } }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: '{"a":"x","b":[1]}' });
+    expect((await runNode(convertToText, { value: "plain" }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "plain" });
+  });
+
+  it("json inputs reject values that are not JSON", async () => {
+    expect((await rejects(runNode(jsonGetField, { json: Number.NaN, path: "" }))).code).toBe("node.invalid_input");
   });
 });

@@ -8,6 +8,7 @@ describe("loadConfig", () => {
       port: 3000,
       host: "127.0.0.1",
       dataDir: "./data",
+      vaultKey: undefined,
       corsOrigins: DEFAULT_CORS_ORIGINS,
       studioDir: "/studio",
       python: undefined,
@@ -63,7 +64,7 @@ describe("loadConfig", () => {
 describe("loadProviderPacks", () => {
   it("adds the anthropic pack only when ANTHROPIC_API_KEY is set", async () => {
     const { loadProviderPacks } = await import("../src/providers.js");
-    expect(loadProviderPacks(loadConfig({})).map((p) => p.name)).toEqual([]);
-    expect(loadProviderPacks(loadConfig({ ANTHROPIC_API_KEY: "sk-ant-x" })).map((p) => p.name)).toEqual(["anthropic"]);
+    expect(loadProviderPacks(loadConfig({})).map((p) => p.name)).toEqual(["openai"]);
+    expect(loadProviderPacks(loadConfig({ ANTHROPIC_API_KEY: "sk-ant-x" })).map((p) => p.name)).toEqual(["openai", "anthropic"]);
   });
 });

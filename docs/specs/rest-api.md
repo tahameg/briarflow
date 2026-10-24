@@ -117,9 +117,10 @@ with its terminal status (idempotent).
 
 **GET `/node-types`** → `200`
 ```json
-{ "packs": [ { "name": "briar", "version": "1.0.0", "title": "Briarflow standard" } ],
+{ "packs": [ { "name": "briar", "version": "1.0.0", "title": "Briarflow standard", "description": "…", "settings": [ PackSetting ] } ],
   "nodes": [ NodeDescriptor ], "types": [ TypeDecl ] }
 ```
+`settings` are the pack's declared settings (settings.md).
 `types` are pack types (ids `<pack>.<Name>`). `ETag` = hash of the body; supports
 `If-None-Match` → 304.
 
@@ -134,6 +135,28 @@ Missing/invalid content type → `415 media.invalid_mime`.
 `Content-Disposition: inline; filename="<meta.filename>"` when known. `If-None-Match` → 304.
 SVG is served with `Content-Security-Policy: sandbox` to neutralize scripts.
 Unknown → `404 media.not_found`.
+
+### Secrets (2026-10-24, secrets.md)
+
+No route ever returns a secret value.
+
+**GET `/secrets`** → `200 { "items": [ { "name", "kind", "createdAt", "updatedAt" } ] }`, sorted by name.
+
+**POST `/secrets`** `{ "name", "kind": "apiKey" | "text" | "number" | "json", "value" }` → `201`
+the same info object. Exists → `409 secret.exists`; bad name, kind or value → `422 secret.invalid`.
+
+**POST `/secrets/:name`** `{ "value" }` → `200` info. Replaces the value; the kind stays.
+Unknown → `404 secret.not_found`.
+
+**DELETE `/secrets/:name`** → `204`. Unknown → `404 secret.not_found`.
+
+### Settings (2026-10-24, settings.md)
+
+**GET `/settings`** → `200 { "settings": [ PackSetting & { "pack", "packTitle" } ], "values": { "<key>": value } }`.
+
+**POST `/settings`** `{ "key", "value" }` → `200` the same body after the change. `null` clears
+the value (the default applies). Undeclared key → `422 settings.unknown`; a value that does not
+fit the setting's type → `422 settings.invalid`.
 
 ## 4. SSE format
 
@@ -175,7 +198,8 @@ interface AuthorizeRequest {
     | "contexts.list" | "contexts.create" | "contexts.read" | "contexts.delete" | "contexts.edit"
     | "flows.read" | "flows.run"
     | "runs.read" | "runs.cancel"
-    | "nodeTypes.read" | "media.upload" | "media.read";
+    | "nodeTypes.read" | "media.upload" | "media.read"
+    | "secrets.list" | "secrets.write" | "settings.read" | "settings.write";
   resource: { contextId?: string; flowId?: string; runId?: string; mediaId?: string };
   request: Request;          // the standard Fetch Request (headers, url)
   c: HonoContext;            // escape hatch, e.g. c.get("user") set by your middleware

@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@briarflow/nodes-image": "*",
     "@briarflow/nodes-std": "*"
   }
 }

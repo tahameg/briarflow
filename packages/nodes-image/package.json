@@ -1,0 +1,28 @@
+{
+  "name": "@briarflow/nodes-image",
+  "version": "0.0.0",
+  "description": "Image processing nodes for Briarflow: make, split channels, resize, crop, rotate / flip, grayscale, invert, convert. Pure JavaScript PNG and JPEG codecs (portable).",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/core": "*",
+    "fast-png": "8.0.0",
+    "jpeg-js": "0.4.4"
+  },
+  "devDependencies": {
+    "@briarflow/testing": "*"
+  }
+}

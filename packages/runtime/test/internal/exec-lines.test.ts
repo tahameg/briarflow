@@ -32,7 +32,7 @@ describe("execution lines", () => {
         inputs: [field("topic", ir.text())],
         outputs: [field("reply", ir.text())],
         nodes: [
-          node("n_tpl", "text.template", { config: { template: "About {t}" } }),
+          node("n_tpl", "text.template", { config: { template: "About {{t}}" } }),
           node("n_llm", "mock.llm"),
           node("n_off", "mock.llm", { values: { prompt: "never" } }),
         ],

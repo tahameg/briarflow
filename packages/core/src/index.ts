@@ -47,7 +47,9 @@ export {
   RESERVED_TYPE_NAMES,
   TYPE_NAME_PATTERN,
   TYPE_VAR_NAME_PATTERN,
+  SECRET_NAME_PATTERN,
   isValidEnumValue,
+  isValidSecretName,
   isValidFieldName,
   isValidNodeType,
   isValidPackName,
@@ -55,7 +57,7 @@ export {
 } from "./util/names.js";
 
 // Type system
-export { MEDIA_PRIMITIVE_NAMES, PRIMITIVE_NAMES } from "./types/ir.js";
+export { MEDIA_PRIMITIVE_NAMES, PRIMITIVE_NAMES, SECRET_KINDS } from "./types/ir.js";
 export type {
   ImageConstraints,
   ListTypeRef,
@@ -69,6 +71,9 @@ export type {
   OptionalTypeRef,
   PrimitiveName,
   PrimitiveTypeRef,
+  SecretConstraints,
+  SecretKind,
+  SecretRef,
   TextConstraints,
   TimedMediaConstraints,
   TypeRef,
@@ -100,11 +105,14 @@ export { typeConstraintDiagnostics } from "./types/constraints.js";
 export { collectNamedIds, containsVar, mapNamedIds, typeRefShapeProblem } from "./types/walk.js";
 export type { ParseTypeOptions, ParseTypeResult } from "./types/shorthand.js";
 export { isAssignable, stripConstraints, typeEquals } from "./types/assignability.js";
-export { bindTypeVars, collectTypeVars, joinTypes, meetTypes, substituteTypeVars } from "./types/generics.js";
+export { mediaExtension, memberAt, memberPaths, readMember, typeMembers, writeMember } from "./types/members.js";
+export type { MemberPath, TypeMember, TypeResolver } from "./types/members.js";
+export { bindTypeVars, collectOneOf, collectTypeVars, joinTypes, meetTypes, substituteTypeVars } from "./types/generics.js";
 export type { BindTypeVarsResult, BindingConflict, GenericConnection, TypeBindings } from "./types/generics.js";
 export { MEDIA_FORMATS, MEDIA_URI_SCHEME, MIME_PATTERN, formatToMime, mediaIdFromUri, normalizeMime, validateMediaRef } from "./types/media.js";
 
 // Values and JSON Schema
+export { emptyValue } from "./values/empty.js";
 export { normalizeValue, validateValue } from "./values/validate.js";
 export type { NormalizeResult, ValueCheckOptions } from "./values/validate.js";
 export { flowSignatureSchema, toJsonSchema } from "./schema/json-schema.js";
@@ -117,6 +125,7 @@ export {
   FLOW_INPUT_NODE_TYPE,
   FLOW_OUTPUT_NODE_TYPE,
   VARIABLE_NODE_TYPES,
+  MEMBER_NODE_TYPES,
 } from "./documents/model.js";
 export type {
   ContextDocument,
@@ -161,7 +170,7 @@ export type {
   ConfigMap,
   ConfigValues,
 } from "./nodes/config.js";
-export { defineNode } from "./nodes/define.js";
+export { defineNode, variant, variantDefinition } from "./nodes/define.js";
 export type {
   AnyNodeDefinition,
   CheckOutputKeys,
@@ -174,6 +183,9 @@ export type {
   NodeDefinition,
   NodeDefinitionInput,
   NodeOutputs,
+  NodeVariantDefinition,
+  NodeVariantInfo,
+  NodeVariants,
   OutputsOf,
   Port,
   PortError,
@@ -185,14 +197,19 @@ export type {
   PortWidget,
   ResolvePortsArgs,
   RetryPolicy,
+  VariantInput,
+  VariantNodeDefinitionInput,
+  VariantsInput,
 } from "./nodes/define.js";
 export type { ExecContext, NodeRunArgs } from "./nodes/exec.js";
 export { definePack } from "./nodes/pack.js";
-export type { NodePack, PackDefinitionInput } from "./nodes/pack.js";
-export { createCatalog } from "./nodes/catalog.js";
+export type { NodePack, PackDefinitionInput, PackSetting, PackSettingInput } from "./nodes/pack.js";
+export { createCatalog, nodeDefinition } from "./nodes/catalog.js";
+export { findConversions } from "./nodes/conversions.js";
+export type { ConversionMatch } from "./nodes/conversions.js";
 export type { NodeCatalog } from "./nodes/catalog.js";
 export { toNodeDescriptor } from "./nodes/descriptor.js";
-export type { ConfigDescriptor, NodeDescriptor, PortDescriptor } from "./nodes/descriptor.js";
+export type { ConfigDescriptor, NodeDescriptor, PortDescriptor, VariantDescriptor, VariantsDescriptor } from "./nodes/descriptor.js";
 export { createCatalogFromDescriptors, definitionFromDescriptor, packsFromDescriptors } from "./nodes/from-descriptor.js";
 export type {
   CatalogFromDescriptorsOptions,
@@ -222,6 +239,10 @@ export type {
 export { readMedia } from "./interfaces/media-store.js";
 export type { MediaStore, PutMediaInfo, ReadMediaOptions, StoredMedia } from "./interfaces/media-store.js";
 export type { SecretResolver } from "./interfaces/secrets.js";
+export { assertNewSecret, createMemoryVault, secretNotFound, secretProblem, secretValueProblem } from "./interfaces/vault.js";
+export type { NewSecret, SecretInfo, SecretVault } from "./interfaces/vault.js";
+export { createMemorySettings } from "./interfaces/settings.js";
+export type { SettingsStore } from "./interfaces/settings.js";
 export { noopLogger } from "./interfaces/logger.js";
 export type { LogData, Logger } from "./interfaces/logger.js";
 export { decodeCursor, encodeCursor } from "./interfaces/cursor.js";

@@ -30,7 +30,7 @@ const VARIABLE_TYPES: readonly string[] = Object.values(VARIABLE_NODE_TYPES);
 /**
  * Validates one flow: structure (`flow.builtin_missing`, duplicate ids), node types, config,
  * ports, edges (`edge.type_mismatch`, `edge.unknown_port`, dangling edges), generics, constants
- * (`node.invalid_value`), `input.unconnected`, `output.unconnected`, cycles (`flow.cycle`),
+ * (`node.invalid_value`), `output.unconnected`, cycles (`flow.cycle`),
  * local types, signature visibility, variables (variables.md §5). Throws
  * `BriarError("flow.not_found")` for an unknown flow id.
  *
@@ -142,7 +142,7 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
     const isVariableNode = VARIABLE_TYPES.includes(node.type);
     for (const d of rn.diagnostics) {
       if (isVariableNode && (d.code === "config.unknown_ref" || d.code === "variable.write_to_readonly")) continue;
-      if (d.code === "node.unknown_type" || d.code === "node.ports_unresolved") portsUnknown.add(nodeId);
+      if (d.code === "node.unknown_type" || d.code === "node.unknown_variant" || d.code === "node.ports_unresolved") portsUnknown.add(nodeId);
       if (d.code.startsWith("config.") && rn.definition?.resolvePorts) portsUnknown.add(nodeId);
       out.push(d);
     }
@@ -165,16 +165,13 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
         err("node.generic_unbound", `${label} does not know its type yet. Connect a value to "${p.name}".`, { nodeId, port: p.name }, { varName: v });
       }
     }
-    // Unconnected inputs / flow outputs.
-    for (const p of rn.inputs) {
-      if (connected.has(`${nodeId}\u0000${p.name}`)) continue;
-      if (node.values?.[p.name] !== undefined) continue;
-      if (node.type === FLOW_OUTPUT_NODE_TYPE) {
+    // Unconnected flow outputs. An empty node input is not an error: it gets its default or
+    // the empty value of its type at run time (emptyValue).
+    if (node.type === FLOW_OUTPUT_NODE_TYPE) {
+      for (const p of rn.inputs) {
+        if (connected.has(`${nodeId}\u0000${p.name}`) || node.values?.[p.name] !== undefined) continue;
         err("output.unconnected", `Flow output "${p.name}" is not connected. Connect it or remove it from the signature.`, { nodeId, port: p.name });
-        continue;
       }
-      if (p.hasDefault || p.type.kind === "optional" || containsVar(p.type)) continue;
-      err("input.unconnected", `${label} needs a value for "${p.name}". Connect an edge or type a constant.`, { nodeId, port: p.name });
     }
   }
 

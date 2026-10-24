@@ -4,7 +4,7 @@
 
 /** Primitive type names. Media primitives hold a {@link MediaRef}. */
 export type PrimitiveName =
-  | "text" | "int" | "float" | "boolean"
+  | "text" | "int" | "float" | "boolean" | "json" | "secret"
   | "image" | "video" | "audio" | "model3d" | "file"
   | "error";
 
@@ -13,8 +13,25 @@ export type MediaPrimitiveName = "image" | "video" | "audio" | "model3d" | "file
 
 /** All primitive names, in display order. */
 export const PRIMITIVE_NAMES: readonly PrimitiveName[] = [
-  "text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file", "error",
+  "text", "int", "float", "boolean", "json", "secret", "image", "video", "audio", "model3d", "file", "error",
 ];
+
+/** Kinds of vault secrets. `apiKey` is text the studio never shows. */
+export type SecretKind = "text" | "number" | "json" | "apiKey";
+
+/** All secret kinds, in display order. */
+export const SECRET_KINDS: readonly SecretKind[] = ["apiKey", "text", "number", "json"];
+
+/**
+ * Value of the `secret` primitive: the name of a secret in the vault. Documents, editors and
+ * runs only ever hold this name; nodes read the value on the server with `ctx.secrets.read`.
+ */
+export type SecretRef = string;
+
+/** Constraints of `secret`: which kind of secret fits. */
+export interface SecretConstraints {
+  kind?: SecretKind;
+}
 
 /**
  * Value of the `error` primitive: why a node failed. Produced by the engine on a node's
@@ -77,6 +94,8 @@ export type PrimitiveTypeRef =
   | { kind: "primitive"; name: "int"; constraints?: NumberConstraints }
   | { kind: "primitive"; name: "float"; constraints?: NumberConstraints }
   | { kind: "primitive"; name: "boolean"; constraints?: Record<string, never> }
+  | { kind: "primitive"; name: "json"; constraints?: Record<string, never> }
+  | { kind: "primitive"; name: "secret"; constraints?: SecretConstraints }
   | { kind: "primitive"; name: "image"; constraints?: ImageConstraints }
   | { kind: "primitive"; name: "video"; constraints?: TimedMediaConstraints }
   | { kind: "primitive"; name: "audio"; constraints?: TimedMediaConstraints }
@@ -110,10 +129,15 @@ export interface OptionalTypeRef {
   of: TypeRef;
 }
 
-/** A generic placeholder. Only allowed in node definitions (types.md §5). */
+/**
+ * A generic placeholder. Only allowed in node definitions (types.md §5). `oneOf` limits what
+ * it binds to: the bound type must be assignable to one of them; unconnected, it binds to the
+ * first.
+ */
 export interface VarTypeRef {
   kind: "var";
   name: string;
+  oneOf?: TypeRef[];
 }
 
 /**

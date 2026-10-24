@@ -87,7 +87,7 @@ describe("diagnostic codes: positive fixtures", () => {
       "type.shadows_global", "type.enum_empty", "type.invalid_default", "visibility.local_type_in_global",
       "visibility.local_type_in_public_signature", "visibility.local_type_in_public_variable",
       "node.unknown_type", "config.invalid", "config.unknown_ref", "node.ports_unresolved", "node.invalid_value",
-      "node.generic_conflict", "node.generic_unbound", "input.unconnected", "output.unconnected",
+      "node.generic_conflict", "node.generic_unbound", "output.unconnected",
       "edge.type_mismatch", "flow.cycle", "variable.unordered_writes", "variable.read_before_write",
       "variable.write_to_readonly", "variable.unknown", "variable.unused", "variable.invalid_default", "global.invalid_value",
     ];
@@ -107,18 +107,18 @@ describe("diagnostic codes: counter-examples", () => {
   const catalog = () => testCatalog();
   const flowCodes = (doc: ContextDocument, flowId = KIT_FLOW_ID) => codes(validateFlow(doc, flowId, catalog()));
 
-  it("input.unconnected is not raised for a constant, a port default or an optional type", () => {
+  it("an empty input is not an error: it gets its default or the type's empty value at run time", () => {
     const doc = kitContext({
       nodes: [
-        node("n_const", "kit.sinkText", { x: 0, y: 0 }, { values: { value: "hi" } }),
+        node("n_empty", "kit.sinkText", { x: 0, y: 0 }),
         node("n_def", "kit.sinkDefault", { x: 0, y: 100 }),
         node("n_opt", "kit.sinkOptional", { x: 0, y: 200 }),
       ],
     });
-    expect(flowCodes(doc)).not.toContain("input.unconnected");
+    expect(validateFlow(doc, KIT_FLOW_ID, catalog())).toEqual([]);
   });
 
-  it("input.unconnected is not raised for a connected input", () => {
+  it("a connected input is not an error", () => {
     const doc = kitContext({
       nodes: [node("n_t", "kit.textSource", { x: 0, y: 0 }), node("n_s", "kit.sinkText", { x: 200, y: 0 })],
       edges: [edge("e_1", "n_t.text", "n_s.value")],
@@ -252,16 +252,16 @@ describe("messages", () => {
     expect(d!.message).toContain("⇢");
   });
 
-  it("input.unconnected uses the node label (title + id)", () => {
-    const doc = kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 })] });
-    const [d] = withCode(validateFlow(doc, KIT_FLOW_ID, testCatalog()), "input.unconnected");
+  it("node messages use the node label (title + id)", () => {
+    const doc = kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 }, { values: { value: 42 } })] });
+    const [d] = withCode(validateFlow(doc, KIT_FLOW_ID, testCatalog()), "node.invalid_value");
     expect(d!.message).toContain("n_sink");
-    expect(d!.message).toContain('"value"');
+    expect(d!.message).toContain(".value");
   });
 
   it("a node title is used when set", () => {
-    const doc = kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 }, { title: "My sink" })] });
-    const [d] = withCode(validateFlow(doc, KIT_FLOW_ID, testCatalog()), "input.unconnected");
+    const doc = kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 }, { title: "My sink", values: { value: 42 } })] });
+    const [d] = withCode(validateFlow(doc, KIT_FLOW_ID, testCatalog()), "node.invalid_value");
     expect(d!.message).toContain("My sink");
   });
 });
@@ -281,7 +281,7 @@ describe("determinism and composition", () => {
       PORTRAIT_FLOW_ID,
       (_f, d) => {
         d.types.push({ kind: "enum", id: "ty_empty", name: "Empty", members: [] });
-        d.flows.push(...kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 })] }).flows.map((f) => structuredClone(f) as never));
+        d.flows.push(...kitContext({ nodes: [node("n_sink", "kit.sinkText", { x: 0, y: 0 }, { values: { value: 42 } })] }).flows.map((f) => structuredClone(f) as never));
       },
     );
     const all = validateContext(doc, testCatalog());
@@ -289,7 +289,7 @@ describe("determinism and composition", () => {
     for (const d of perFlow) expect(all).toContainEqual(d);
     expect(codes(all)).toContain("type.enum_empty");
     expect(codes(all)).toContain("output.unconnected");
-    expect(codes(all)).toContain("input.unconnected");
+    expect(codes(all)).toContain("node.invalid_value");
     expect(all.length).toBe(perFlow.length + withCode(all, "type.enum_empty").length);
   });
 
@@ -394,7 +394,7 @@ describe("resolveFlowPorts", () => {
   it("problems become diagnostics instead of throwing", () => {
     const doc = editFlow(portraitContext(), PORTRAIT_FLOW_ID, (f) => {
       f.nodes.find((n) => n.id === "n_brk")!.config = { typeId: "ty_ghost" };
-      f.nodes.find((n) => n.id === "n_tpl")!.config = { template: "Bad {1x}" };
+      f.nodes.find((n) => n.id === "n_tpl")!.config = { template: "Bad {{1x}}" };
       f.nodes.push(node("n_x", "ghost.node", { x: 0, y: 300 }));
       f.inputs.push({ name: "g", type: ir.named("ty_ghost") });
     });

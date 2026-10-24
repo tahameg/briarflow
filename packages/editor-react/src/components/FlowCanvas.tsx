@@ -29,7 +29,8 @@ import type { Command } from "@briarflow/authoring";
 import { EXEC_FAILED, FLOW_INPUT_NODE_TYPE } from "@briarflow/core";
 import type { TypeScope } from "@briarflow/core";
 import { nextName } from "../fields.js";
-import { canConnect } from "../graph.js";
+import { canConnect, planConnection } from "../graph.js";
+import { randomNodeId } from "../duplicate.js";
 import type { EdgeView, ExecEdgeView, NodeView, PortView } from "../graph.js";
 import { useCanvasHandle, useDispatch, useEditorState, useEditorStore, useFlowId, useFlowView, useMedia } from "../context.js";
 import { NODE_CONFIG_MIME, NODE_TYPE_MIME, initialConfig, snap } from "../palette.js";
@@ -41,7 +42,8 @@ import { ValueEditor } from "./ValueEditor.js";
 import { useEditorShortcuts } from "./shortcuts.js";
 import { useCanvasMenu } from "./canvasMenu.js";
 import type { GhostWire } from "./canvasMenu.js";
-import { Led, NodeMedal, PilotLamp, VuMeter, inputLed, medalIcon, outputLed } from "./nodeParts.js";
+import { MediaWindow } from "./MediaPreview.js";
+import { Led, NodeMedal, PilotLamp, VuMeter, inputLed, medalIcon, outputLed, VariantSelect } from "./nodeParts.js";
 
 interface NodeData extends Record<string, unknown> {
   view: NodeView;
@@ -229,15 +231,16 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
     [dispatch, flowId, view],
   );
 
+  const catalog = useEditorState((st) => st.catalog);
   const isValidConnection = useCallback(
     (c: Connection | AnyRFEdge) => {
       if (!view) return false;
       const lineFrom = isExecHandle(c.sourceHandle);
       if (lineFrom !== isExecHandle(c.targetHandle)) return false;
       if (lineFrom) return c.source !== c.target;
-      return canConnect(view, { node: c.source, port: portOf(c.sourceHandle) }, { node: c.target, port: portOf(c.targetHandle) });
+      return canConnect(view, { node: c.source, port: portOf(c.sourceHandle) }, { node: c.target, port: portOf(c.targetHandle) }, catalog);
     },
-    [view],
+    [view, catalog],
   );
 
   const onConnect = useCallback(
@@ -245,9 +248,26 @@ function FlowCanvasInner({ flowId: flowIdProp, minimap = false, className }: Flo
       if (!flowId) return;
       const from = { node: c.source, port: portOf(c.sourceHandle) };
       const to = { node: c.target, port: portOf(c.targetHandle) };
-      dispatch(isExecHandle(c.sourceHandle) ? { op: "exec.connect", flowId, from, to } : { op: "edge.connect", flowId, from, to });
+      if (isExecHandle(c.sourceHandle)) {
+        dispatch({ op: "exec.connect", flowId, from, to });
+        return;
+      }
+      const plan = view ? planConnection(view, catalog, from, to) : undefined;
+      if (plan?.kind !== "convert" || !view) {
+        dispatch({ op: "edge.connect", flowId, from, to });
+        return;
+      }
+      // Types differ but a conversion node bridges them: put one just left of the target, wired both ways.
+      const b = view.byId.get(to.node)?.position ?? { x: 0, y: 0 };
+      const id = randomNodeId();
+      const { conversion } = plan;
+      dispatch([
+        { op: "node.add", flowId, id, type: conversion.type, position: snap({ x: b.x - 240, y: b.y + 40 }) },
+        { op: "edge.connect", flowId, from, to: { node: id, port: conversion.input } },
+        { op: "edge.connect", flowId, from: { node: id, port: conversion.output }, to },
+      ]);
     },
-    [dispatch, flowId],
+    [dispatch, flowId, view, catalog],
   );
 
   const onViewportChange = useCallback((v: Viewport) => flowId && store.setViewport(flowId, v), [store, flowId]);
@@ -379,9 +399,11 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
     view.errorCount,
     view.warningCount,
     view.preview ? 1 : 0,
+    view.variant?.current ?? "",
+    view.media?.map((m) => `${m.port}:${m.refs.length}`).join(",") ?? "",
   ].join("|");
   const dispatch = useDispatch();
-  const { mediaUrl } = useMedia();
+  const { mediaUrl, uploadMedia } = useMedia();
   const status = nodeDot(view, runActive);
   const compact = useFlowStore((s) => s.transform[2] < COMPACT_BELOW_ZOOM);
   useEffect(() => updateNodeInternals(id), [id, layoutKey, compact, updateNodeInternals]);
@@ -465,6 +487,7 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
           </div>
         ) : null}
         {running && view.run?.progress !== undefined ? <VuMeter progress={view.run.progress} /> : null}
+        {view.variant ? <VariantSelect variant={view.variant} label={view.title} onPick={(variant) => dispatch({ op: "node.setVariant", flowId, nodeId: view.id, variant })} /> : null}
         <div className="bf-node__body">
           {view.builtin ? <SignatureRows dir={view.type === FLOW_INPUT_NODE_TYPE ? "input" : "output"} ports={view.type === FLOW_INPUT_NODE_TYPE ? view.outputs : view.inputs} flowId={flowId} scope={scope} /> : null}
           {!view.builtin && view.inputs.map((p) => (
@@ -493,6 +516,7 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
                     placeholder={p.hasDefault ? previewValue(p.default, 20) : undefined}
                     invalid={p.errors.length > 0}
                     mediaUrl={mediaUrl}
+                    uploadMedia={uploadMedia}
                     onCommit={(value) => dispatch({ op: "node.setValue", flowId, nodeId: view.id, port: p.name, value })}
                   />
                 </span>
@@ -516,6 +540,7 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
           ))}
           {!view.builtin && view.inputs.length === 0 && view.outputs.length === 0 ? <div className="bf-node__row bf-node__row--empty">no ports</div> : null}
         </div>
+        {view.media ? <MediaWindow media={view.media} nodeTitle={view.title} running={running} /> : null}
         {view.preview ? <footer className="bf-node__preview">{view.preview}</footer> : null}
         {failure ? (
           <div className="bf-node__tag" role="alert">

@@ -4,10 +4,13 @@
  * console, problems) in the left, right and bottom zones (`dock.tsx`). Nodes are added from the
  * canvas's right-click menu.
  */
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { isRunFinished } from "@briarflow/editor";
 import type { ContextSummary } from "@briarflow/core";
 import { BottomZone, SideZone, useDock } from "./dock.js";
 import type { DockApi, PanelDef, PanelId } from "./dock.js";
+import type { SettingsSection } from "@briarflow/editor-react";
+import { client } from "./client.js";
 import { Switcher } from "./Switcher.js";
 import {
   Button,
@@ -20,13 +23,17 @@ import {
   Inspector,
   Modal,
   RunPanel,
+  SecretsPanel,
+  SettingsPanel,
   SyncStatus,
   TypesPanel,
   VariablesPanel,
   useDispatch,
   useEditorState,
   runBlockedHint,
+  startEditorRun,
   useEditorStore,
+  useLocalToasts,
   useFlowErrorCount,
 } from "@briarflow/editor-react";
 // React Flow is the bulk of the bundle: load the canvas in its own chunk.
@@ -45,7 +52,7 @@ export interface WorkspaceProps {
   onDeleteContext: (id: string) => Promise<void>;
 }
 
-type ModalKind = "types" | "globals";
+type ModalKind = "types" | "globals" | "settings";
 
 export function Workspace(props: WorkspaceProps) {
   const { hasStore } = props;
@@ -73,7 +80,12 @@ export function Workspace(props: WorkspaceProps) {
             </span>
           ) : null}
         </div>
-        {hasStore ? <TopActions onRun={() => dock.reveal("run")} onProblems={() => dock.reveal("problems")} /> : null}
+        <div className="bf-topbar__right">
+          {hasStore ? <TopActions onRun={() => dock.reveal("console")} onProblems={() => dock.reveal("problems")} /> : null}
+          <button type="button" className="bf-settings-btn" onClick={() => setModal("settings")} title="Settings: secrets, pack settings (OpenAI keys, …) and studio options" aria-label="Settings">
+            <span aria-hidden="true">⚙</span> Settings
+          </button>
+        </div>
       </header>
       <div className="bf-main" style={{ gridTemplateColumns: columns }}>
         {left ? <SideZone dock={dock} zone="left" panels={panels} /> : null}
@@ -106,8 +118,36 @@ export function Workspace(props: WorkspaceProps) {
           <EditorToasts />
         </>
       ) : null}
+      <Modal open={modal === "settings"} title="Settings" onClose={() => setModal(undefined)} className="bf-modal--wide">
+        <SettingsPanel settings={client.settings} sections={settingsSections(dock)} />
+      </Modal>
     </div>
   );
+}
+
+/** The studio's own settings sections; packs add theirs from the server. */
+function settingsSections(dock: DockApi): SettingsSection[] {
+  return [
+    { id: "secrets", title: "Secrets", order: 10, description: "Named values (API keys, tokens, …) that nodes read on the server. Pick them by name in nodes, variables and settings.", render: () => <SecretsPanel /> },
+    {
+      id: "studio",
+      title: "Studio",
+      order: 900,
+      render: () => (
+        <div className="bf-settings__fields">
+          <div className="bf-settings__field">
+            <span>Panel layout</span>
+            <p className="bf-muted bf-settings__help">Put every panel back where it started.</p>
+            <span>
+              <Button size="sm" onClick={dock.reset}>
+                Reset layout
+              </Button>
+            </span>
+          </div>
+        </div>
+      ),
+    },
+  ];
 }
 
 function usePanels(props: WorkspaceProps, dock: DockApi): Record<PanelId, PanelDef> {
@@ -116,7 +156,7 @@ function usePanels(props: WorkspaceProps, dock: DockApi): Record<PanelId, PanelD
   return {
     variables: { title: hasStore ? <VariablesTitle /> : "Variables", name: "Variables", body: hasStore ? <VariablesPanel /> : none("Open a context to edit its variables.") },
     inspector: { title: "Inspector", name: "Inspector", body: hasStore ? <Inspector /> : none("Nothing selected.") },
-    run: { title: "Run", name: "Run", body: hasStore ? <RunPanel onOpenProblems={() => dock.reveal("problems")} /> : none("Open a context to run its flows.") },
+    run: { title: "Run", name: "Run", body: hasStore ? <RunPanel shortcut={false} onRunStarted={() => dock.reveal("console")} onOpenProblems={() => dock.reveal("problems")} /> : none("Open a context to run its flows.") },
     console: { title: hasStore ? <ConsoleTitle /> : "Console", name: "Console", body: hasStore ? <ConsolePanel /> : none("Open a context to see what its flows print.") },
     problems: { title: hasStore ? <ProblemsTitle /> : "Problems", name: "Problems", body: hasStore ? <DiagnosticsList emptyText="No problems." /> : none("No context open.") },
   };
@@ -259,6 +299,8 @@ function FlowSwitcher() {
 
 function TopActions({ onRun, onProblems }: { onRun: () => void; onProblems: () => void }) {
   const store = useEditorStore();
+  const { push } = useLocalToasts();
+  const running = useEditorState((s) => s.run !== undefined && !isRunFinished(s.run));
   const history = useEditorState((s) => s.history);
   const activeFlowId = useEditorState((s) => s.activeFlowId);
   const flowErrors = useFlowErrorCount(activeFlowId);
@@ -274,6 +316,21 @@ function TopActions({ onRun, onProblems }: { onRun: () => void; onProblems: () =
     },
     (a, b) => a.errors === b.errors && a.warnings === b.warnings,
   );
+  const run = () => {
+    if (!activeFlowId || running) return;
+    onRun();
+    startEditorRun(store, activeFlowId, push);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        run();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const summary = `${plural(counts.errors, "error")}, ${plural(counts.warnings, "warning")}`;
   const tone = counts.errors > 0 ? "error" : counts.warnings > 0 ? "warning" : "clean";
@@ -289,16 +346,7 @@ function TopActions({ onRun, onProblems }: { onRun: () => void; onProblems: () =
       <button type="button" className={`bf-problems-btn bf-problems-btn--${tone}`} onClick={onProblems} title={`${summary} — open PROBLEMS`} aria-label={`${summary}. Open problems`}>
         ⚠ {counts.errors + counts.warnings}
       </button>
-      <Button
-        variant="primary"
-        disabled={!activeFlowId}
-        aria-keyshortcuts="Control+Enter"
-        title={runBlockedHint(flowErrors) ?? "Run (Ctrl/Cmd+Enter)"}
-        onClick={() => {
-          onRun();
-          requestAnimationFrame(() => document.querySelector<HTMLFormElement>('form[aria-label="Run inputs"]')?.requestSubmit());
-        }}
-      >
+      <Button variant="primary" disabled={!activeFlowId || running} aria-keyshortcuts="Control+Enter" title={runBlockedHint(flowErrors) ?? "Run (Ctrl/Cmd+Enter)"} onClick={run}>
         ▶ Run
         {flowErrors > 0 ? (
           <span className="bf-button__warn" aria-label={plural(flowErrors, "error")}>

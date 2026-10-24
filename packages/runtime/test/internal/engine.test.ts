@@ -51,13 +51,23 @@ describe("start sequence", () => {
 
   it("fails with run.invalid_flow and diagnostics when validation has errors", async () => {
     const { engine } = engineWith();
-    const doc = context([flow({ nodes: [node("n_pos", "tk.positive")] })]);
+    const doc = context([flow({ nodes: [node("n_pos", "tk.positive", { values: { value: -1 } })] })]);
     const { result, events } = await runToEnd(engine, doc);
     expect(result.error?.code).toBe("run.invalid_flow");
     expect(result.error?.message).toMatch(/^Flow "Test flow" has 1 error: /);
-    expect((result.error?.details as { diagnostics: { code: string }[] }).diagnostics[0]?.code).toBe("input.unconnected");
+    expect((result.error?.details as { diagnostics: { code: string }[] }).diagnostics[0]?.code).toBe("node.invalid_value");
     expect(trace(events)).toEqual(["run.started", "run.completed"]);
     expect(result.startedAt <= result.finishedAt).toBe(true);
+  });
+
+  it("gives an empty input the empty value of its type instead of rejecting the run", async () => {
+    const { engine } = engineWith();
+    const doc = context([
+      flow({ outputs: [field("v", ir.int())], nodes: [node("n_pos", "tk.positive")], edges: [edge("n_pos.value", "n_out.v")] }),
+    ]);
+    const { result } = await runToEnd(engine, doc);
+    expect(result.status).toBe("succeeded");
+    expect(result.outputs).toEqual({ v: 0 });
   });
 
   it("validates and normalizes inputs", async () => {

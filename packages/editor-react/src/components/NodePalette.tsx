@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useCanvasHandle, useDispatch, useEditorState, useEditorStore, useFlowId } from "../context.js";
+import { MEMBER_NODE_TYPES } from "@briarflow/core";
 import { NODE_TYPE_MIME, initialConfig, paletteGroups, freePosition } from "../palette.js";
 import { nodeAccent } from "../theme.js";
 
@@ -30,7 +31,8 @@ export function NodePalette({ flowId: flowIdProp }: NodePaletteProps) {
   const canvas = useCanvasHandle();
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const descriptors = useMemo(() => catalog?.descriptors() ?? nodeTypes?.nodes ?? [], [catalog, nodeTypes]);
+  // Member nodes come from a dropped wire (they need the value's type), not from the palette.
+  const descriptors = useMemo(() => (catalog?.descriptors() ?? nodeTypes?.nodes ?? []).filter((d) => d.type !== MEMBER_NODE_TYPES.get && d.type !== MEMBER_NODE_TYPES.set), [catalog, nodeTypes]);
   const groups = useMemo(() => paletteGroups(descriptors, search), [descriptors, search]);
 
   const add = (type: string) => {

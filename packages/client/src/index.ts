@@ -13,7 +13,7 @@
 export const PACKAGE_NAME = "@briarflow/client";
 
 export { createBriarClient } from "./client.js";
-export type { BriarClient, ContextsApi, FlowsApi, MediaApi, NodeTypesApi, RunsApi } from "./client.js";
+export type { BriarClient, ContextsApi, FlowsApi, MediaApi, NodeTypesApi, RunsApi, SecretsApi, SettingsApi } from "./client.js";
 export { RemoteRun } from "./remote-run.js";
 export {
   AuthError,
@@ -52,5 +52,6 @@ export type {
   RequestOptions,
   RunFlowOptions,
   RunInfo,
+  SettingsInfo,
   UploadMediaOptions,
 } from "./types.js";

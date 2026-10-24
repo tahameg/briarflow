@@ -25,9 +25,9 @@ export class UnauthorizedError extends BriarError {
 }
 
 const BAD_REQUEST_CODES = new Set(["store.invalid_cursor", "store.invalid_query", "document.invalid_id", "document.invalid_name"]);
-const CONFLICT_CODES = new Set(["store.revision_conflict", "store.flow_id_conflict", "context.exists"]);
+const CONFLICT_CODES = new Set(["store.revision_conflict", "store.flow_id_conflict", "context.exists", "secret.exists"]);
 const TOO_LARGE_CODES = new Set(["media.too_large", "request.too_large"]);
-const UNPROCESSABLE_CODES = new Set(["run.invalid_inputs", "run.invalid_flow"]);
+const UNPROCESSABLE_CODES = new Set(["run.invalid_inputs", "run.invalid_flow", "secret.invalid", "settings.invalid", "settings.unknown"]);
 
 /** True for authoring's `CommandError`, also across duplicated package copies. */
 function isCommandError(err: unknown): boolean {

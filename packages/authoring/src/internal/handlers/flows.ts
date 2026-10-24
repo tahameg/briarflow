@@ -12,6 +12,7 @@ import {
   type TypeDecl,
   type TypeRef,
   type Viewport,
+  nodeDefinition,
 } from "@briarflow/core";
 import type { Command } from "../../commands.js";
 import {
@@ -220,7 +221,7 @@ export function flowDuplicate(ctx: Ctx, p: Payload): Effect {
     t.kind === "struct" ? { ...t, id: typeIds[t.id] ?? t.id, fields: t.fields.map((f) => ({ ...f, type: remap(f.type) })) } : { ...t, id: typeIds[t.id] ?? t.id };
   const remapNode = (n: NodeInstance): NodeInstance => {
     let next = n;
-    const fields = configFields(ctx.catalog.get(n.type));
+    const fields = configFields(nodeDefinition(ctx.catalog, n));
     if (n.config) {
       const config: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(n.config)) {

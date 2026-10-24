@@ -1,16 +1,20 @@
 /**
- * `<ConsolePanel>`: the editor console. Frontend nodes such as Print write here when a run
- * reaches them (`state.console`); click a line's node to select it.
+ * `<ConsolePanel>`: the one console. Everything a run reports lands here as a table row:
+ * Print lines, failed nodes (code, node, type, message), retries, rejected runs with their
+ * problems, outputs and run start / end. Click a row with a node to select it.
  */
-import { useEffect, useRef } from "react";
-import { useEditorState, useEditorStore } from "../context.js";
-import { Button } from "./ui.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ConsoleKind, ConsoleLine } from "@briarflow/editor";
+import { useEditorState, useEditorStore, useMedia } from "../context.js";
+import { isMediaRef, mediaHref } from "../values.js";
 
 /** Props of {@link ConsolePanel}. */
 export interface ConsolePanelProps {
   /** Shown while the console is empty. */
   emptyText?: string;
 }
+
+const KINDS: readonly ConsoleKind[] = ["error", "warning", "print", "output", "info"];
 
 function timeOf(iso: string): string {
   const d = new Date(iso);
@@ -25,47 +29,121 @@ function timeOf(iso: string): string {
  * <EditorProvider store={store}><ConsolePanel /></EditorProvider>
  * ```
  */
-export function ConsolePanel({ emptyText = "Nothing printed yet. Add a Print node and run the flow." }: ConsolePanelProps) {
+export function ConsolePanel({ emptyText = "Nothing yet. Run the flow; prints, errors and outputs show up here." }: ConsolePanelProps) {
   const store = useEditorStore();
   const lines = useEditorState((s) => s.console);
-  const list = useRef<HTMLOListElement>(null);
+  const [hidden, setHidden] = useState<ReadonlySet<ConsoleKind>>(new Set());
+  const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-
-  // Follow new lines while scrolled to the bottom.
-  useEffect(() => {
-    const el = list.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  const shown = useMemo(() => (hidden.size === 0 ? lines : lines.filter((l) => !hidden.has(l.kind))), [lines, hidden]);
+  const counts = useMemo(() => {
+    const c: Partial<Record<ConsoleKind, number>> = {};
+    for (const l of lines) c[l.kind] = (c[l.kind] ?? 0) + 1;
+    return c;
   }, [lines]);
+
+  // Follow new rows while scrolled to the bottom.
+  useEffect(() => {
+    const el = box.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [shown]);
+
+  const toggle = (kind: ConsoleKind) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (!next.delete(kind)) next.add(kind);
+      return next;
+    });
 
   return (
     <div className="bf-console">
       <div className="bf-console__bar">
-        <span className="bf-muted">{lines.length === 1 ? "1 line" : `${lines.length} lines`}</span>
-        <Button size="sm" variant="secondary" disabled={lines.length === 0} onClick={() => store.clearConsole()}>
-          Clear
-        </Button>
+        {KINDS.map((k) => (
+          <label key={k} className={`bf-console__filter bf-console__filter--${k}`}>
+            <input type="checkbox" checked={!hidden.has(k)} onChange={() => toggle(k)} />
+            {k} {counts[k] ?? 0}
+          </label>
+        ))}
+        <button type="button" className="bf-console__clear" disabled={lines.length === 0} onClick={() => store.clearConsole()}>
+          clear
+        </button>
       </div>
-      <ol
-        ref={list}
-        className="bf-console__screen"
-        aria-label="Console"
-        aria-live="polite"
+      <div
+        ref={box}
+        className="bf-console__body"
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
       >
-        {lines.length === 0 ? <li className="bf-console__empty">{emptyText}</li> : null}
-        {lines.map((l) => (
-          <li key={l.id} className="bf-console__line">
-            <span className="bf-console__time">{timeOf(l.at)}</span>
-            <button type="button" className="bf-console__node" title="Select this node" onClick={() => store.select({ nodes: [l.nodeId], edges: [] }, "replace")}>
-              {l.title}
-            </button>
-            <span className="bf-console__text">{l.text}</span>
-          </li>
-        ))}
-      </ol>
+        <table className="bf-console__table" aria-label="Console">
+          <thead>
+            <tr>
+              <th>time</th>
+              <th>kind</th>
+              <th>node</th>
+              <th>code</th>
+              <th>message</th>
+            </tr>
+          </thead>
+          <tbody aria-live="polite">
+            {shown.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="bf-console__empty">
+                  {lines.length === 0 ? emptyText : "Every row is filtered out."}
+                </td>
+              </tr>
+            ) : null}
+            {shown.map((l) => (
+              <Row key={l.id} line={l} onSelect={l.nodeId ? () => store.select({ nodes: [l.nodeId!], edges: [] }, "replace") : undefined} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+function Row({ line, onSelect }: { line: ConsoleLine; onSelect: (() => void) | undefined }) {
+  return (
+    <tr className={`bf-console__row bf-console__row--${line.kind}`}>
+      <td className="bf-console__time">{timeOf(line.at)}</td>
+      <td className="bf-console__kind">{line.kind}</td>
+      <td className="bf-console__node">
+        {onSelect ? (
+          <button type="button" title={line.nodeType ? `${line.nodeType} · ${line.nodeId}` : line.nodeId} onClick={onSelect}>
+            {line.title}
+          </button>
+        ) : (
+          line.title
+        )}
+        {line.nodeType ? <span className="bf-console__type">{line.nodeType}</span> : null}
+      </td>
+      <td className="bf-console__code">{line.code ?? ""}</td>
+      <td className="bf-console__text">{line.kind === "output" ? <OutputCell line={line} /> : line.text}</td>
+    </tr>
+  );
+}
+
+function OutputCell({ line }: { line: ConsoleLine }) {
+  const { mediaUrl } = useMedia();
+  const refs = isMediaRef(line.value) ? [line.value] : Array.isArray(line.value) ? line.value.filter(isMediaRef) : [];
+  if (refs.length === 0) return <>{line.text}</>;
+  return (
+    <span className="bf-console__media">
+      {refs.map((ref, i) => {
+        const href = mediaHref(ref, mediaUrl);
+        if (!href) return <span key={i}>{ref.uri}</span>;
+        return ref.mime.startsWith("image/") ? (
+          <a key={i} href={href} target="_blank" rel="noreferrer">
+            <img src={href} alt={ref.meta?.filename ?? line.title} />
+          </a>
+        ) : (
+          <a key={i} href={href} target="_blank" rel="noreferrer">
+            {ref.meta?.filename ?? ref.mime}
+          </a>
+        );
+      })}
+    </span>
   );
 }

@@ -130,9 +130,81 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   - Media LEDs moved to magenta; red now means error.
 - Flow control nodes (branch, switch, loops, concurrency) are the next kind; not built.
 
+### Console, conversions, vault, settings, OpenAI (2026-10-24)
+- Studio run UX: run inputs live in the editor store (`state.runInputs`, `setRunInput`,
+  `useCache`), kept in `localStorage` per context (`runInputsStorage`); a run started from the
+  top bar or Ctrl/Cmd+Enter shows the Console instead of the Run tab.
+- One console: `ConsoleLine.kind` = print / info / warning / error / output. The store logs run
+  start and end, retries, failed nodes (code, node title, node type, message), rejected runs
+  with each problem, and outputs. `<ConsolePanel>` is a plain table with kind filters; the Run
+  panel lost its event log.
+- Conversions (node-api.md §1.1): `defineNode({ conversion: true })`, `findConversions(catalog,
+  from, to)`; generics limited by `t.var("T", { oneOf })` (types.md §5.2.1). Std conversions:
+  As text (`convert.toText`), As JSON (no parsing), As int / As float (text or json), As boolean
+  (any value, never fails), As JSON array, Float to int. Removed: `convert.parseInt`,
+  `convert.parseFloat`, `json.asJson`, `json.make*`. Get field / Set field parse JSON text when
+  they step into it (`json.invalid_json`). The canvas inserts the best conversion when a wire
+  joins two types that do not fit (`planConnection`).
+- Secret vault (secrets.md): `secret` primitive (value = secret name), `SecretVault`
+  (memory, SQLite AES-256-GCM with `vault.key` / `BRIAR_VAULT_KEY`), `ctx.secrets.read` limited
+  to secrets a node was given, REST `/secrets`, client `secrets`, editor `<VaultProvider>`,
+  `<SecretPicker>` (dropdown + "+"), `<SecretsPanel>`.
+- Settings (settings.md): `definePack({ settings })`, `ctx.settings.get`, `SettingsStore`
+  (memory, SQLite), REST `/settings`, client `settings`, editor `<SettingsPanel>` (app sections
+  plus one section per pack). Studio: Settings in the top bar (Secrets, OpenAI, Studio).
+- `@briarflow/nodes-openai`: `openai.text` (Responses API) and `openai.image` (Images API,
+  bytes to the media store); keys only from Settings → OpenAI (default / text / images; nodes
+  have no key input). Loaded by apps/server always. Fake-fetch tests only; not live-tested.
+- Context menus, modals, confirm dialogs, the panel move menu and the splash card are plain dark panels; wood is for nodes and the walnut top bar only.
+- Studio: ⚙ Settings sits at the right end of the top bar, also without a context.
+- Verified in headless Chrome against a separate test server: run → console rows, inputs kept
+  across runs and a reload, Settings → OpenAI → "+" creates and picks a secret (listing has no
+  value), int → text wire inserts As text, failed nodes show as error rows.
+- Python SDK: no `secret` / `json` support yet.
+
+### Node variants (2026-10-24)
+- Core (node-api.md §1.2): `defineNode({ variants: { title, default, options: { name:
+  variant({ inputs, outputs, config, run }) } } })`; one full definition per variant, linked by
+  `def.variants`; `variantDefinition`, `nodeDefinition(catalog, node)`; descriptors carry
+  `variants` and are rebuilt exactly by `definitionFromDescriptor`. `NodeInstance.variant`;
+  diagnostic and command error `node.unknown_variant`.
+- Authoring: `node.add { variant? }` (always stored), new `node.setVariant { variant, config? }`
+  (keeps config the new variant shares, removes wires/constants of vanished ports, one undo
+  step). Facade: `flow.nodes.add(type, { variant })`, `node.setVariant()`.
+- Runtime: runs the variant's `run`; cache key includes the variant. Testing: `runNode(def,
+  inputs, { variant })`; `describeNodePack` checks every variant; kit pack has `kit.shaped`.
+- Editor: variant dropdown under the node header and in the inspector; the drop-wire menu
+  offers each fitting variant.
+- `openai.text`: one variant per model (gpt-5 / -mini / -nano take Reasoning effort;
+  gpt-4.1 / -mini, gpt-4o / -mini take Temperature; "Other model" takes any id).
+  `openai.image` (updated 2026-10-24 to the current Images API): GPT Image 2.5 Flare (default)
+  and Sunburst, GPT Image 2 (size presets or a custom WIDTHxHEIGHT checked before the call,
+  quality up to xhigh/max on 2.5), GPT Image 1.5 and 1 mini (deprecated, shut down
+  2026-12-01; fixed sizes). All take format, compression, background, moderation.
+  DALL·E 2/3 and gpt-image-1 are gone from the API and from the node; saved nodes on them
+  show `node.unknown_variant` until another model is picked. Saved OpenAI nodes from before
+  variants keep their old `model` config, which the new variants reject (`config.invalid`).
+- No other std/mock/anthropic node changes shape with a choice, so they stay single-shaped.
+- Planned: nested variants (OPEN_QUESTIONS Q-NODE-10).
+
+### Members, media previews and the image pack (2026-10-24)
+- Core: members of a type (types.md §12): struct fields (read/write), media metadata (url, mime,
+  extension, name, size, width, height, duration, fps), error fields, length of text and lists
+  (read-only). `typeMembers`, `memberAt`, `memberPaths`, `readMember`, `writeMember`,
+  `MEMBER_NODE_TYPES`.
+- Std: `briar.member.get` / `briar.member.set` (pure; titles "Get .path" / "Set .path").
+- Editor: a wire dropped on empty canvas lists "Get member" / "Set member" with every member of
+  the output's type (nested as dotted paths); member nodes are not in the palette.
+- Editor: nodes with image / video outputs show a preview window with the last run's media
+  (a 2-column grid for several outputs, hidden when zoomed out); double-click opens a large
+  viewer (details, thumbnails, open in new tab).
+- New pack `@briarflow/nodes-image` (`image`), loaded by the server: Make image (RGBA / RGB
+  channels / one color), Split channels (RGBA / RGB), Resize, Crop, Rotate / flip, Grayscale,
+  Invert colors, Convert. PNG + JPEG through pure JS codecs.
+
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
-- Live-test `@briarflow/nodes-anthropic` with a real key; `nodes-openai`.
+- Live-test `@briarflow/nodes-anthropic` and `@briarflow/nodes-openai` with real keys.
 - REQ-26 P2/P3; studio: restore last active flow on reload; studio palette for server-only packs with dynamic ports
   (anthropic.structured is "approximate" in the editor without a local pack).
 - Tester suites still pending from the original plan (phase-3 public suites, HTTP contract suite per phase-5 §6.1).

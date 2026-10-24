@@ -12,3 +12,5 @@ export const PACKAGE_NAME = "@briarflow/storage-sqlite";
 
 export { SQLITE_SCHEMA_VERSION, SqliteContextStore } from "./context-store.js";
 export type { SqliteContextStoreOptions } from "./context-store.js";
+export { SqliteSecretVault, SqliteSettingsStore, loadVaultKey, parseVaultKey } from "./vault.js";
+export type { SqliteSecretVaultOptions } from "./vault.js";

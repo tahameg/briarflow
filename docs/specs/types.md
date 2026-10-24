@@ -65,7 +65,7 @@ type        = ws , base , { ws , "?" } , ws ;          (* "?" may appear at most
 base        = list | primitive | named | var ;
 list        = "list" , ws , "<" , type , ">" , [ ws , listBounds ] ;
 listBounds  = "[" , ws , [ int ] , ws , ".." , ws , [ int ] , ws , "]" ;   (* list<text>[1..4] *)
-primitive   = "text" | "int" | "float" | "boolean"
+primitive   = "text" | "int" | "float" | "boolean" | "json" | "secret"
             | "image" | "video" | "audio" | "model3d" | "file" ;
 named       = [ packName , "." ] , typeName ;
 var         = "$" , varName ;                           (* "$T"; only in node definitions *)
@@ -155,9 +155,16 @@ affects how new shorthand is resolved and how `formatType` prints.
 
 Notes:
 
-- `int → float` is the only implicit widening. Nothing converts to `text` implicitly; use
-  `convert.toText`.
+- `int → float` is the only implicit widening. Nothing converts implicitly; conversion nodes
+  do it (node-api.md §1.1), and the editor inserts one when a wire joins two types it
+  converts between (e.g. json → text puts As text in between).
 - Media primitives never convert between each other (`image → file` is ✗).
+- `json` is assignable only to `json`. Text becomes json through As JSON (not parsed: a json
+  value may be raw JSON text, parsed when a field is read); json leaves through Get field and
+  the conversions As text / As int / As float / As boolean / As JSON array (node-api.md §9).
+  A missing field, bad JSON text or a wrong kind is a run-time error, never a validation error.
+- `secret` is assignable only to `secret` (any kind; `kind` is a constraint). Its value is the
+  name of a vault secret, never the secret itself (secrets.md).
 - `list<int> → list<float>` ✓ (covariance is safe because values are immutable JSON).
 - Constraints never affect assignability (`text{maxLength:10} → text{maxLength:5}` ✓). They are
   checked on values at runtime boundaries (§6).
@@ -223,6 +230,15 @@ with `edge.generic_conflict`. Recomputation after other commands (e.g. an upstre
 changed by `flow.input.setType`) never rejects: a conflict becomes the diagnostic
 `node.generic_conflict` and the var is left unbound.
 
+### 5.2.1 Limited generics (`oneOf`)
+
+`t.var("T", { oneOf: [t.text(), t.json()] })` limits what `T` binds to: the folded binding must
+be assignable to one of the listed (concrete) types, else `node.generic_conflict` /
+`edge.generic_conflict` with `details.allowed` and the message
+`{node}: {port} accepts text or json, not int.` A limited var that no connection binds takes
+its **first** type (so the port can hold a typed value and is never `node.generic_unbound`);
+editors still offer it to any of its types (they look at the declared type).
+
 ### 5.3 Unbound vars
 
 - A port whose type still contains an unbound var displays as `$T` and accepts a connection
@@ -232,8 +248,8 @@ changed by `flow.input.setType`) never rejects: a conflict becomes the diagnosti
   error `node.generic_unbound` ("Connect a value to `<port>` so the node knows its type").
   It is reported **once per var**, on the first input port (declaration order) whose type uses
   it. Vars appearing only in outputs that are unconnected are harmless and resolve to nothing.
-- `input.unconnected` (commands.md §9) is **not** raised for an input whose type still contains
-  an unbound var; `node.generic_unbound` already covers it (DECISIONS #35).
+- An input whose type still contains an unbound var is reported by `node.generic_unbound`
+  only (DECISIONS #35); empty inputs are never errors (node-api.md).
 
 ### 5.4 Example
 
@@ -258,6 +274,8 @@ Constraints live on primitive and list IR nodes. All are optional.
 | float | `min`, `max` (inclusive) | | same as int |
 | float | (always) | finite number | `must be a number` |
 | boolean | — | | `must be true or false` |
+| json | — | | `must be JSON: …` |
+| secret | `kind: apiKey \| text \| number \| json` | which secrets a picker offers; not checked on values | — |
 | image/video/audio/model3d/file | `formats: string[]` | allowed formats, see table below | `must be one of the formats {formats} (got {mime})` |
 | media | `maxBytes: int` | checked only when `bytes` is present | `must be at most {n} bytes` |
 | image | `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | checked only when `meta.width/height` present | `must be at least {n} px wide` … |
@@ -322,6 +340,8 @@ interface ValueCheckOptions {
 | int | safe integer number | as is (`2.0` is accepted, it is the same JSON number as `2`) |
 | float | finite number | as is |
 | boolean | `true`/`false` | as is |
+| json | any JSON value: object, array (also at the root), string, finite number, boolean, `null` | as is |
+| secret | a secret name (`^[A-Za-z_][A-Za-z0-9_.-]{0,63}$`) | as is |
 | media | MediaRef object (§8) | as is |
 | enum | string equal to one member `value` (case-sensitive) | as is |
 | struct | object; no unknown keys; every non-optional field without default present | every field present; omitted optional → `null`; omitted defaulted → default |
@@ -345,6 +365,8 @@ value as compact JSON, cut to 60 characters (57 + `...`), or `nothing` for a mis
 | int | `must be a whole number (got …)` |
 | float | `must be a number (got …)` |
 | boolean | `must be true or false (got …)` |
+| json | `must be JSON: {problem}` (non-finite number, `undefined`, function, circular reference) |
+| secret | `must be the name of a secret (got …)` |
 | list | `must be a list (got …)` |
 | struct `X` | `must be an object with the fields of X (got …)` |
 | enum | `must be one of a, b, c (got …)` |
@@ -381,6 +403,8 @@ Target: JSON Schema draft 2020-12. Output is one schema with `$defs` for named t
 | int | `{"type":"integer","minimum":…,"maximum":…}` |
 | float | `{"type":"number","minimum":…,"maximum":…}` |
 | boolean | `{"type":"boolean"}` |
+| json | `{}` (any value) |
+| secret | `{"type":"string","minLength":1}` (the name) |
 | media primitive | `{"$ref":"#/$defs/MediaRef"}` combined via `allOf` with `{"properties":{"mime":{"pattern":"^image/"}}}` (or the `enum` of mimes when `formats` is set) |
 | struct `X` | `{"$ref":"#/$defs/X"}`; def: `{"type":"object","title":"X","description":…,"properties":{…},"required":[…],"additionalProperties":false}` |
 | enum `E` | `{"$ref":"#/$defs/E"}`; def: `{"type":"string","enum":["a","b"],"title":"E"}` (labels in `x-briar-labels`) |
@@ -474,3 +498,34 @@ commands.md §9.
 
 Node labels in messages use the node title, or the definition title plus id when the title is
 empty: `Text template (n_tpl1)`.
+
+## 12. Members (`value.member`)
+
+Every type has a fixed list of **members**: what `value.member` reads, like the dot operator in
+code. Core computes them (`typeMembers`, `memberAt`, `memberPaths`, `readMember`,
+`writeMember`); the std nodes **Get member** (`briar.member.get`) and **Set member**
+(`briar.member.set`) use them. In the editor, dropping a wire from an output on empty canvas
+lists every member of the output's type, nested ones as dotted paths (`portrait.image.width`,
+up to 3 steps; a struct is not entered again inside itself).
+
+| Type | Members | Writable |
+|---|---|---|
+| struct | its fields, with their types | yes (Set member returns a copy with the field replaced) |
+| `image` | `url: text` (the uri), `mime: text`, `extension: text` (from the file name, else the mime type), `name: text?` (`meta.filename`), `size: int?` (bytes), `width: int?`, `height: int?` | no |
+| `video` | as image, plus `duration: float?` (seconds), `fps: float?` | no |
+| `audio` | url, mime, extension, name, size, `duration: float?` | no |
+| `file`, `model3d` | url, mime, extension, name, size | no |
+| `error` | `code: text`, `message: text`, `node: text?`, `nodeId: text?` | no |
+| `text`, `list<T>` | `length: int` (text: code points) | no |
+| `T?` | the members of `T`, each optional (`none` when the value is none) | no |
+| others (`int`, `float`, `boolean`, `json`, `secret`, enums) | none | — |
+
+- A path is writable when every step is a struct field. Media metadata is read-only: the bytes
+  belong to the media store, and image processing nodes make new images instead.
+- Reading a missing step (a `none` value, an absent field) gives `none`; an absent struct field
+  with a default gives the default.
+- Both nodes are pure. Config `{ type: TypeRef, path: "a.b" }`; Get member has input `value`
+  and one output named after the last step; Set member has inputs `value` and `to` and output
+  `value`. A path that does not exist, or Set on a read-only member, leaves the node without
+  ports (`config.invalid` with the list of members).
+

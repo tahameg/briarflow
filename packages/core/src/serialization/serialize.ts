@@ -162,6 +162,7 @@ const node = fields({
   type: req(str),
   title: opt(str),
   position: req(position),
+  variant: opt(str),
   config: opt(obj),
   values: opt(obj),
   typeBindings: opt(recordOf(typeRef)),

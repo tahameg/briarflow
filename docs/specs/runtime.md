@@ -212,8 +212,9 @@ interface RetryPolicy {
   { "v": 1, "nodeType": "...", "pack": "name@version", "cacheVersion": "1",
     "config": { ... }, "typeBindings": { ... }, "inputs": { ... } }
   ```
-  where every MediaRef inside `inputs` is replaced by `{ "$media": hash ?? uri }`. Node id,
-  title, position, run id and secrets are **not** part of the key.
+  where every MediaRef inside `inputs` is replaced by `{ "$media": hash ?? uri }`. Nodes with
+  variants add `"variant": "<name>"` (node-api.md §1.2); keys of other nodes are unchanged.
+  Node id, title, position, run id and secrets are **not** part of the key.
 - Used only when the definition has `cache: true`, the run has `useCache !== false`; never
   for engine-executed nodes (§3.1).
 - Lookup happens after inputs are resolved. Hit → `node.started`, `node.completed { cached: true }`;

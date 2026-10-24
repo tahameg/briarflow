@@ -9,9 +9,9 @@ import { findFlow } from "../documents/factories.js";
 import type { NodeCatalog } from "../nodes/catalog.js";
 import type { ConfigField } from "../nodes/config.js";
 import type { AnyNodeDefinition, PortMap, PortScope, PortWidget } from "../nodes/define.js";
-import { portParts } from "../nodes/define.js";
+import { portParts, variantDefinition } from "../nodes/define.js";
 import type { GenericConnection, TypeBindings } from "../types/generics.js";
-import { bindTypeVarsAll, substituteTypeVars } from "../types/generics.js";
+import { bindTypeVarsAll, collectOneOf, substituteTypeVars } from "../types/generics.js";
 import type { TypeRef } from "../types/ir.js";
 import type { TypeScope } from "../types/scope.js";
 import { flowNotFound, scopeForFlow } from "../types/scope.js";
@@ -111,15 +111,30 @@ function resolveNode(
   if (node.type === FLOW_OUTPUT_NODE_TYPE) {
     return { ...base, definition: undefined, inputs: signaturePorts(flow.outputs), outputs: [] };
   }
-  const def = catalog.get(node.type);
+  const typeDef = catalog.get(node.type);
   const at = { flowId: flow.id, nodeId: node.id };
-  if (!def) {
+  if (!typeDef) {
     base.diagnostics.push({
       severity: "error",
       code: "node.unknown_type",
       message: `${nodeLabel(node, undefined)} uses unknown node type "${node.type}". Load its pack or remove the node.`,
       path: at,
       details: { type: node.type },
+    });
+    return { ...base, definition: undefined, inputs: [], outputs: [] };
+  }
+  const def = variantDefinition(typeDef, node.variant);
+  if (!def) {
+    const names = typeDef.variants?.options.map((o) => o.name) ?? [];
+    base.diagnostics.push({
+      severity: "error",
+      code: "node.unknown_variant",
+      message:
+        names.length > 0
+          ? `${nodeLabel(node, typeDef)} uses variant "${node.variant}", which ${node.type} does not have. Pick one of: ${names.join(", ")}.`
+          : `${nodeLabel(node, typeDef)} names variant "${node.variant}", but ${node.type} has no variants. Remove the variant.`,
+      path: at,
+      details: { type: node.type, variant: node.variant, variants: names },
     });
     return { ...base, definition: undefined, inputs: [], outputs: [] };
   }
@@ -242,18 +257,26 @@ function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, cata
     if (!changed) break;
   }
   for (const n of generic) {
-    const b = bindings.get(n.nodeId) ?? {};
+    const b = { ...(bindings.get(n.nodeId) ?? {}) };
+    // An unconnected var limited by `oneOf` takes its first type, so its value can be typed.
+    const limits = new Map<string, TypeRef[]>();
+    for (const p of [...n.inputs, ...n.outputs]) collectOneOf(p.declaredType, limits);
+    const conflicting = new Set((conflicts.get(n.nodeId) ?? []).map((c) => c.varName));
+    for (const [name, oneOf] of limits) if (!(name in b) && !conflicting.has(name) && oneOf[0]) b[name] = oneOf[0];
     n.typeBindings = b;
     for (const p of [...n.inputs, ...n.outputs]) p.type = substituteTypeVars(p.declaredType, b);
     const node = flow.nodes.find((x) => x.id === n.nodeId);
     for (const c of conflicts.get(n.nodeId) ?? []) {
       const label = node ? nodeLabel(node, n.definition) : n.nodeId;
+      const message = c.allowed
+        ? `${label}: ${c.port} accepts ${c.allowed.map((t) => formatType(t)).join(" or ")}, not ${formatType(c.other)}.`
+        : `${label} already uses ${c.varName} = ${formatType(c.bound)}; ${c.port} would need ${c.varName} = ${formatType(c.other)}.`;
       n.diagnostics.push({
         severity: "error",
         code: "node.generic_conflict",
-        message: `${label} already uses ${c.varName} = ${formatType(c.bound)}; ${c.port} would need ${c.varName} = ${formatType(c.other)}.`,
+        message,
         path: { flowId: flow.id, nodeId: n.nodeId, port: c.port },
-        details: { varName: c.varName, bound: c.bound, other: c.other },
+        details: { varName: c.varName, bound: c.bound, other: c.other, ...(c.allowed ? { allowed: c.allowed } : {}) },
       });
     }
   }

@@ -99,7 +99,9 @@ function fakeCtx(media: MediaStore, secrets: Record<string, string> = {}): FakeC
         if (value === undefined) throw new NodeError("node.missing_secret", `Secret ${name} is not configured.`);
         return value;
       },
+      read: async () => "",
     },
+    settings: { get: async () => undefined },
     globals: { get: () => undefined },
     variables: { get: () => undefined },
     fetch: globalThis.fetch,

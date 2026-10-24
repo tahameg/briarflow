@@ -68,6 +68,7 @@ export type {
   NodeMoveCommand,
   NodeRemoveCommand,
   NodeSetConfigCommand,
+  NodeSetVariantCommand,
   NodeSetTitleCommand,
   NodeSetValueCommand,
   PortRef,

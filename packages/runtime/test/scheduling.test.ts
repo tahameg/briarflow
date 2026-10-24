@@ -52,7 +52,7 @@ describe("start order", () => {
   it("depth is the longest path: a deep chain node waits even if one dependency is shallow", async () => {
     const { engine } = makeEngine();
     const d = doc({
-      nodes: [n("n_1", "probe.echo"), n("n_2", "probe.echo"), n("n_t", "text.template", { config: { template: "{a}{b}" } })],
+      nodes: [n("n_1", "probe.echo"), n("n_2", "probe.echo"), n("n_t", "text.template", { config: { template: "{{a}}{{b}}" } })],
       edges: [e("n_1.value", "n_2.value"), e("n_1.value", "n_t.a"), e("n_2.value", "n_t.b")],
     });
     const run = engine.run({ context: d, flowId: FLOW_ID });
@@ -176,7 +176,7 @@ describe("input resolution", () => {
   it("inputs are validated against port constraints: node.invalid_input, not retried", async () => {
     const { engine } = makeEngine();
     const d = doc({
-      nodes: [n("n_parse", "convert.parseInt", { values: { text: "-5" } }), n("n_img", "mock.image", { values: { prompt: "p" } })],
+      nodes: [n("n_parse", "convert.asInt", { values: { value: "-5" } }), n("n_img", "mock.image", { values: { prompt: "p" } })],
       edges: [e("n_parse.value", "n_img.width")],
     });
     const run = engine.run({ context: d, flowId: FLOW_ID });

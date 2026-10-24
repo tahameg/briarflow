@@ -238,7 +238,7 @@ describe("node.setValue / node.clearValue", () => {
 
 describe("node.setConfig", () => {
   it("vanished ports lose edges and constants (restored by undo)", () => {
-    const r = accept(richDoc(), [{ op: "node.setConfig", flowId: PORTRAIT, nodeId: "n_tpl", config: { template: "Draw {name}" } }]);
+    const r = accept(richDoc(), [{ op: "node.setConfig", flowId: PORTRAIT, nodeId: "n_tpl", config: { template: "Draw {{name}}" } }]);
     expect(portsOf(r.doc, PORTRAIT, "n_tpl").inputs).toEqual(["name"]);
     expect(edgeIds(r.doc, PORTRAIT)).toEqual(["e_1", "e_2", "e_4"]);
     expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text() });
@@ -246,12 +246,12 @@ describe("node.setConfig", () => {
 
   it("constants of vanished ports are removed", () => {
     const d = build(richDoc(), [
-      { op: "node.add", flowId: KIT, id: "n_t", type: "text.template", position: at, config: { template: "{a} {b}" }, values: {} },
+      { op: "node.add", flowId: KIT, id: "n_t", type: "text.template", position: at, config: { template: "{{a}} {{b}}" }, values: {} },
       { op: "edge.connect", flowId: KIT, id: "e_t", from: { node: "n_src", port: "text" }, to: { node: "n_t", port: "a" } },
       { op: "edge.connect", flowId: KIT, id: "e_u", from: { node: "n_src", port: "text" }, to: { node: "n_t", port: "b" } },
       { op: "node.setValue", flowId: KIT, nodeId: "n_t", port: "b", value: "B" },
     ]);
-    const r = accept(d, [{ op: "node.setConfig", flowId: KIT, nodeId: "n_t", config: { template: "{a}" } }]);
+    const r = accept(d, [{ op: "node.setConfig", flowId: KIT, nodeId: "n_t", config: { template: "{{a}}" } }]);
     expect(nodeOf(r.doc, KIT, "n_t")!.values ?? {}).toEqual({});
     expect(edgeIds(r.doc, KIT)).not.toContain("e_u");
   });

@@ -1,8 +1,9 @@
 /**
  * Woodshop node parts: port LEDs, the brass category medal, the pilot lamp and the VU
- * progress strip. Styles: `styles/editor.css` ("Woodshop nodes").
+ * progress strip, the variant dropdown. Styles: `styles/editor.css` ("Woodshop nodes").
  */
 import type { ReactNode } from "react";
+import type { VariantView } from "../graph.js";
 import type { LedFamily } from "../theme.js";
 import type { DotState } from "./ui.js";
 
@@ -84,5 +85,24 @@ export function NodeMedal({ icon }: { icon: string }) {
         {ICONS[icon] ?? ICONS.node}
       </svg>
     </span>
+  );
+}
+
+/** The variant dropdown under a node's header (`Model: gpt-image-1 ▾`). */
+export function VariantSelect({ variant, label, onPick }: { variant: VariantView; label: string; onPick: (name: string) => void }) {
+  const current = variant.options.find((o) => o.name === variant.current);
+  return (
+    <label className={variant.known ? "bf-node__variant" : "bf-node__variant bf-node__variant--invalid"} title={current?.description ?? (variant.known ? undefined : `Unknown variant "${variant.current}"`)}>
+      <span className="bf-node__variant-label">{variant.title}</span>
+      <select className="bf-node__variant-select nodrag" aria-label={`${label} ${variant.title}`} value={variant.current} onChange={(e) => onPick(e.target.value)}>
+        {variant.known ? null : <option value={variant.current}>{variant.current} (unknown)</option>}
+        {variant.options.map((o) => (
+          <option key={o.name} value={o.name}>
+            {o.title}
+            {o.deprecated ? " (deprecated)" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

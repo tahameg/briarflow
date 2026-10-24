@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCatalog,
   defineNode,
+  variant,
   isBriarError,
   isTypeSpec,
   isValidFieldName,
@@ -59,6 +60,36 @@ function namedIds(ref: TypeRef, out: string[] = []): string[] {
   if (ref.kind === "named") out.push(ref.id);
   if (ref.kind === "list" || ref.kind === "optional") namedIds(ref.of, out);
   return out;
+}
+
+/** Every shape of a node: its variants, or the node itself. */
+function shapesOf(def: AnyNodeDefinition): AnyNodeDefinition[] {
+  return def.variants ? def.variants.options.map((o) => o.definition) : [def];
+}
+
+/** `defineNode` input that rebuilds `def` (variants included). */
+function redefinition(def: AnyNodeDefinition): never {
+  if (!def.variants) return { ...(def as object) } as never;
+  const { inputs: _i, outputs: _o, config: _c, run: _r, resolvePorts: _p, variant: _v, variants, ...common } = def;
+  const options = Object.fromEntries(
+    variants.options.map((o) => {
+      const d = o.definition;
+      return [
+        o.name,
+        variant({
+          title: o.title,
+          ...(o.description === undefined ? {} : { description: o.description }),
+          ...(o.deprecated === undefined ? {} : { deprecated: o.deprecated }),
+          inputs: d.inputs,
+          outputs: d.outputs,
+          config: d.config,
+          ...(d.resolvePorts === undefined ? {} : { resolvePorts: d.resolvePorts }),
+          run: d.run,
+        } as never),
+      ];
+    }),
+  );
+  return { ...common, variants: { title: variants.title, default: variants.default, options } } as never;
 }
 
 /**
@@ -123,21 +154,24 @@ export function describeNodePack(pack: NodePack, options: NodePackSuiteOptions =
         expect(typeof def.cacheVersion).toBe("string");
         if (def.concurrency !== undefined) expect(Number.isSafeInteger(def.concurrency) && def.concurrency >= 1).toBe(true);
         for (const s of def.secrets) expect(typeof s === "string" && s !== "").toBe(true);
-        expect(() => defineNode({ ...(def as object) } as never)).not.toThrow();
+        expect(() => defineNode(redefinition(def))).not.toThrow();
       });
 
       it("follows the naming conventions (title, ports)", () => {
         expect(def.title.trim()).not.toBe("");
         expect(def.title[0], `title "${def.title}" should start with a capital letter`).toBe(def.title[0]?.toUpperCase());
         expect(def.title.includes(def.type), `title "${def.title}" should not repeat the node type`).toBe(false);
-        for (const name of [...Object.keys(def.inputs), ...Object.keys(def.outputs), ...Object.keys(def.config)]) {
-          expect(isValidFieldName(name), `port/config name "${name}"`).toBe(true);
+        for (const shape of shapesOf(def)) {
+          for (const name of [...Object.keys(shape.inputs), ...Object.keys(shape.outputs), ...Object.keys(shape.config)]) {
+            expect(isValidFieldName(name), `port/config name "${name}"`).toBe(true);
+          }
         }
+        for (const o of def.variants?.options ?? []) expect(o.title.trim(), `title of variant ${o.name}`).not.toBe("");
       });
 
       it("port types only reference visible types (own pack types or document types)", () => {
         const visible = new Set([...pack.types, ...deps.flatMap((p) => p.types)].map((t) => t.id));
-        for (const port of [...Object.values(def.inputs), ...Object.values(def.outputs)]) {
+        for (const port of shapesOf(def).flatMap((d) => [...Object.values(d.inputs), ...Object.values(d.outputs)])) {
           const ref = portRef(port);
           expect(ref, "port must have a type").toBeDefined();
           for (const id of namedIds(ref as TypeRef)) {
@@ -152,6 +186,7 @@ export function describeNodePack(pack: NodePack, options: NodePackSuiteOptions =
         expect(descriptor.pack).toEqual({ name: pack.name, version: pack.version });
         expect(JSON.parse(JSON.stringify(descriptor))).toEqual(descriptor);
         expect(descriptor.dynamicPorts).toBe(def.resolvePorts !== undefined);
+        expect(descriptor.variants?.options.map((o) => o.name)).toEqual(def.variants?.options.map((o) => o.name));
       });
 
       const own = samples[def.type] ?? [];

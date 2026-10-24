@@ -2,6 +2,7 @@
  * Internal: one local run (docs/specs/runtime.md §2–§8, variables.md §6–§8).
  */
 import {
+  emptyValue,
   ERROR_OUTPUT,
   EXEC_FAILED,
   EXEC_THEN,
@@ -20,7 +21,9 @@ import {
   type RunResult,
   type RunStatus,
   type SecretResolver,
+  type SecretVault,
   type SerializedError,
+  type SettingsStore,
 } from "@briarflow/core";
 import { computeCacheKey, replaceMedia, type RunCache } from "./cache.js";
 import { EventLog } from "./events.js";
@@ -28,12 +31,15 @@ import { classify, failure, type NodeFailure } from "./failures.js";
 import { byDepthThenId, prepare, UNSET, type Plan, type PlannedNode } from "./prepare.js";
 import type { Scheduler, SlotRequest } from "./scheduler.js";
 import { checkPortValue } from "./values.js";
+import { inputSecretRefs, nodeAccess } from "./node-access.js";
 
 /** What a run needs from its engine. */
 export interface RunServices {
   catalog: NodeCatalog;
   media: MediaStore;
   secrets: SecretResolver;
+  vault?: SecretVault;
+  settings?: SettingsStore;
   logger: Logger;
   cache: RunCache;
   clock: () => Date;
@@ -596,18 +602,13 @@ export class LocalRun implements Run {
         value = constants[port.name];
       } else if (port.hasDefault) {
         value = port.default ?? null;
-      } else if (port.type.kind === "optional") {
-        value = null;
       } else {
-        return {
-          ok: false,
-          failure: failure(
-            "node.invalid_input",
-            `Node ${node.title} has no value for input "${port.name}". Connect an edge or set a constant.`,
-            node.id,
-            { details: { port: port.name } },
-          ),
-        };
+        value = emptyValue(port.type);
+      }
+      // null always reaches the node: a missing value is the node's call, not the engine's.
+      if (value === null) {
+        values[port.name] = null;
+        continue;
       }
       const r = checkPortValue(value, port.type, plan.scope, `inputs.${port.name}`, { flowId: plan.flow.id, nodeId: node.id, port: port.name });
       if (!r.ok) {
@@ -833,6 +834,7 @@ export class LocalRun implements Run {
       }
       return await computeCacheKey({
         nodeType: node.node.type,
+        ...(node.def?.variant === undefined ? {} : { variant: node.def.variant }),
         pack: node.pack,
         cacheVersion: node.def?.cacheVersion ?? "1",
         config: node.config,
@@ -909,7 +911,7 @@ export class LocalRun implements Run {
     const controller = new AbortController();
     let usedState = false;
     let active = true;
-    const ctx = this.makeContext(node, ex, controller.signal, attempt, secrets, () => {
+    const ctx = this.makeContext(node, ex, controller.signal, attempt, secrets, inputs, () => {
       usedState = true;
     }, () => active);
     return new Promise<Outcome>((resolve) => {
@@ -955,11 +957,19 @@ export class LocalRun implements Run {
     signal: AbortSignal,
     attempt: number,
     secrets: Map<string, string>,
+    inputs: Readonly<Record<string, unknown>>,
     markStateRead: () => void,
     isActive: () => boolean,
   ): ExecContext {
     const plan = this.plan as Plan;
     const def = node.def;
+    const access = nodeAccess({
+      title: node.title,
+      settings: this.services.catalog.packOf(node.node.type)?.settings ?? [],
+      store: this.services.settings,
+      vault: this.services.vault,
+      allowed: inputSecretRefs(node.ports.inputs, inputs),
+    });
     const logger = this.services.logger;
     const tag = { runId: this.id, nodeId: node.id };
     const lookup = (kind: "flow" | "global", name: string): unknown => {
@@ -1013,7 +1023,9 @@ export class LocalRun implements Run {
           }
           return value;
         },
+        read: (ref: string) => access.readSecret(ref),
       },
+      settings: { get: (name: string) => access.readSetting(name) },
       globals: { get: (name: string) => lookup("global", name) },
       variables: { get: (name: string) => lookup("flow", name) },
       fetch: boundFetch,

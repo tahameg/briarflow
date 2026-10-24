@@ -159,7 +159,7 @@ describe("phase 3 exit flow", () => {
       ],
       nodes: [
         n("n_break", "briar.struct.break", { config: { typeId: "ty_char" } }),
-        n("n_tpl", "text.template", { config: { template: "Portrait of {name}, age {age}" } }),
+        n("n_tpl", "text.template", { config: { template: "Portrait of {{name}}, age {{age}}" } }),
         n("n_llm", "mock.llm"),
         n("n_img", "mock.image", { values: { width: 64, height: 32 } }),
       ],
@@ -192,6 +192,7 @@ describe("phase 3 exit flow", () => {
     const r2 = await again.result;
     expect(r2.outputs).toEqual(result.outputs);
     const cached = (await collect(again)).filter((x): x is Ev<"node.completed"> => x.type === "node.completed" && x.cached);
-    expect(cached.map((x) => x.nodeId).sort()).toEqual(["n_break", "n_img", "n_llm", "n_tpl"]);
+    // text.template is not cached (it can read variables); its unchanged text keeps the LLM cached.
+    expect(cached.map((x) => x.nodeId).sort()).toEqual(["n_break", "n_img", "n_llm"]);
   });
 });

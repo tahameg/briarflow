@@ -117,7 +117,16 @@ const CORPUS: Case[] = [
   { name: "node.setValue new key", batch: [{ op: "node.setValue", flowId: KIT, nodeId: "n_sink", port: "value", value: "v" }] },
   { name: "node.clearValue", batch: [{ op: "node.clearValue", flowId: KIT, nodeId: "n_c", port: "value" }] },
   { name: "node.clearValue last key", batch: [{ op: "node.clearValue", flowId: KIT, nodeId: "n_cset", port: "value" }] },
-  { name: "node.setConfig (vanished port)", batch: [{ op: "node.setConfig", flowId: PORTRAIT, nodeId: "n_tpl", config: { template: "{style}!" } }] },
+  { name: "node.setConfig (vanished port)", batch: [{ op: "node.setConfig", flowId: PORTRAIT, nodeId: "n_tpl", config: { template: "{{style}}!" } }] },
+  {
+    name: "node.setVariant (vanished port, carried config)",
+    batch: [
+      { op: "node.add", flowId: KIT, id: "n_sh", type: "kit.shaped", position: at, config: { mode: "a", label: "L" }, values: { extra: 4 } },
+      { op: "node.add", flowId: KIT, id: "n_ai", type: "kit.addOne", position: at },
+      { op: "edge.connect", flowId: KIT, from: { node: "n_ai", port: "value" }, to: { node: "n_sh", port: "extra" } },
+      { op: "node.setVariant", flowId: KIT, nodeId: "n_sh", variant: "number" },
+    ],
+  },
   { name: "node.setConfig (type change)", batch: [{ op: "node.setConfig", flowId: KIT, nodeId: "n_moodc", config: { type: "int" } }] },
   { name: "edge.connect", batch: [{ op: "node.add", flowId: KIT, id: "n_t2", type: "kit.sinkText", position: at }, { op: "edge.connect", flowId: KIT, from: { node: "n_src", port: "text" }, to: { node: "n_t2", port: "value" } }] },
   { name: "edge.connect replacing", batch: [{ op: "edge.connect", flowId: KIT, from: { node: "n_bgget", port: "value" }, to: { node: "n_sink", port: "value" } }] },

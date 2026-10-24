@@ -1,26 +1,47 @@
 /**
- * `<RunPanel>`: run the active flow. Inputs form generated from the flow signature, run /
- * cancel, status, event log (click selects the node) and outputs (text, image previews, JSON).
+ * `<RunPanel>`: run the active flow. Inputs form generated from the flow signature (kept in
+ * the store across runs), run / cancel, status and outputs. What the run reports goes to the
+ * console (`<ConsolePanel>`).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { createCatalog, scopeForFlow } from "@briarflow/core";
-import type { Diagnostic, FieldDecl, RunEvent, SerializedError, TypeScope } from "@briarflow/core";
+import type { Diagnostic, FieldDecl, SerializedError, TypeScope } from "@briarflow/core";
 import { isRunFinished } from "@briarflow/editor";
-import type { RunState } from "@briarflow/editor";
+import type { EditorStore, RunState } from "@briarflow/editor";
 import { useEditorState, useEditorStore, useFlowId, useLocalToasts, useMedia } from "../context.js";
-import { formatDuration, isMediaRef, mediaHref, previewValue } from "../values.js";
+import { isMediaRef, mediaHref, previewValue } from "../values.js";
 import { Badge, Button, EmptyState, SectionHead, StatusDot } from "./ui.js";
 import type { DotState, Tone } from "./ui.js";
 import { ValueEditor } from "./ValueEditor.js";
 import { DiagnosticsList } from "./DiagnosticsList.js";
 
 const NO_PACKS = createCatalog([]);
+const NO_INPUTS: Readonly<Record<string, unknown>> = {};
+
+/**
+ * Starts a run of a flow with the inputs typed in the editor (`state.runInputs`). A rejected
+ * run shows in the console; any other failure goes to `onError` (e.g. a toast).
+ *
+ * @example
+ * ```ts
+ * startEditorRun(store, "flow_p", (message) => toast(message));
+ * ```
+ */
+export function startEditorRun(store: EditorStore, flowId: string, onError: (message: string) => void): void {
+  store.startRun({ flowId }).catch((err: unknown) => {
+    if (store.getState().run?.status !== "rejected") onError(err instanceof Error ? err.message : String(err));
+  });
+}
 
 /** Props of {@link RunPanel}. */
 export interface RunPanelProps {
   flowId?: string;
   /** Shows an "Open PROBLEMS" link on a rejected run (e.g. switch the dock tab). */
   onOpenProblems?: () => void;
+  /** Called when the panel starts a run (e.g. show the console). */
+  onRunStarted?: () => void;
+  /** Ctrl/Cmd+Enter runs while the panel is mounted. Default true; turn off when the app has its own shortcut. */
+  shortcut?: boolean;
 }
 
 /** Number of error diagnostics of a flow (the run will be rejected while > 0). */
@@ -62,41 +83,13 @@ function statusLook(status: RunState["status"] | undefined): { dot: DotState; to
   }
 }
 
-function timeOf(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const p = (n: number, w = 2) => String(n).padStart(w, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
-}
-
-function eventDetail(e: RunEvent): string {
-  switch (e.type) {
-    case "run.started":
-      return e.flowId;
-    case "node.started":
-      return `attempt ${e.attempt}`;
-    case "node.progress":
-      return `${e.fraction.toFixed(2)}${e.message ? ` ${e.message}` : ""}`;
-    case "node.retrying":
-      return `retry ${e.nextAttempt} in ${formatDuration(e.delayMs)}: ${e.error.message}`;
-    case "node.completed":
-      return `${e.cached ? "cached · " : ""}${formatDuration(e.durationMs)}`;
-    case "node.failed":
-      return e.error.message;
-    case "node.skipped":
-      return e.reason;
-    case "run.completed":
-      return e.result.status;
-  }
-}
-
 /**
  * @example
  * ```tsx
  * <RunPanel />
  * ```
  */
-export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) {
+export function RunPanel({ flowId: flowIdProp, onOpenProblems, onRunStarted, shortcut = true }: RunPanelProps) {
   const store = useEditorStore();
   const flowId = useFlowId(flowIdProp);
   const doc = useEditorState((s) => s.doc);
@@ -105,24 +98,19 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) 
   const flow = doc?.flows.find((f) => f.id === flowId);
   const scope = useMemo(() => (doc && flow ? scopeForFlow(doc, flow.id, catalog ?? NO_PACKS) : undefined), [doc, flow, catalog]);
   const { push } = useLocalToasts();
-  const [inputs, setInputs] = useState<Record<string, unknown>>({});
-  const [useCache, setUseCache] = useState(true);
-  const [filter, setFilter] = useState("");
+  const inputs = useEditorState((s) => (flowId ? s.runInputs[flowId] : undefined)) ?? NO_INPUTS;
+  const useCache = useEditorState((s) => s.useCache);
   const errorCount = useFlowErrorCount(flowId);
-  useEffect(() => setInputs({}), [flowId]);
 
   const running = run !== undefined && !isRunFinished(run);
   const start = () => {
     if (!flow || running) return;
-    const values: Record<string, unknown> = {};
-    for (const f of flow.inputs) if (inputs[f.name] !== undefined) values[f.name] = inputs[f.name];
-    store.startRun({ flowId: flow.id, inputs: values, useCache }).catch((err: unknown) => {
-      // A rejected run is shown in the panel (state.run.status "rejected"); toast anything else.
-      if (store.getState().run?.status !== "rejected") push(err instanceof Error ? err.message : String(err));
-    });
+    onRunStarted?.();
+    startEditorRun(store, flow.id, push);
   };
 
   useEffect(() => {
+    if (!shortcut) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
@@ -136,15 +124,6 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) 
   if (!flow) return <EmptyState title="No flow">Open a flow to run it.</EmptyState>;
   const shown = run && run.flowId === flow.id ? run : undefined;
   const look = statusLook(shown?.status);
-  const titleOf = (nodeId: string) => {
-    const n = flow.nodes.find((x) => x.id === nodeId);
-    if (!n) return nodeId;
-    if (n.title) return n.title;
-    if (n.type === "briar.input") return "Input";
-    if (n.type === "briar.output") return "Output";
-    return catalog?.get(n.type)?.title ?? n.type;
-  };
-  const events = (shown?.events ?? []).filter((e) => !filter || ("nodeId" in e && e.nodeId === filter));
   const done = shown ? Object.values(shown.nodes).filter((n) => n.status !== "running").length : 0;
 
   return (
@@ -160,10 +139,10 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) 
         <SectionHead title="Inputs" />
         {flow.inputs.length === 0 ? <p className="bf-muted">This flow has no inputs.</p> : null}
         {flow.inputs.map((f) => (
-          <InputRow key={f.name} field={f} scope={scope} value={inputs[f.name]} onChange={(v) => setInputs((s) => ({ ...s, [f.name]: v }))} />
+          <InputRow key={f.name} field={f} scope={scope} value={inputs[f.name]} onChange={(v) => store.setRunInput(flow.id, f.name, v)} />
         ))}
         <label className="bf-check">
-          <input type="checkbox" className="bf-check__box" checked={useCache} onChange={(e) => setUseCache(e.target.checked)} />
+          <input type="checkbox" className="bf-check__box" checked={useCache} onChange={(e) => store.setUseCache(e.target.checked)} />
           <span>Use cache</span>
         </label>
         <div className="bf-run__actions">
@@ -191,19 +170,6 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) 
               {done}/{flow.nodes.length} nodes
             </span>
           ) : null}
-          <span className="bf-run__filter">
-            <label className="bf-visually-hidden" htmlFor="bf-run-filter">
-              Filter events by node
-            </label>
-            <select id="bf-run-filter" className="bf-input bf-input--select bf-input--compact" value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="">all nodes</option>
-              {flow.nodes.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {titleOf(n.id)}
-                </option>
-              ))}
-            </select>
-          </span>
         </div>
         {shown?.error && shown.status === "rejected" ? (
           <Rejection error={shown.error} flowId={flow.id} onOpenProblems={onOpenProblems} />
@@ -212,22 +178,6 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems }: RunPanelProps) 
             {shown.error.message}
           </p>
         ) : null}
-        <ol className="bf-log" aria-label="Run events">
-          {events.length === 0 ? <li className="bf-log__empty bf-muted">{!shown ? "No runs yet — press RUN or Ctrl+Enter." : shown.status === "rejected" ? "No events: the run was not started." : "Waiting for events…"}</li> : null}
-          {events.map((e) => {
-            const nodeId = "nodeId" in e ? e.nodeId : undefined;
-            return (
-              <li key={e.seq}>
-                <button type="button" className="bf-log__line" disabled={!nodeId} onClick={() => nodeId && store.select({ nodes: [nodeId], edges: [] }, "replace")}>
-                  <span className="bf-muted">{timeOf(e.at)}</span>
-                  <span className={`bf-log__type bf-log__type--${e.type.replace(".", "-")}`}>{e.type}</span>
-                  <span className="bf-log__node">{nodeId ? titleOf(nodeId) : ""}</span>
-                  <span className="bf-log__detail">{eventDetail(e)}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
         {shown?.result ? <Outputs result={shown.result} outputs={flow.outputs} /> : null}
       </div>
     </div>

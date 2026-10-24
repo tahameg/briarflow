@@ -25,6 +25,12 @@ export const VARIABLE_NODE_TYPES = {
   globalSet: "briar.global.set",
 } as const;
 
+/** Type strings of the member access nodes (types.md §12); their definitions live in `nodes-std`. */
+export const MEMBER_NODE_TYPES = {
+  get: "briar.member.get",
+  set: "briar.member.set",
+} as const;
+
 /** A struct field, or one entry of a flow input/output signature. */
 export interface FieldDecl {
   name: string;
@@ -99,7 +105,12 @@ export interface NodeInstance {
   type: string;
   title?: string;
   position: Position;
-  /** Validated against the definition's `config` fields. */
+  /**
+   * Picked variant of a node type with variants (node-api.md §1.2). Set on every such node;
+   * absent = the type's default variant.
+   */
+  variant?: string;
+  /** Validated against the definition's `config` fields (of the picked variant). */
   config?: Record<string, unknown>;
   /** Constant values of input ports. Kept (and ignored) while the port is connected. */
   values?: Record<string, unknown>;

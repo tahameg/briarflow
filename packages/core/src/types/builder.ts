@@ -5,9 +5,11 @@
  */
 import type { EnumDecl, StructDecl } from "../documents/model.js";
 import { TypeDefinitionError } from "../errors.js";
+import type { JsonValue } from "../util/json.js";
 import { TYPE_VAR_NAME_PATTERN } from "../util/names.js";
 import { constraintMessage, constraintProblems } from "./constraints.js";
 import { parseType } from "./shorthand.js";
+import { containsVar } from "./walk.js";
 import type {
   ErrorValue,
   ImageConstraints,
@@ -15,6 +17,8 @@ import type {
   MediaRef,
   NumberConstraints,
   PrimitiveName,
+  SecretConstraints,
+  SecretRef,
   TextConstraints,
   TimedMediaConstraints,
   TypeRef,
@@ -127,6 +131,10 @@ export interface TypeBuilder {
   float(constraints?: NumberConstraints): TypeSpec<number>;
   /** `boolean`. */
   boolean(): TypeSpec<boolean>;
+  /** `json`: any JSON value, opaque until cast. @example `t.json()` */
+  json(): TypeSpec<JsonValue>;
+  /** `secret`: the name of a vault secret; read it with `ctx.secrets.read`. @example `t.secret({ kind: "apiKey" })` */
+  secret(constraints?: SecretConstraints): TypeSpec<SecretRef>;
   /** `image` media. @example `t.image({ formats: ["png", "jpeg"] })` */
   image(constraints?: ImageConstraints): TypeSpec<MediaRef>;
   /** `video` media. */
@@ -152,8 +160,11 @@ export interface TypeBuilder {
    * `"openai.ChatMessage"`, `"ty_abc"`. Statically {@link UnknownValue}.
    */
   ref(nameOrId: string): TypeSpec<UnknownValue>;
-  /** Generic placeholder (`$T`). Node definitions only. Statically {@link UnknownValue}. */
-  var(name: string): TypeSpec<UnknownValue>;
+  /**
+   * Generic placeholder (`$T`). Node definitions only. Statically {@link UnknownValue}.
+   * `oneOf` limits the types it accepts: `t.var("T", { oneOf: [t.text(), t.json()] })`.
+   */
+  var(name: string, options?: { oneOf?: readonly TypeSpec<unknown>[] }): TypeSpec<UnknownValue>;
   /** Shorthand → spec: `t.parse("list<Character?>")`. Names stay unresolved until `definePack`. */
   parse(shorthand: string): TypeSpec<UnknownValue>;
   /** Wraps an IR `TypeRef` (e.g. from a document inside `resolvePorts`). */
@@ -178,6 +189,8 @@ export const t: TypeBuilder = {
   int: (constraints) => primitive<number>("int", constraints),
   float: (constraints) => primitive<number>("float", constraints),
   boolean: () => primitive<boolean>("boolean", undefined),
+  json: () => primitive<JsonValue>("json", undefined),
+  secret: (constraints) => primitive<SecretRef>("secret", constraints),
   image: (constraints) => primitive<MediaRef>("image", constraints),
   video: (constraints) => primitive<MediaRef>("video", constraints),
   audio: (constraints) => primitive<MediaRef>("audio", constraints),
@@ -200,14 +213,19 @@ export const t: TypeBuilder = {
     const id = typeof target === "string" ? target : target.decl.id;
     return spec<never>({ kind: "named", id });
   },
-  var(name) {
+  var(name, options) {
     if (typeof name !== "string" || name.length > 16 || !TYPE_VAR_NAME_PATTERN.test(name)) {
       throw new TypeDefinitionError(
         "type.invalid_name",
         `"${String(name)}" is not a valid generic type name. Generic names start with an uppercase letter and use letters and digits (e.g. T, Item), at most 16 characters.`,
       );
     }
-    return spec<UnknownValue>({ kind: "var", name });
+    const oneOf = options?.oneOf;
+    if (oneOf === undefined) return spec<UnknownValue>({ kind: "var", name });
+    if (!Array.isArray(oneOf) || oneOf.length === 0 || oneOf.some((o) => containsVar(o.ref))) {
+      throw new TypeDefinitionError("type.invalid_generic", `Generic "$${name}": oneOf must list at least one concrete type.`);
+    }
+    return spec<UnknownValue>({ kind: "var", name, oneOf: oneOf.map((o) => o.ref) });
   },
   parse(shorthand) {
     const result = parseType(shorthand, { allowVars: true });

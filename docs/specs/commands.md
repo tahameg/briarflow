@@ -406,15 +406,19 @@ Inputs and outputs are `FieldDecl`s addressed by name.
   "values": { "name": "Aria" } }
 ```
 - created: `{ nodeId }`. Optional `index`: position in the flow's `nodes` list (default end).
+  Optional `variant`: the variant of a node type with variants (node-api.md §1.2); default the
+  type's default variant. It is always stored on such nodes and in `resolved`.
 - Steps: reject the core built-ins `briar.input` / `briar.output` (`node.builtin_singleton`;
-  they are not catalog entries, DECISIONS #23) → resolve `type` in the catalog → validate `config` against the definition's config
-  fields → resolve ports → validate each `values` entry against its port (hard).
+  they are not catalog entries, DECISIONS #23) → resolve `type` in the catalog → pick the
+  variant → validate `config` against the (variant's) definition's config fields → resolve
+  ports → validate each `values` entry against its port (hard).
 - Rejections:
 
 | Code | When | Message |
 |---|---|---|
 | `node.unknown_type` | type not in catalog | `Unknown node type "{type}". Is its pack loaded? Known packs: {packs}.` |
 | `node.builtin_singleton` | type is `briar.input` / `briar.output` | `Every flow has exactly one {type} node; it is created with the flow.` |
+| `node.unknown_variant` | `variant` the type does not have, or `variant` on a type without variants | `Node type "{type}" has no variant "{variant}". Pick one of: {list}.` / `Node type "{type}" has no variants; leave variant out.` |
 | `config.invalid` | config fails the definition's config fields (missing required, wrong kind, unknown key) | `{node type}: config.{key} {problem}.` |
 | `config.unknown_ref` | config references a missing variable / global / type, or a type of the wrong kind (enum for struct.make) | `{node type}: {kind} "{id}" does not exist in this flow.` |
 | `variable.write_to_readonly` | `briar.global.set` on a readonly global | `Global "{name}" is readonly. Make it readwrite to write it from a flow.` |
@@ -442,6 +446,7 @@ Config-dependent std nodes:
 | `node.setValue` | `{ flowId, nodeId, port, value }` | Port must be an input (`node.unknown_port`). Allowed on connected ports (kept, ignored while connected). Hard validation incl. constraints. |
 | `node.clearValue` | `{ flowId, nodeId, port }` | No stored value → no-op (`changed: false`), even when `port` is not a port of the node. Unknown node → `command.unknown_ref`. |
 | `node.setConfig` | `{ flowId, nodeId, config }` | Replaces the whole config; same validation as add; builtins → `node.builtin_protected`. Ports re-resolved: edges/constants of vanished ports removed; type changes on kept ports are soft. |
+| `node.setVariant` | `{ flowId, nodeId, variant, config? }` | Switches a node of a type with variants (node-api.md §1.2). Without `config`, config fields the new variant has with the same kind are kept when still valid, the rest dropped; with `config`, it replaces the whole config (validated like add). Ports re-resolved like `node.setConfig`: edges/constants of vanished ports removed (restored by undo). The current variant without `config` → no-op. Unknown variant → `node.unknown_variant`; unknown type → `node.unknown_type`. Inverse: `node.setVariant` back with the old config. |
 
 ## 8. Edges
 
@@ -487,9 +492,9 @@ Unknown → `command.unknown_ref`. Generic bindings of both ends are recomputed.
 
 | Code | Severity | Message |
 |---|---|---|
-| `input.unconnected` | error | `{node} needs a value for "{port}". Connect an edge or type a constant.` |
 | `output.unconnected` | error | `Flow output "{name}" is not connected. Connect it or remove it from the signature.` |
 | `node.unknown_type` | error | `{node} uses unknown node type "{type}". Load its pack or remove the node.` |
+| `node.unknown_variant` | error | `{node} uses variant "{variant}", which {type} does not have. Pick one of: {list}.` |
 | `node.invalid_value` | error | `Constant {node}.{port}: {value message}` |
 | `config.unknown_ref` | error | as in node.add (e.g. after a hand-edited document) |
 | `flow.cycle` | error | `Flow "{flow}" has a loop: {path}.` |
@@ -511,15 +516,16 @@ one broken edge yields one diagnostic, not a cascade.
 
 Further rules (DECISIONS #34, #35):
 
-- **Nodes without ports.** A node of unknown type (`node.unknown_type`), a dynamic-port node
+- **Nodes without ports.** A node of unknown type (`node.unknown_type`) or variant
+  (`node.unknown_variant`), a dynamic-port node
   with invalid config (`config.invalid` / `config.unknown_ref`), or one whose `resolvePorts` fails
   (`node.ports_unresolved`) has **no ports**. Its edges are kept and are **not** additionally
   reported as `edge.unknown_port`; the node-level diagnostic explains them.
 - **Constants are validated only on unconnected ports.** A constant stored for a port that
   also has an incoming edge is ignored at run time, so it never yields `node.invalid_value`.
-- `input.unconnected` is not raised when the port has a constant, a definition default, or an
-  optional type (it then receives `null`), nor when its type still contains an unbound generic
-  var (`node.generic_unbound` reports that, once per var — types.md §5.3).
+- An empty node input is not a diagnostic: at run time it gets its default or the empty value
+  of its type (node-api.md, input value resolution). `input.unconnected` was removed on
+  2026-10-23.
 - `output.unconnected` is satisfied by an incoming edge **or** a constant on the Output node's
   port.
 - On `briar.variable.*` / `briar.global.*` nodes, the variable-order pass's

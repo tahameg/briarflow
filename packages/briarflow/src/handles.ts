@@ -205,6 +205,8 @@ export interface NodeHandle {
   clear(port: string): NodeHandle;
   /** Replaces the node's config. */
   configure(config: Readonly<Record<string, unknown>>): NodeHandle;
+  /** Switches to another variant of the node type (`config` replaces the carried-over config). */
+  setVariant(variant: string, config?: Readonly<Record<string, unknown>>): NodeHandle;
   move(at: PositionLike): NodeHandle;
   setTitle(title: string | null): NodeHandle;
   /** Removes the node and its edges. */
@@ -215,6 +217,8 @@ export interface NodeHandle {
 export interface AddNodeOptions {
   /** Default: a cascade so that code-built graphs open readably in the studio. */
   at?: PositionLike;
+  /** Variant of a node type with variants. Default: the type's default variant. */
+  variant?: string;
   config?: Readonly<Record<string, unknown>>;
   /** Constants of input ports. */
   values?: Readonly<Record<string, unknown>>;
@@ -230,7 +234,7 @@ export interface AddNodeOptions {
  * const flow = ctx.flows.create("Portrait");
  * flow.inputs.add("character", "Character");
  * flow.outputs.add("prompt", "text");
- * const tpl = flow.nodes.add("text.template", { config: { template: "Draw {c}" } });
+ * const tpl = flow.nodes.add("text.template", { config: { template: "Draw {{c}}" } });
  * flow.connect(flow.input.port("character"), tpl.port("c"));
  * flow.connect(tpl.port("text"), flow.output.port("prompt"));
  * ```
@@ -659,6 +663,7 @@ class FlowHandleImpl implements FlowHandle {
     const k = Math.max(0, this.doc.nodes.length - 2);
     const position = options.at !== undefined ? toPosition(options.at) : { x: 320 + 40 * k, y: 160 + 40 * k };
     const cmd: Command = { op: "node.add", flowId: this.id, type, position };
+    if (options.variant !== undefined) cmd.variant = options.variant;
     if (options.config !== undefined) cmd.config = options.config;
     if (options.values !== undefined) cmd.values = options.values;
     if (options.title !== undefined) cmd.title = options.title;
@@ -708,6 +713,11 @@ class NodeHandleImpl implements NodeHandle {
 
   configure(config: Readonly<Record<string, unknown>>): NodeHandle {
     this.flow.context.apply({ op: "node.setConfig", flowId: this.flow.id, nodeId: this.id, config });
+    return this;
+  }
+
+  setVariant(variant: string, config?: Readonly<Record<string, unknown>>): NodeHandle {
+    this.flow.context.apply({ op: "node.setVariant", flowId: this.flow.id, nodeId: this.id, variant, ...(config === undefined ? {} : { config }) });
     return this;
   }
 

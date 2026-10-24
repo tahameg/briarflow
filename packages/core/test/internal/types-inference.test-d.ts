@@ -11,6 +11,7 @@ import {
   defineNode,
   defineStruct,
   t,
+  variant,
   type AnyNodeDefinition,
   type ConfigOf,
   type InputsOf,
@@ -167,7 +168,50 @@ export function typeInferenceChecks(): void {
   });
   expectTypeOf(structMake).toMatchTypeOf<NodeDefinition>();
 
+  // Variants: each one types its own run.
+  const shared = { prompt: t.text() };
+  const image = defineNode({
+    type: "demo.image",
+    variants: {
+      title: "Model",
+      options: {
+        fast: variant({
+          inputs: shared,
+          outputs: { image: t.image() },
+          run({ inputs }) {
+            expectTypeOf(inputs.prompt).toEqualTypeOf<string>();
+            return { image: { uri: "x", mime: "image/png" } };
+          },
+        }),
+        best: variant({
+          config: { steps: cfg.int({ default: 20 }) },
+          inputs: { ...shared, negative: t.optional(t.text()) },
+          outputs: { image: t.image(), seed: t.int() },
+          run({ inputs, config }) {
+            expectTypeOf(inputs.negative).toEqualTypeOf<string | null>();
+            expectTypeOf(config.steps).toEqualTypeOf<number>();
+            return { image: { uri: "x", mime: "image/png" }, seed: 1 };
+          },
+        }),
+        wrong: variant({
+          outputs: { out: t.text() },
+          // @ts-expect-error wrong output type in a variant
+          run: () => ({ out: 42 }),
+        }),
+      },
+    },
+  });
+  expectTypeOf(image).toMatchTypeOf<AnyNodeDefinition>();
+
+  // A node with variants declares no shape of its own.
+  // @ts-expect-error inputs belong on the variants
+  defineNode({
+    type: "demo.mixed",
+    inputs: { a: t.text() },
+    variants: { options: {} },
+  });
+
   // Packs accept heterogeneous definitions.
-  const nodes: AnyNodeDefinition[] = [def, chat, rounding, structMake];
+  const nodes: AnyNodeDefinition[] = [def, chat, rounding, structMake, image];
   void nodes;
 }

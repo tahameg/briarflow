@@ -9,8 +9,8 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
 import type { Edge as RFEdge, FinalConnectionState, Node as RFNode, XYPosition } from "@xyflow/react";
 import type { Command } from "@briarflow/authoring";
-import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "@briarflow/core";
-import type { Position } from "@briarflow/core";
+import { containsVar, FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, formatType, MEMBER_NODE_TYPES, memberPaths, scopeForFlow, VARIABLE_NODE_TYPES } from "@briarflow/core";
+import type { Position, TypeRef } from "@briarflow/core";
 import type { LedFamily } from "../theme.js";
 import { useDispatch, useEditorStore } from "../context.js";
 import { nextName } from "../fields.js";
@@ -26,6 +26,9 @@ import { deleteSelection, isTypingTarget } from "./selection.js";
 
 const BUILTIN = new Set<string>([FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE]);
 const VARIABLE_TYPES = new Set<string>(Object.values(VARIABLE_NODE_TYPES));
+// Member nodes need the value's type and a member: they are offered from a dropped wire.
+const MEMBER_TYPES = new Set<string>(Object.values(MEMBER_NODE_TYPES));
+const offered = (type: string) => !BUILTIN.has(type) && !VARIABLE_TYPES.has(type) && !MEMBER_TYPES.has(type);
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
 
@@ -80,7 +83,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
   const paneItems = (position: Position): ContextMenuItem[] => {
     const s = store.getState();
     const flow = view?.flow;
-    const descriptors = (s.catalog?.descriptors() ?? s.nodeTypes?.nodes ?? []).filter((d) => !BUILTIN.has(d.type) && !VARIABLE_TYPES.has(d.type));
+    const descriptors = (s.catalog?.descriptors() ?? s.nodeTypes?.nodes ?? []).filter((d) => offered(d.type));
     const items: ContextMenuItem[] = paletteGroups(descriptors).map((g) => ({
       id: `add:${g.category}`,
       label: g.category,
@@ -137,7 +140,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       if (r.ok) select([id]);
     };
     const catalog = s.catalog;
-    const onLine = catalog.descriptors().filter((d) => !d.pure && !BUILTIN.has(d.type) && !VARIABLE_TYPES.has(d.type));
+    const onLine = catalog.descriptors().filter((d) => !d.pure && offered(d.type));
     const items: ContextMenuItem[] = paletteGroups(onLine).map((g) => ({
       id: `line:${g.category}`,
       label: g.category,
@@ -161,6 +164,32 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     return items;
   };
 
+  /** "Get" / "Set" groups listing every member of `type` (nested ones as dotted paths), like `value.member`. */
+  const memberItems = (type: TypeRef, add: (kind: "get" | "set", path: string) => void): ContextMenuItem[] => {
+    const s = store.getState();
+    if (!flowId || !s.doc || !s.catalog || containsVar(type)) return [];
+    const scope = scopeForFlow(s.doc, flowId, s.catalog);
+    const paths = memberPaths(type, (id) => scope.getType(id)?.decl);
+    const item = (kind: "get" | "set", path: (typeof paths)[number]): ContextMenuItem => {
+      const name = path.path.join(".");
+      return {
+        id: `member:${kind}:${name}`,
+        label: `.${name}`,
+        hint: formatType(path.type, scope),
+        keywords: ["member", "field", "property", kind, ...path.titles],
+        accent: "var(--bf-sky)",
+        ...(path.description ? { title: path.description } : {}),
+        run: () => add(kind, name),
+      };
+    };
+    const gets = paths.map((p) => item("get", p));
+    const sets = paths.filter((p) => p.writable).map((p) => item("set", p));
+    const out: ContextMenuItem[] = [];
+    if (gets.length > 0) out.push({ id: "connect:members:get", label: "Get member", order: 40, hint: String(gets.length), title: "Read a member of the value (read-only unless it is a struct field)", items: gets });
+    if (sets.length > 0) out.push({ id: "connect:members:set", label: "Set member", order: 41, hint: String(sets.length), title: "A copy of the struct with this field replaced", items: sets });
+    return out;
+  };
+
   const connectItems = (t: ContextMenuTargets["connect"]): ContextMenuItem[] => {
     if (t.line) return lineItems(t);
     const s = store.getState();
@@ -170,11 +199,24 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     const doc = s.doc;
     const catalog = s.catalog;
     const flow = doc.flows.find((f) => f.id === flowId);
-    const descriptors = catalog.descriptors().filter((d) => !BUILTIN.has(d.type) && !VARIABLE_TYPES.has(d.type));
+    const descriptors = catalog.descriptors().filter((d) => offered(d.type));
     const probes: (ConnectProbe & { label: string; category: string; accent: string })[] = [];
     for (const d of descriptors) {
-      const config = initialConfig(catalog.get(d.type), doc, flowId, catalog);
-      probes.push({ key: d.type, type: d.type, ...(config ? { config } : {}), label: d.title, category: d.category, accent: `var(--bf-${nodeAccent(d.color, d.category)})` });
+      const accent = `var(--bf-${nodeAccent(d.color, d.category)})`;
+      const typeDef = catalog.get(d.type);
+      // A node with variants offers each variant: their ports differ.
+      for (const v of typeDef?.variants?.options ?? [undefined]) {
+        const config = initialConfig(v?.definition ?? typeDef, doc, flowId, catalog);
+        probes.push({
+          key: v ? `${d.type}:${v.name}` : d.type,
+          type: d.type,
+          ...(v ? { variant: v.name } : {}),
+          ...(config ? { config } : {}),
+          label: v ? `${d.title} · ${v.title}` : d.title,
+          category: d.category,
+          accent,
+        });
+      }
     }
     const varProbe = (key: string, type: string, config: Record<string, unknown>, label: string) => probes.push({ key, type, config, label, category: "Variables", accent: "var(--bf-pink)" });
     for (const v of flow?.variables ?? []) {
@@ -187,14 +229,23 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     }
     const byKey = new Map(probes.map((p) => [p.key, p]));
     const matches = matchConnectTargets(doc, flowId, catalog, from.type, t.side, probes);
-    if (matches.length === 0) {
+    const at: Position = snap(t.side === "out" ? { x: t.position.x, y: t.position.y - 70 } : { x: t.position.x - 300, y: t.position.y - 70 });
+    const members = t.side === "out" ? memberItems(from.type, (kind, path) => add({ key: `${kind}:${path}`, type: MEMBER_NODE_TYPES[kind], config: { type: from.type, path } }, "value")) : [];
+    if (matches.length === 0 && members.length === 0) {
       return [{ id: "connect:none", label: `No node takes ${from.typeText}`, disabled: true, run: () => undefined }];
     }
-    const at: Position = snap(t.side === "out" ? { x: t.position.x, y: t.position.y - 70 } : { x: t.position.x - 300, y: t.position.y - 70 });
     const add = (probe: ConnectProbe, port: string) => {
       const id = randomNodeId();
       const edge = t.side === "out" ? { from: { node: t.nodeId, port: t.port }, to: { node: id, port } } : { from: { node: id, port }, to: { node: t.nodeId, port: t.port } };
-      const node: Command = { op: "node.add", flowId, id, type: probe.type, position: at, ...(probe.config ? { config: probe.config } : {}) };
+      const node: Command = {
+        op: "node.add",
+        flowId,
+        id,
+        type: probe.type,
+        position: at,
+        ...(probe.variant === undefined ? {} : { variant: probe.variant }),
+        ...(probe.config ? { config: probe.config } : {}),
+      };
       const r = dispatch([node, { op: "edge.connect", flowId, ...edge }]);
       if (r.ok) select([id]);
       else if (dispatch(node).ok) select([id]);
@@ -214,7 +265,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
       if (m.generic) generic.push({ ...item, label: `${p.label}`, keywords: [...(item.keywords ?? []), "any"] });
       else groups.set(p.category, [...(groups.get(p.category) ?? []), item]);
     }
-    const items: ContextMenuItem[] = [...groups].map(([category, list]) => ({ id: `connect:${category}`, label: category, order: 100, hint: String(list.length), items: list }));
+    const items: ContextMenuItem[] = [...members, ...[...groups].map(([category, list]) => ({ id: `connect:${category}`, label: category, order: 100, hint: String(list.length), items: list }))];
     if (generic.length > 0) items.push({ id: "connect:any", label: "Any type", order: 200, hint: String(generic.length), title: "Generic ports that take any type", items: generic });
     return items;
   };

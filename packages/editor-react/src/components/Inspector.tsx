@@ -11,6 +11,7 @@ import { useDispatch, useEditorState, useEditorStore, useFlowView, useMedia } fr
 import type { FlowView, NodeView } from "../graph.js";
 import { previewValue } from "../values.js";
 import { DiagnosticsList } from "./DiagnosticsList.js";
+import { VariantSelect } from "./nodeParts.js";
 import { deleteSelection } from "./selection.js";
 import { TypePicker } from "./TypePicker.js";
 import { Badge, Button, EmptyState, InlineText, TypeChip } from "./ui.js";
@@ -116,6 +117,14 @@ function NodeDetails({ doc, view, node }: { doc: ContextDocument; view: FlowView
         <code className="bf-code bf-muted">{node.type}</code>
         {node.definition?.description ? <p className="bf-muted bf-inspector__desc">{node.definition.description}</p> : null}
       </div>
+      {node.variant ? (
+        <Section title={node.variant.title}>
+          <VariantSelect variant={node.variant} label={node.title} onPick={(variant) => dispatch({ op: "node.setVariant", flowId, nodeId: node.id, variant })} />
+          {node.variant.options.find((o) => o.name === node.variant?.current)?.description ? (
+            <p className="bf-muted bf-inspector__desc">{node.variant.options.find((o) => o.name === node.variant?.current)?.description}</p>
+          ) : null}
+        </Section>
+      ) : null}
       {node.definition && Object.keys(node.definition.config).length > 0 ? (
         <Section title="Config">
           <ConfigEditor doc={doc} flowId={flowId} node={node} />
@@ -216,7 +225,7 @@ function ConfigEditor({ doc, flowId, node }: { doc: ContextDocument; flowId: str
         <label key={key} className="bf-field">
           <span className="bf-field__label">
             {field.title ?? key}
-            {field.required ? "" : " (optional)"}
+            {field.required || field.default !== undefined ? "" : " (optional)"}
           </span>
           <ConfigFieldEditor field={field} name={key} value={config[key]} scope={scope} doc={doc} flow={flow} onChange={(v) => set(key, v)} />
           {field.description ? <span className="bf-field__hint">{field.description}</span> : null}
@@ -244,9 +253,12 @@ function ConfigFieldEditor({
   onChange: (v: unknown) => void;
 }) {
   const label = `Config ${name}`;
+  // An unset field with a default works as the default: show it.
+  const shown = value ?? field.default;
+  const placeholder = field.default !== undefined ? String(field.default) : undefined;
   const select = (options: { value: string; label: string }[]) => (
-    <select className="bf-input bf-input--select" aria-label={label} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}>
-      <option value="">{field.required ? "— choose —" : "— none —"}</option>
+    <select className="bf-input bf-input--select" aria-label={label} value={typeof shown === "string" ? shown : ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}>
+      {field.default === undefined ? <option value="">{field.required ? "— choose —" : "— none —"}</option> : null}
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
@@ -257,14 +269,14 @@ function ConfigFieldEditor({
   switch (field.kind) {
     case "text": {
       const t: TypeRef = { kind: "primitive", name: "text", ...(field.multiline ? { constraints: { multiline: true } } : {}) };
-      return <ValueEditor type={t} label={label} value={value} onCommit={onChange} />;
+      return <ValueEditor type={t} label={label} value={value} placeholder={placeholder} onCommit={onChange} />;
     }
     case "int": {
       const t: TypeRef = { kind: "primitive", name: "int", constraints: { ...(field.min !== undefined ? { min: field.min } : {}), ...(field.max !== undefined ? { max: field.max } : {}) } };
-      return <ValueEditor type={t} label={label} value={value} onCommit={onChange} />;
+      return <ValueEditor type={t} label={label} value={value} placeholder={placeholder} onCommit={onChange} />;
     }
     case "boolean":
-      return <input type="checkbox" className="bf-check__box" aria-label={label} checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
+      return <input type="checkbox" className="bf-check__box" aria-label={label} checked={shown === true} onChange={(e) => onChange(e.target.checked)} />;
     case "choice":
       return select((field.choices ?? []).map((c) => ({ value: c, label: c })));
     case "type": {

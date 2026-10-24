@@ -80,7 +80,7 @@ const flowCommands = [
   { op: "flow.output.add", flowId, name: "description", type: "text" },
   { op: "flow.output.add", flowId, name: "portrait", type: "image" },
   { op: "node.add", flowId, id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
-  { op: "node.add", flowId, id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Describe {name}, a {role}, drawn in {style} style." } },
+  { op: "node.add", flowId, id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Describe {{name}}, a {{role}}, drawn in {{style}} style." } },
   { op: "node.add", flowId, id: "n_llm", type: "mock.llm", position: { x: 640, y: 0 } },
   { op: "node.add", flowId, id: "n_img", type: "mock.image", position: { x: 860, y: 0 } },
   { op: "edge.connect", flowId, from: { node: "n_in", port: "character" }, to: { node: "n_brk", port: "value" } },

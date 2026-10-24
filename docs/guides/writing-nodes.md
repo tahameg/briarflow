@@ -168,6 +168,52 @@ Checklist for API nodes:
 - **Errors:** throw `NodeError(code, message)` with a message that tells the user what to do:
   "The prompt is longer than 4000 characters. Shorten it or split it." — not "Bad request".
 
+### One node, several shapes: variants
+
+Some nodes do different things depending on one choice, usually the model. Instead of one
+node with every setting of every model, give it **variants**: the user picks one in a
+dropdown on the node, and the pick decides the inputs, outputs, settings and the code that
+runs.
+
+```ts
+import { cfg, defineNode, t, variant } from "@briarflow/core";
+
+const prompt = { prompt: t.text({ multiline: true }) };  // ports every variant has
+
+export const paint = defineNode({
+  type: "acme.paint",
+  title: "Paint",
+  canFail: true,
+  variants: {
+    title: "Model",                  // the dropdown's label
+    options: {
+      sketch: variant({
+        title: "Sketch",
+        inputs: prompt,
+        outputs: { image: t.image() },
+        run: async ({ inputs, ctx }) => ({ image: await sketch(inputs.prompt, ctx) }),
+      }),
+      studio: variant({
+        title: "Studio",
+        config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
+        inputs: { ...prompt, negative: t.optional(t.text()) },
+        outputs: { image: t.image(), seed: t.int() },
+        run: async ({ inputs, config, ctx }) => studio(inputs, config.steps, ctx),
+      }),
+    },
+  },
+});
+```
+
+- Each `variant({ … })` is typed like a node of its own: `inputs.negative` exists only in
+  `studio`, and returning a wrong output is a compile error there.
+- Shared ports are plain objects you spread. Wires on ports with the same name and type stay
+  connected when the user switches; the others are removed (one undo step).
+- Variant names are saved in flows: rename them like you would rename a node type.
+- Test one with `runNode(paint, { prompt: "a fox" }, { variant: "studio" })`.
+- Use `resolvePorts` instead when the ports come from data (a template's placeholders), not
+  from a fixed list of choices. Details: docs/specs/node-api.md §1.2.
+
 ## 8. Test the pack
 
 ```ts

@@ -6,14 +6,14 @@ import { MEDIA_PRIMITIVE_NAMES, mediaIdFromUri } from "@briarflow/core";
 import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 
 /** Widget kinds of the constant / input editors (design-system.md §7). */
-export type WidgetKind = "text" | "int" | "float" | "boolean" | "enum" | "media" | "struct" | "list" | "optional" | "unbound" | "unknown";
+export type WidgetKind = "text" | "int" | "float" | "boolean" | "json" | "secret" | "enum" | "media" | "struct" | "list" | "optional" | "unbound" | "unknown";
 
 /** Widget kind of a type. */
 export function widgetKind(type: TypeRef, scope: TypeScope | undefined): WidgetKind {
   switch (type.kind) {
     case "primitive":
       if ((MEDIA_PRIMITIVE_NAMES as readonly string[]).includes(type.name)) return "media";
-      return type.name as "text" | "int" | "float" | "boolean";
+      return type.name as "text" | "int" | "float" | "boolean" | "json" | "secret";
     case "named": {
       const decl = scope?.getType(type.id)?.decl;
       if (!decl) return "unknown";
@@ -38,6 +38,7 @@ export function initialValue(type: TypeRef, scope: TypeScope | undefined): unkno
       if (type.name === "text") return "";
       if (type.name === "int" || type.name === "float") return type.constraints?.min ?? 0;
       if (type.name === "boolean") return false;
+      if (type.name === "json") return {};
       return null;
     case "named": {
       const decl = scope?.getType(type.id)?.decl;

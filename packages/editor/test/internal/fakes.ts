@@ -148,7 +148,10 @@ export class FakeBackend implements EditorBackend {
     this.held.shift()?.release();
   }
 
-  async run(flowId: string): Promise<Run> {
+  runCalls: { flowId: string; inputs: Record<string, unknown>; useCache: boolean | undefined }[] = [];
+
+  async run(flowId: string, inputs: Record<string, unknown> = {}, options: { useCache?: boolean } = {}): Promise<Run> {
+    this.runCalls.push({ flowId, inputs, useCache: options.useCache });
     if (this.runError) throw this.runError;
     const run = new FakeRun(`run_${this.runs.length + 1}`, flowId);
     this.runs.push(run);

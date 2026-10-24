@@ -23,12 +23,16 @@ export interface GenericConnection {
   other: TypeRef;
 }
 
-/** A failed binding: `{node} already uses T = bound; port would need T = other`. */
+/**
+ * A failed binding: `{node} already uses T = bound; port would need T = other`, or, with
+ * `allowed`, `port` got `other`, which is none of the var's `oneOf` types.
+ */
 export interface BindingConflict {
   varName: string;
   port: string;
   bound: TypeRef;
   other: TypeRef;
+  allowed?: TypeRef[];
 }
 
 /** Result of {@link bindTypeVars}. Vars with no constraint are absent from `bindings`. */
@@ -76,6 +80,8 @@ export function bindTypeVarsAll(connections: readonly GenericConnection[]): {
   const lower = new Map<string, Bound[]>();
   const upper = new Map<string, Bound[]>();
   const order: string[] = [];
+  const allowed = new Map<string, TypeRef[]>();
+  for (const c of sorted) collectOneOf(c.pattern, allowed);
   for (const c of sorted) {
     if (containsVar(c.other)) continue;
     const found = new Map<string, TypeRef[]>();
@@ -116,10 +122,31 @@ export function bindTypeVarsAll(connections: readonly GenericConnection[]): {
         }
       }
     }
+    const oneOf = allowed.get(name);
+    if (!conflict && binding !== undefined && oneOf && !oneOf.some((o) => isAssignable(binding!, o))) {
+      const port = (lows.length > 0 ? lows : ups)[0]?.port ?? "";
+      conflict = { varName: name, port, bound: binding, other: binding, allowed: oneOf };
+    }
     if (conflict) conflicts.push(conflict);
     else if (binding !== undefined) bindings[name] = binding;
   }
   return { bindings, conflicts };
+}
+
+/** `oneOf` limits of the vars in a pattern, by var name. */
+export function collectOneOf(type: TypeRef, out: Map<string, TypeRef[]> = new Map()): Map<string, TypeRef[]> {
+  switch (type.kind) {
+    case "var":
+      if (type.oneOf && !out.has(type.name)) out.set(type.name, type.oneOf);
+      break;
+    case "list":
+    case "optional":
+      collectOneOf(type.of, out);
+      break;
+    default:
+      break;
+  }
+  return out;
 }
 
 function match(pattern: TypeRef, other: TypeRef, out: Map<string, TypeRef[]>): void {

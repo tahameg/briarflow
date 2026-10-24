@@ -209,7 +209,7 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
     const resolved = ports.nodes.get(node.id);
     if (!resolved) continue;
     const kind = kindOf(node.type);
-    const def = kind === "input" || kind === "output" ? undefined : catalog.get(node.type);
+    const def = kind === "input" || kind === "output" ? undefined : resolved.definition;
     let config: Record<string, unknown> = {};
     if (def) {
       const r = validateNodeConfig(def, node.config, doc, flowId, catalog);

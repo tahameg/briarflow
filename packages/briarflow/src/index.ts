@@ -22,7 +22,7 @@
 export const PACKAGE_NAME = "briarflow";
 
 export { createBriar } from "./briar.js";
-export type { ApplyCommandsRequest, ApplyCommandsResult, Briar, BriarOptions, BriarRunOptions, FlowInfo, NodeTypesInfo } from "./briar.js";
+export type { ApplyCommandsRequest, ApplyCommandsResult, Briar, BriarOptions, BriarRunOptions, FlowInfo, NodeTypesInfo, SettingInfo, SettingsInfo } from "./briar.js";
 export type {
   AddNodeOptions,
   ContextHandle,

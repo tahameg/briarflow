@@ -5,12 +5,13 @@
 import { CommandError, applyCommands } from "@briarflow/authoring";
 import type { ApplyResult, BatchResult, Command } from "@briarflow/authoring";
 import type { NodeTypesInfo } from "@briarflow/client";
-import { BriarError, createCatalogFromDescriptors, createIdGenerator, serializeError, validateContext } from "@briarflow/core";
-import type { ContextDocument, Diagnostic, NodeCatalog, Run, Viewport } from "@briarflow/core";
+import { BriarError, createCatalogFromDescriptors, createIdGenerator, nodeDefinition, serializeError, validateContext } from "@briarflow/core";
+import type { ContextDocument, Diagnostic, NodeCatalog, Run, RunEvent, RunResult, SerializedError, Viewport } from "@briarflow/core";
 import { isCommandRejection, isRevisionConflict } from "./backend.js";
 import { completeRun, reduceRunEvent } from "./run-state.js";
 import { CONSOLE_LIMIT, DEFAULT_FRONTEND_NODES } from "./frontend.js";
 import type { ConsoleLine } from "./frontend.js";
+import { readRunInputs, writeRunInputs } from "./run-inputs.js";
 import type { RunState } from "./run-state.js";
 import type {
   EditorListener,
@@ -81,6 +82,8 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     selection: EMPTY_SELECTION,
     viewports: {},
     run: undefined,
+    runInputs: options.runInputsStorage ? readRunInputs(options.runInputsStorage, contextId) : {},
+    useCache: true,
     console: [],
     notices: [],
   };
@@ -497,16 +500,17 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     await flush();
     const token = ++runToken;
     currentRun = undefined;
+    const inputs = opts.inputs ?? storedInputs(flowId);
+    const useCache = opts.useCache ?? state.useCache;
     set({ run: { runId: undefined, flowId, status: "starting", nodes: {}, lastSeq: -1, events: [] } });
     let started: Run;
     try {
-      started = await backend.run(flowId, opts.inputs ?? {}, {
-        ...(opts.useCache === undefined ? {} : { useCache: opts.useCache }),
-        signal: abort.signal,
-      });
+      started = await backend.run(flowId, inputs, { ...(useCache ? {} : { useCache: false }), signal: abort.signal });
     } catch (error) {
       if (token === runToken && !disposed) {
-        set({ run: { runId: undefined, flowId, status: "rejected", nodes: {}, lastSeq: -1, events: [], error: serializeError(error) } });
+        const err = serializeError(error);
+        set({ run: { runId: undefined, flowId, status: "rejected", nodes: {}, lastSeq: -1, events: [], error: err } });
+        logRejection(flowId, err);
       }
       throw error;
     }
@@ -527,6 +531,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
         const next = reduceRunEvent(current, event);
         if (next === current) continue;
         set({ run: next });
+        logEvent(r.id, current.flowId, event);
         if (event.type === "node.completed") runFrontendNode(r.id, event.nodeId);
       }
     } catch {
@@ -535,7 +540,100 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     const result = await r.result;
     if (!live()) return;
     const current = state.run;
-    if (current && !TERMINAL.has(current.status)) set({ run: completeRun(current, result) });
+    if (current && !TERMINAL.has(current.status)) {
+      set({ run: completeRun(current, result) });
+      logResult(current.flowId, result);
+    }
+  }
+
+  function storedInputs(flowId: string): Record<string, unknown> {
+    const flow = state.doc?.flows.find((f) => f.id === flowId);
+    const typed = state.runInputs[flowId] ?? {};
+    const values: Record<string, unknown> = {};
+    for (const f of flow?.inputs ?? []) if (typed[f.name] !== undefined) values[f.name] = typed[f.name];
+    return values;
+  }
+
+  function setRunInput(flowId: string, name: string, value: unknown): void {
+    const current = { ...(state.runInputs[flowId] ?? {}) };
+    if (value === undefined) delete current[name];
+    else current[name] = value;
+    const runInputs = { ...state.runInputs, [flowId]: current };
+    set({ runInputs });
+    if (options.runInputsStorage) writeRunInputs(options.runInputsStorage, contextId, runInputs);
+  }
+
+  // ---- console ----------------------------------------------------------------------------
+
+  function writeLine(line: Omit<ConsoleLine, "id" | "at">): void {
+    const lines = [...state.console, { id: ++consoleId, at: clock().toISOString(), ...line }];
+    set({ console: lines.length > CONSOLE_LIMIT ? lines.slice(lines.length - CONSOLE_LIMIT) : lines });
+  }
+
+  function nodeInfo(flowId: string, nodeId: string): { title: string; nodeType?: string } {
+    const node = state.doc?.flows.find((f) => f.id === flowId)?.nodes.find((n) => n.id === nodeId);
+    if (!node) return { title: nodeId };
+    const def = state.catalog?.get(node.type);
+    const title = node.title?.trim() || (node.type === "briar.input" ? "Input" : node.type === "briar.output" ? "Output" : def?.title) || node.type;
+    return { title, nodeType: node.type };
+  }
+
+  function flowName(flowId: string): string {
+    return state.doc?.flows.find((f) => f.id === flowId)?.name ?? flowId;
+  }
+
+  function errorLine(runId: string | undefined, flowId: string, error: SerializedError, nodeId = error.nodeId): void {
+    const where = nodeId ? { nodeId, ...nodeInfo(flowId, nodeId) } : { title: flowName(flowId) };
+    writeLine({ kind: "error", runId, ...where, code: error.code, text: error.message });
+  }
+
+  function logEvent(runId: string, flowId: string, event: RunEvent): void {
+    switch (event.type) {
+      case "run.started":
+        writeLine({ kind: "info", runId, title: flowName(flowId), text: `Run ${runId} started` });
+        return;
+      case "node.retrying":
+        writeLine({
+          kind: "warning",
+          runId,
+          nodeId: event.nodeId,
+          ...nodeInfo(flowId, event.nodeId),
+          code: event.error.code,
+          text: `${event.error.message} (retry ${event.nextAttempt} in ${Math.round(event.delayMs)} ms)`,
+        });
+        return;
+      case "node.failed":
+        errorLine(runId, flowId, event.error, event.nodeId);
+        return;
+      case "run.completed":
+        logResult(flowId, event.result);
+        return;
+      default:
+        return;
+    }
+  }
+
+  function logResult(flowId: string, result: RunResult): void {
+    const nodeFailed = state.console.some((l) => l.runId === result.runId && l.kind === "error" && l.nodeId !== undefined);
+    if (result.error && !(result.error.code === "run.node_failed" && nodeFailed)) errorLine(result.runId, flowId, result.error);
+    for (const [name, value] of Object.entries(result.outputs ?? {})) {
+      writeLine({ kind: "output", runId: result.runId, title: name, text: previewText(value), value });
+    }
+    const took = Date.parse(result.finishedAt) - Date.parse(result.startedAt);
+    const ms = Number.isFinite(took) ? ` in ${took} ms` : "";
+    writeLine({ kind: result.status === "succeeded" ? "info" : "error", runId: result.runId, title: flowName(flowId), text: `Run ${result.status}${ms}` });
+  }
+
+  function logRejection(flowId: string, error: SerializedError): void {
+    errorLine(undefined, flowId, error);
+    const list = (error.details as { diagnostics?: unknown } | undefined)?.diagnostics;
+    if (!Array.isArray(list)) return;
+    for (const d of list as Partial<Diagnostic>[]) {
+      if (typeof d?.code !== "string" || typeof d.message !== "string") continue;
+      const nodeId = d.path?.nodeId;
+      const where = nodeId ? { nodeId, ...nodeInfo(d.path?.flowId ?? flowId, nodeId) } : { title: flowName(flowId) };
+      writeLine({ kind: d.severity === "warning" ? "warning" : "error", runId: undefined, ...where, code: d.code, text: d.message });
+    }
   }
 
   function cancelRun(reason?: string): void {
@@ -545,7 +643,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
   function runFrontendNode(runId: string | undefined, nodeId: string): void {
     const flow = state.doc?.flows.find((f) => f.nodes.some((n) => n.id === nodeId));
     const node = flow?.nodes.find((n) => n.id === nodeId);
-    const def = node ? state.catalog?.get(node.type) : undefined;
+    const def = node ? (state.catalog ? nodeDefinition(state.catalog, node) : undefined) : undefined;
     const handler = node && def?.frontend ? frontendNodes[node.type] : undefined;
     if (!flow || !node || !def || !handler) return;
     const inputs: Record<string, unknown> = {};
@@ -561,11 +659,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
       }
     }
     const title = node.title?.trim() || def?.title || node.type;
-    const print = (text: string) => {
-      const line: ConsoleLine = { id: ++consoleId, at: clock().toISOString(), runId, nodeId, title, text: String(text) };
-      const lines = [...state.console, line];
-      set({ console: lines.length > CONSOLE_LIMIT ? lines.slice(lines.length - CONSOLE_LIMIT) : lines });
-    };
+    const print = (text: string) => writeLine({ kind: "print", runId, nodeId, nodeType: node.type, title, text: String(text) });
     try {
       handler({ runId, nodeId, title, inputs, print });
     } catch (err) {
@@ -625,6 +719,8 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     startRun,
     cancelRun,
     clearRun,
+    setRunInput,
+    setUseCache: (useCache) => set({ useCache }),
     clearConsole,
     dismissNotice,
     dispose,
@@ -638,6 +734,13 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 
 function sameViewport(a: Viewport, b: Viewport): boolean {
   return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
+}
+
+function previewText(value: unknown): string {
+  if (value === null || value === undefined) return "[none]";
+  if (typeof value === "string") return value;
+  const json = JSON.stringify(value);
+  return json === undefined ? String(value) : json;
 }
 
 function messageOf(error: unknown): string {

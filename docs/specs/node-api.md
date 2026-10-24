@@ -52,11 +52,119 @@ function defineNode<I extends PortMap, O extends PortMap, C extends ConfigMap = 
 | `retry` | `number \| RetryPolicy` | `0` retries | `retry: 2` = up to 3 attempts with default backoff (runtime.md §5) |
 | `concurrency` | `number` | unlimited | Max simultaneous executions of this node type per engine |
 | `deprecated` | `string` | none | Message shown in the palette; node still runs |
-| `run` | `(args: NodeRunArgs) => Promise<Outputs> \| Outputs` | **required** | The work |
+| `pure` | `boolean` | `false` | No execution line; runs when a node on the line reads it (execution.md) |
+| `canFail` | `boolean` | `false` | Adds the `failed` line and the `error` output |
+| `conversion` | `boolean` | `false` | A conversion node (§1.1) |
+| `variants` | `VariantsInput` | none | A node with variants (§1.2). Replaces `inputs`, `outputs`, `config`, `resolvePorts` and `run` |
+| `run` | `(args: NodeRunArgs) => Promise<Outputs> \| Outputs` | **required** (unless `variants`) | The work |
 
 Validation at definition time throws `NodeDefinitionError` (code `node_def.invalid`) with a
 message naming the node type and field: e.g.
 `defineNode "text.tmpl": input "Template" is not a valid port name (use letters, digits and _; start with a letter or _).`
+
+### 1.1 Conversion nodes (2026-10-24)
+
+A conversion node turns one value into another type: As text, As int, As JSON, … It is a
+first-class kind, not a naming habit:
+
+- `conversion: true` requires `pure: true`, static ports (no `resolvePorts`), exactly one
+  output, and at least one input. The **first** input takes the converted value; every other
+  input needs a default (e.g. Float to int's rounding `mode`).
+- Descriptors carry `conversion: true`.
+- `findConversions(catalog, from, to)` (core) lists the conversion nodes that take a `from`
+  value and give a value assignable to `to`, best first: an input of exactly `from`, then a
+  widening input, then a generic limited by `oneOf` (types.md §5), then a free generic.
+- Editors use it: joining two ports whose types do not fit, but convert, inserts the best
+  conversion node between them (one undo step: `node.add` + two `edge.connect`). A generic
+  input limited by `oneOf` that refuses the source tries each `oneOf` type as the target.
+- Conversions are single steps: no chains are searched.
+
+### 1.2 Variants (2026-10-24)
+
+A node with **variants** is one node type with several shapes. The placed node picks one in a
+dropdown (`Model ▾`); the pick decides its ports, its config fields and the code that runs.
+OpenAI image is one node with a variant per model (`gpt-image-2.5-flare`, `gpt-image-2`,
+`gpt-image-1.5`, …): the 2.5 models take quality up to `max` and any custom size, the
+deprecated 1.x models only the fixed sizes and quality up to `high`.
+
+```ts
+const prompt = { prompt: t.text({ multiline: true }) };   // shared ports are plain objects
+
+export const generate = defineNode({
+  type: "img.generate",
+  title: "Generate image",
+  canFail: true,                     // node-level: everything except the shape
+  variants: {
+    title: "Model",                  // dropdown label; default "Variant"
+    default: "fast",                 // variant of new nodes; default: the first
+    options: {
+      fast: variant({
+        title: "Fast",               // default: the variant name
+        description: "Quick drafts.",
+        inputs: prompt,
+        outputs: { image: t.image() },
+        run: async ({ inputs, ctx }) => ({ image: await draft(inputs.prompt, ctx) }),
+      }),
+      best: variant({
+        title: "Best",
+        config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
+        inputs: { ...prompt, negative: t.optional(t.text()) },
+        outputs: { image: t.image(), seed: t.int() },
+        run: async ({ inputs, config, ctx }) => render(inputs, config.steps, ctx),
+      }),
+    },
+  },
+});
+```
+
+Rules:
+
+- **Shape on the variant, the rest on the node.** A variant declares `inputs`, `outputs`,
+  `config`, optionally `resolvePorts`, and `run`, typed like `defineNode` (a wrong output is
+  a compile error inside the variant). `title`, `description` and `deprecated` describe it in
+  the dropdown. Everything else (`type`, `title`, `category`, `pure`, `canFail`, `frontend`,
+  `cache`, `retry`, `timeoutMs`, `secrets`, …) is the node's and shared by every variant, so
+  the execution ports (`in`, `then`, `failed`) never change with the pick. A node with
+  `variants` that also declares a shape fails with `node_def.invalid`; so do no options, a bad
+  variant name, an unknown `default`, an option not made with `variant()`, and
+  `conversion: true` (conversions are single-shaped, §1.1).
+- **Variant names** follow enum-member rules (`gpt-image-1`, `dall-e-3`, `fast`); they are
+  stored in documents, so renaming one is a breaking change for saved flows.
+- **Shared ports are spread**, not inherited: each variant lists all its ports. Ports with the
+  same name and a fitting type keep their wires and constants when the pick changes.
+- **One definition per variant.** `defineNode` returns the default variant's definition;
+  every variant's definition is a full `NodeDefinition` with `variant: "<name>"` and the same
+  `variants` object (`{ title, description?, default, options: [{ name, title, description?,
+  deprecated?, definition }] }`). Code that does not know about variants (a palette, a
+  descriptor reader) sees the default variant. `variantDefinition(def, name)` and
+  `nodeDefinition(catalog, node)` (core) give the definition a placed node uses.
+- **Documents.** `NodeInstance.variant` holds the pick. `node.add` stores it on every node of a
+  type with variants (the default when not given), so changing a pack's `default` never moves
+  saved nodes. A node without `variant` uses the default; a variant the type does not have
+  gives the error diagnostic `node.unknown_variant` (no ports, edges kept, like an unknown
+  type) and the command error of the same code.
+- **Switching** is the command `node.setVariant` (commands.md §7): config the new variant
+  shares (same key and kind, still valid) is kept, the rest dropped; wires and constants of
+  ports the new variant does not have are removed in the same undo step.
+- **Validation and runs** use the variant's definition: config is checked against its fields,
+  `run` is its `run`, and the cache key includes the variant (runtime.md §6).
+- **Descriptors** carry `variants: { title, description?, default, options: [{ name, title,
+  description?, deprecated, inputs, outputs, config, dynamicPorts }] }`; the top-level
+  `inputs`/`outputs`/`config` are the default variant's. `definitionFromDescriptor` rebuilds
+  every variant, so editors without the pack's code resolve them exactly.
+- **Editors** show the dropdown under the node header and in the inspector; dropping a wire
+  on empty canvas offers each variant whose ports fit ("OpenAI image · DALL·E 3").
+- **Testing:** `runNode(def, inputs, { variant: "best" })`; `describeNodePack` checks every
+  variant's names and port types and takes `variant` in samples.
+
+When to use variants and when `resolvePorts` (§5): variants for a **known, finite** set of
+shapes chosen by the user (models, modes, providers); `resolvePorts` for ports **computed from
+data** (a template's placeholders, a list's length, a struct's fields). A variant may have
+its own `resolvePorts`.
+
+**Planned: nested variants.** One selector per node in v1. Shapes that depend on two choices
+(model × mode) are flattened into one list (`gpt-image-1 · edit`) until nested selectors land
+(OPEN_QUESTIONS Q-NODE-10).
 
 ## 2. Ports
 
@@ -81,7 +189,9 @@ type Port<V> = TypeSpec<V> | {
   definition time is the guarantee. Accepted for v1 — every pack is loaded (and its tests run)
   before a node can be used, so the error surfaces immediately on import.
 - **Input value resolution order** at run time: edge → instance constant (`NodeInstance.values`)
-  → port `default` → `null` if the type is optional → validation error `input.unconnected`.
+  → port `default` → the empty value of the type (`emptyValue`: `""`, `0` moved into
+  `min`/`max`, `false`, `[]`; `null` for structs, enums, media, optionals and generics). An
+  empty input never blocks a run, and a `null` input is passed to `run` unchecked.
 - Output ports may not have defaults.
 
 ## 3. The `t` builder
@@ -207,7 +317,11 @@ interface ExecContext {
   progress(fraction: number, message?: string): void;
   log: Logger;                         // tagged with runId/nodeId
   media: MediaStore;
-  secrets: { get(name: string): Promise<string> };   // only names listed in `secrets`
+  secrets: {
+    get(name: string): Promise<string>;              // only names listed in `secrets` (resolver / env)
+    read(ref: SecretRef): Promise<string>;           // a vault secret the node was given (secrets.md)
+  };
+  settings: { get(name: string): Promise<unknown> }; // the node's pack settings (settings.md)
   globals: { get(name: string): unknown };           // run-start snapshot
   variables: { get(name: string): unknown };         // run-start values
   fetch: typeof fetch;                 // injectable; already bound to `signal` if you pass none
@@ -228,6 +342,13 @@ interface ExecContext {
   one fails the node with `node.missing_secret` (not retried):
   `Node {title} needs secret "{name}". Set it in your secrets provider (e.g. env var {name}).`
   `ctx.secrets.get` of an undeclared name throws `node.secret_not_declared`.
+- **Vault secrets.** `ctx.secrets.read(ref)` returns the value of a vault secret. A node may
+  only read names it was given: the value of one of its `secret` inputs (also inside
+  optionals and lists), or a `secret` setting of its pack it read with `ctx.settings.get`.
+  Anything else → `node.secret_not_allowed`; a name missing from the vault →
+  `node.missing_secret`. Never put a revealed value in an output or a log.
+- **Settings.** `ctx.settings.get(name)` returns the stored value of the pack's setting
+  `name`, else its declared default, else `null`. An undeclared name → `node.unknown_setting`.
 - **Progress.** `fraction` is clamped to `[0, 1]`; NaN ignored. Messages ≤ 200 chars
   (truncated). The engine throttles `node.progress` events to one per 100 ms per node (the
   latest wins; nothing is sent after the node completes).
@@ -252,6 +373,8 @@ Standard codes (use these before inventing new ones; pack-specific ones are `<pa
 | `node.missing_secret` | no | set by the engine |
 | `node.invalid_output` | no | set by the engine when outputs fail type checks |
 | `node.content_refused` | no | provider safety refusal |
+| `node.secret_not_allowed` | no | set by the engine: `ctx.secrets.read` of a name the node was not given |
+| `node.unknown_setting` | no | set by the engine: `ctx.settings.get` of an undeclared setting |
 
 Non-`NodeError` exceptions are wrapped as `node.failed` with the original message; a
 `TypeError` from `fetch` (network failure) is wrapped as `node.unavailable` (retryable).
@@ -281,6 +404,9 @@ export const openaiPack = definePack({
   namespaces: [],                     // extra node-type namespaces (default none)
   types: [Role, ChatMessage],         // ids become "openai.Role", "openai.ChatMessage"
   nodes: [chat, structured, image],
+  settings: {                         // keys "openai.textKey", … (settings.md)
+    textKey: { type: t.optional(t.secret({ kind: "apiKey" })), title: "Key for text" },
+  },
 });
 ```
 
@@ -309,6 +435,10 @@ know its pack; `catalog.descriptors()` passes it):
   "retry": { "maxAttempts": 1 }, "concurrency": null, "deprecated": null
 }
 ```
+
+Nodes with variants add `"variants": { "title": "Model", "default": "gpt-image-1", "options":
+[ { "name": "dall-e-3", "title": "DALL·E 3", "deprecated": null, "inputs": [ … ], "outputs":
+[ … ], "config": [ … ], "dynamicPorts": false }, … ] }` (§1.2).
 
 Ports are arrays (to keep order). `default` and `description` are omitted when absent;
 `widget` is omitted or `null` when absent; `icon`, `color`, `concurrency` and `deprecated`
@@ -349,22 +479,30 @@ built-ins are labelled **"Input"** and **"Output"** (DECISIONS #36).
 | `briar.global.set` | `globalId: cfg.global({writable:true})` | `value: G` | `value: G` | `cache:false` |
 | `briar.struct.make` | `typeId: cfg.typeId({kind:"struct"})` | one per field (field type; field default as port default) | `value: S` | |
 | `briar.struct.break` | `typeId` | `value: S` | one per field | |
+| `briar.member.get` ("Get .path") | `type: cfg.type()`, `path: cfg.text()` | `value: <type>` | one, named after the last step, the member's type | `value.path` (types.md §12); offered from a dropped wire, not the palette |
+| `briar.member.set` ("Set .path") | same | `value: <type>`, `to: <member type>` | `value: <type>` | copy with the struct field replaced; only struct fields (types.md §12) |
 | `briar.constant` | `type: cfg.type()` | `value: <type>` (set as constant) | `value: <type>` | identity when wired |
-| `text.template` | `template: cfg.text({multiline:true})` | one generic port per distinct `{name}` placeholder, in order of first appearance | `text: text` | values rendered with toText rules; `{{` / `}}` are literal braces; placeholder names follow port-name rules, invalid ones → `PortError`; each port gets its own type var with a **synthetic** name `T1`, `T2`, … by order of first appearance (placeholder names may break var-name rules `^[A-Z][A-Za-z0-9]*$`, ≤ 16 chars) |
+| `text.template` (title "Template builder") | `template: cfg.text({multiline:true})` | one port per distinct `{{name}}`, in order of first appearance: generic (synthetic type var `T1`, `T2`, … by order of first appearance) or `json` when any slot reads a field path of it (`{{user.address.city}}`, `{{items[0]}}`); `{{$(name)}}` reads a flow variable, else a global, and adds no port | `text: text` | `cache:false` (it reads variables). Values rendered with toText rules; a field path that does not exist → `NodeError("json.field_missing")`; `\{{` is a literal `{{`, single braces are plain text; bad slot → `PortError` `text.invalid_placeholder`, unclosed `{{` → `text.invalid_template`, unknown variable → `text.unknown_variable`. Variables are read at run start (like `ctx.variables`); use a Get variable node and a port for a value written earlier in the same run |
 | `text.join` | — | `items: list<text>`, `separator: text` (default `""`) | `text: text` | |
 | `list.make` | `count: cfg.int({min:0,max:32,default:2})` | `item1…itemN: $T` | `list: list<$T>` | |
 | `list.length` | — | `list: list<$T>` | `length: int` | |
 | `list.get` | — | `list: list<$T>`, `index: int` | `item: $T?` | negative index counts from the end; out of range → `null` |
-| `convert.toText` | — | `value: $T` | `text: text` | rules below |
-| `convert.parseInt` | — | `text: text` | `value: int` | trims; invalid → `NodeError("convert.invalid_number")` |
-| `convert.parseFloat` | — | `text: text` | `value: float` | same |
-| `convert.floatToInt` | — | `value: float`, `mode: briar.RoundingMode` (default `round`) | `value: int` | `round` = half away from zero |
+| `convert.toText` (title "As text") | — | `value: $T` | `text: text` | conversion; never fails; rules below |
+| `convert.asJson` | — | `text: text` | `json: json` | conversion; the text as it is, **not parsed**: fields are parsed when read (Get field, Set field, templates) |
+| `convert.asInt` / `convert.asFloat` | — | `value: $T` with `oneOf: [text, json]` | `value: int` / `float` | conversion; json is read through its text (As text), then trimmed and parsed; invalid → `convert.invalid_number` |
+| `convert.asBoolean` | — | `value: $T` | `value: boolean` | conversion; never fails: `null`, `false`, `0`, NaN and text `""`/`false`/`0`/`no`/`off`/`null` (trimmed, any case) → false; everything else (lists, structs, media) → true |
+| `convert.asJsonArray` (title "As JSON array") | — | `value: $T` with `oneOf: [text, json]` | `items: list<json>` | conversion; text is parsed; not an array → `json.wrong_kind`, bad JSON → `json.invalid_json` |
+| `convert.floatToInt` | — | `value: float`, `mode: briar.RoundingMode` (default `round`) | `value: int` | conversion; `round` = half away from zero |
+| `json.construct` | — | `value: json` (default `{}`, edited in the JSON editor) | `json: json` | |
+| `json.getField` | — | `json: json`, `path: text` | `value: json` | path `a.b[0].c`, `[1]` for a root array, `""` = the whole value; missing → `json.field_missing`, bad path → `json.invalid_path`; a string met on the way is JSON text and is parsed there, bad JSON → `json.invalid_json` |
+| `json.setField` | — | `json`, `path`, `value: json` | `json: json` | replaces or adds; creates missing objects on the way; an index may be one past the end (append) |
+| `json.addField` | — | `json`, `path`, `value: json`, `overwrite: boolean` (default false) | `json: json` | existing field and `overwrite` off → `json.field_exists` |
 
 Pack types: `briar.RoundingMode` enum: `round`, `floor`, `ceil`, `trunc`.
 
 **toText rules:** text as is; int/float via JS `String()`; boolean `"true"`/`"false"`; enum →
 member value; `null` → `""`; media → its `uri`; struct/list → `JSON.stringify` with stable key
-order and no spaces.
+order and no spaces; json → a string as is, anything else as its JSON text (same stable order).
 
 ## 10. Mock nodes (`@briarflow/nodes-mock`, pack `mock`)
 
@@ -379,6 +517,24 @@ Deterministic, offline, no secrets. `hash(x)` = sha-256 hex of the UTF-8 canonic
 | `mock.delay` | `value: $T`, `ms: int` (1000) | `value: $T` | waits, honours cancellation; `cache:false`. For cancellation tests. |
 | `mock.flaky` | `failures: int` (1), `value: text` ("ok") | `value: text` | Fails the first `failures` attempts of each execution with `node.unavailable` (retryable), then succeeds. `retry: 3`, `cache:false`. For retry tests. |
 | `mock.fail` | `message: text` ("Mock failure") | `value: text` | Always throws `NodeError("mock.failed", message)`. |
+
+## 10b. Image nodes (`@briarflow/nodes-image`, pack `image`)
+
+Pure, cached. Read PNG and JPEG inputs (other formats → `image.unsupported_format`), work on
+8-bit RGBA, store a new image (config `format: png | jpeg`, `quality` for JPEG; PNG drops the
+alpha channel when every pixel is opaque) with `meta.width/height`. Up to 64 MP
+(`image.invalid_size` beyond, or for sizes below 1×1). Pure JavaScript codecs (fast-png,
+jpeg-js); no native modules.
+
+| Type | Variants / config | Inputs | Outputs | Notes |
+|---|---|---|---|---|
+| `image.make` | variants `rgba`, `rgb`, `color` | rgba/rgb: `red`, `green`, `blue` (`alpha`) images; color: `width`, `height` (1024), `red`, `green`, `blue` (0), `alpha` (255) as 0–255 ints | `image` | channel images use their brightness (gray images from Split channels); sizes must match (`image.size_mismatch`) |
+| `image.split` | variants `rgba`, `rgb` | `image` | `red`, `green`, `blue` (`alpha`): gray PNGs | inverse of Make image |
+| `image.resize` | `fit: contain \| cover \| stretch` | `image`, `width: int?`, `height: int?` | `image` | one size empty keeps the aspect ratio; area average when shrinking, bilinear when growing, alpha-weighted |
+| `image.crop` | — | `image`, `x`, `y` (0), `width`, `height` | `image` | outside the image → `image.invalid_size` |
+| `image.transform` | `op: rotate90 \| rotate180 \| rotate270 \| flipHorizontal \| flipVertical` | `image` | `image` | clockwise |
+| `image.grayscale` / `image.invert` | — | `image` | `image` | Rec. 601 luma / 255 − value; alpha kept |
+| `image.convert` | — | `image` | `image` | re-encodes as `format` |
 
 ## 11. Example node files
 

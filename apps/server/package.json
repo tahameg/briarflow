@@ -13,7 +13,9 @@
   "dependencies": {
     "@briarflow/core": "*",
     "@briarflow/nodes-anthropic": "*",
+    "@briarflow/nodes-image": "*",
     "@briarflow/nodes-mock": "*",
+    "@briarflow/nodes-openai": "*",
     "@briarflow/nodes-std": "*",
     "@briarflow/python": "*",
     "@briarflow/server": "*",

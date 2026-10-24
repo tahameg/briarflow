@@ -1,7 +1,7 @@
 /**
  * "Drop a wire on empty canvas" matching: which node types (with a given config) have a port
  * that a dragged output can feed, or that can feed a dragged input. Ports are resolved the
- * same way the canvas resolves them, so dynamic and variable nodes work too.
+ * same way the canvas resolves them, so dynamic, variable and variant nodes work too.
  */
 import { bindTypeVars, containsVar, isAssignable, resolveFlowPorts, substituteTypeVars } from "@briarflow/core";
 import type { ContextDocument, NodeCatalog, TypeRef } from "@briarflow/core";
@@ -11,6 +11,8 @@ export interface ConnectProbe {
   /** Caller's key for the result. */
   key: string;
   type: string;
+  /** Variant of a node type with variants. Default: its default variant. */
+  variant?: string;
   config?: Record<string, unknown>;
 }
 
@@ -56,7 +58,13 @@ export function matchConnectTargets(
             ...f,
             nodes: [
               ...f.nodes,
-              ...probes.map((p, i) => ({ id: `${PROBE_PREFIX}${i}`, type: p.type, position: { x: 0, y: 0 }, ...(p.config ? { config: p.config } : {}) })),
+              ...probes.map((p, i) => ({
+                id: `${PROBE_PREFIX}${i}`,
+                type: p.type,
+                position: { x: 0, y: 0 },
+                ...(p.variant === undefined ? {} : { variant: p.variant }),
+                ...(p.config ? { config: p.config } : {}),
+              })),
             ],
           },
     ),
@@ -80,8 +88,9 @@ export function matchConnectTargets(
   probes.forEach((probe, i) => {
     const node = resolved.nodes.get(`${PROBE_PREFIX}${i}`);
     const ports = (from === "out" ? node?.inputs : node?.outputs) ?? [];
-    const exact = ports.find((p) => !containsVar(p.type) && fits(p.type));
-    const generic = exact ? undefined : ports.find((p) => containsVar(p.type) && fitsGeneric(p.name, p.type));
+    // `declaredType`: a var limited by `oneOf` is bound to its first type while unconnected.
+    const exact = ports.find((p) => !containsVar(p.declaredType) && fits(p.type));
+    const generic = exact ? undefined : ports.find((p) => containsVar(p.declaredType) && fitsGeneric(p.name, p.declaredType));
     const hit = exact ?? generic;
     if (hit) out.push({ key: probe.key, port: hit.name, portTitle: hit.title, generic: hit === generic });
   });

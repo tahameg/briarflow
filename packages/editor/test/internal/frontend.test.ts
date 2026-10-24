@@ -47,13 +47,22 @@ describe("frontend nodes", () => {
     run.emit({ type: "node.completed", nodeId: "n_p", outputs: {}, cached: false, durationMs: 1 });
     run.emit({ type: "node.completed", nodeId: "n_q", outputs: {}, cached: false, durationMs: 1 });
     await tick();
-    expect(store.getState().console.map((l) => [l.nodeId, l.title, l.text])).toEqual([
+    expect(store.getState().console.filter((l) => l.kind === "print").map((l) => [l.nodeId, l.title, l.text])).toEqual([
       ["n_p", "Print", "from upstream"],
       ["n_q", "Print", "typed"],
     ]);
     expect(log.mock.calls).toEqual([["[Print] from upstream"]]);
     store.clearConsole();
     expect(store.getState().console).toEqual([]);
+  });
+
+  it("prints [none] when the text has no value", async () => {
+    const { store, run } = await setup();
+    store.dispatch([{ op: "node.add", flowId: "flow_a", type: "debug.print", position: { x: 0, y: 0 }, id: "n_r" }]);
+    await store.flush();
+    run.emit({ type: "node.completed", nodeId: "n_r", outputs: {}, cached: false, durationMs: 1 });
+    await tick();
+    expect(store.getState().console.filter((l) => l.kind === "print").map((l) => [l.nodeId, l.text])).toEqual([["n_r", "[none]"]]);
   });
 
   it("uses the handlers it is given and reports a failing one as a line", async () => {
@@ -68,7 +77,7 @@ describe("frontend nodes", () => {
     run.emit({ type: "node.completed", nodeId: "n_e", outputs: { text: "boom" }, cached: false, durationMs: 1 });
     run.emit({ type: "node.completed", nodeId: "n_p", outputs: {}, cached: false, durationMs: 1 });
     await tick();
-    expect(store.getState().console.map((l) => l.text)).toEqual(["custom a", "(frontend node failed: no screen)"]);
+    expect(store.getState().console.filter((l) => l.kind === "print").map((l) => l.text)).toEqual(["custom a", "(frontend node failed: no screen)"]);
     // n_e is not a frontend node: completing it prints nothing.
   });
 });

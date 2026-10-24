@@ -1,0 +1,26 @@
+{
+  "name": "@briarflow/nodes-openai",
+  "version": "0.0.0",
+  "description": "OpenAI nodes for Briarflow: text (Responses API) and images (Images API) over plain fetch. Keys come from the vault through pack settings.",
+  "type": "module",
+  "license": "MIT",
+  "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --out-dir dist --clean"
+  },
+  "dependencies": {
+    "@briarflow/core": "*"
+  },
+  "devDependencies": {
+    "@briarflow/testing": "*"
+  }
+}

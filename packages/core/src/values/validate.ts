@@ -8,6 +8,7 @@ import { compilePattern } from "../types/constraints.js";
 import { describe, formatToMime, validateMediaRef } from "../types/media.js";
 import type { TypeScope } from "../types/scope.js";
 import { cloneJson } from "../util/json.js";
+import { isValidSecretName } from "../util/names.js";
 
 /** Options of {@link validateValue} / {@link normalizeValue}. */
 export interface ValueCheckOptions {
@@ -234,6 +235,14 @@ class Checker {
       case "boolean":
         if (typeof value !== "boolean") this.invalid(path, `must be true or false (got ${describe(value)})`);
         return value;
+      case "json": {
+        const problem = jsonProblem(value);
+        if (problem !== undefined) this.invalid(path, `must be JSON: ${problem}`);
+        return value;
+      }
+      case "secret":
+        if (typeof value !== "string" || !isValidSecretName(value)) this.invalid(path, `must be the name of a secret (got ${describe(value)})`);
+        return value;
       case "error": {
         const e = value as Record<string, unknown> | null;
         if (typeof e !== "object" || e === null || Array.isArray(e) || typeof e["code"] !== "string" || typeof e["message"] !== "string") {
@@ -284,4 +293,20 @@ class Checker {
     }
     return value;
   }
+}
+
+/** Why a value is not plain JSON (undefined, functions, non-finite numbers, cycles…), or undefined. */
+function jsonProblem(value: unknown, seen: Set<object> = new Set()): string | undefined {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? undefined : `${String(value)} is not a JSON number`;
+  if (typeof value !== "object") return `${typeof value} is not a JSON value`;
+  if (seen.has(value)) return "it contains a circular reference";
+  seen.add(value);
+  const items = Array.isArray(value) ? value : Object.values(value);
+  for (const item of items) {
+    const p = jsonProblem(item, seen);
+    if (p !== undefined) return p;
+  }
+  seen.delete(value);
+  return undefined;
 }

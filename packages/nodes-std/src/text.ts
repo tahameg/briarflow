@@ -5,38 +5,54 @@ import { cfg, defineNode, t, type PortMap, type TypeRef } from "@briarflow/core"
 import { renderTemplate, templatePlaceholders } from "./text-utils.js";
 
 /**
- * `text.template`: `config.template` with `{placeholder}`s; one generic input per distinct
- * placeholder (type vars `T1`, `T2`, … by first appearance), values rendered with toText.
+ * `text.template` (Template builder): `config.template` with `{{name}}` slots. Each distinct
+ * name becomes an input: generic (type vars `T1`, `T2`, … by first appearance, rendered with
+ * toText), or json when the template reads a field of it (`{{user.name}}`). `{{$(name)}}` reads a flow variable (else a global) at run start and
+ * needs no input. `\{{` is a literal `{{`.
  */
 export const textTemplate = defineNode({
   type: "text.template",
   pure: true,
-  title: "Text template",
+  // {{$(name)}} reads variables, which are not part of the cache key.
+  cache: false,
+  title: "Template builder",
   category: "Text",
   icon: "text",
   color: "mint",
-  description: "Fills {placeholders} in a template. Each placeholder becomes an input; write {{ and }} for literal braces.",
+  description:
+    "Builds text from a template. {{name}} adds an input for any value, {{name.field}} a JSON input, {{$(variable)}} reads a variable. Write \\{{ for literal braces.",
   config: { template: cfg.text({ multiline: true, title: "Template" }) },
   outputs: { text: t.text() },
-  resolvePorts({ config }) {
-    const names = templatePlaceholders(config.template);
-    if (!Array.isArray(names)) return names;
+  resolvePorts({ config, scope }) {
+    const needs = templatePlaceholders(config.template);
+    if ("error" in needs) return needs;
+    for (const name of needs.variables) {
+      if (!scope.flow.variables.some((v) => v.name === name) && !scope.globals.some((g) => g.name === name)) {
+        return { error: { code: "text.unknown_variable", message: `{{$(${name})}} reads "${name}", which is neither a variable of this flow nor a global. Create it or fix the name.` } };
+      }
+    }
     const inputs: PortMap = {};
-    names.forEach((name, i) => {
-      inputs[name] = t.var(`T${i + 1}`);
+    needs.inputs.forEach(({ name, json }, i) => {
+      inputs[name] = json ? t.json() : t.var(`T${i + 1}`);
     });
     return { inputs, outputs: { text: t.text() } };
   },
-  run: ({ inputs, config, node }) => {
-    const names = templatePlaceholders(config.template);
+  run: ({ inputs, config, node, ctx }) => {
     const types: Record<string, TypeRef> = {};
-    if (Array.isArray(names)) {
-      names.forEach((name, i) => {
+    const needs = templatePlaceholders(config.template);
+    if (!("error" in needs)) {
+      needs.inputs.forEach(({ name }, i) => {
         const bound = node.typeBindings?.[`T${i + 1}`];
         if (bound) types[name] = bound;
       });
     }
-    return { text: renderTemplate(config.template, inputs, types) };
+    return { text: renderTemplate(config.template, inputs, types, (name) => {
+      try {
+        return ctx.variables.get(name);
+      } catch {
+        return ctx.globals.get(name);
+      }
+    }) };
   },
 });
 

@@ -1,12 +1,13 @@
 /**
  * Constant-value widgets by type (design-system.md §7 "Constant value widgets"): text,
  * textarea, password, number, checkbox, enum select, optional "set" box, media chip/upload,
- * JSON editor for structs and lists.
+ * JSON editor for json, structs and lists (on a node it opens from a preview button).
  */
 import { useEffect, useId, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 import { formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
+import { SecretPicker } from "./Vault.js";
 
 /** Props of {@link ValueEditor}. */
 export interface ValueEditorProps {
@@ -22,7 +23,7 @@ export interface ValueEditorProps {
   widget?: string | undefined;
   /** Accessible label of the control. */
   label: string;
-  /** Inline on a node: smaller, structured values show a preview only. */
+  /** Inline on a node: smaller; structured values show a preview that opens the JSON editor. */
   compact?: boolean;
   /** Placeholder for an empty value (e.g. the port default). */
   placeholder?: string | undefined;
@@ -43,6 +44,8 @@ const stop = (e: KeyboardEvent) => e.stopPropagation();
  * ```
  */
 export function ValueEditor(props: ValueEditorProps) {
+  // An optional secret needs no "set" box: picking nothing is no secret.
+  if (props.type.kind === "optional" && widgetKind(props.type.of, props.scope) === "secret") return <SecretValue {...props} type={props.type.of} />;
   const kind = widgetKind(props.type, props.scope);
   const cls = (base: string) => [base, props.compact ? "bf-input--compact" : "", props.invalid ? "bf-input--invalid" : "", "nodrag"].filter(Boolean).join(" ");
   switch (kind) {
@@ -91,18 +94,30 @@ export function ValueEditor(props: ValueEditorProps) {
       return <MediaValue {...props} />;
     case "unbound":
       return <span className="bf-value-note">connect first</span>;
+    case "secret":
+      return <SecretValue {...props} />;
+    case "json":
     case "struct":
     case "list":
     case "unknown":
-      if (props.compact) {
-        return (
-          <span className="bf-value-note bf-code" title="Edit in the inspector">
-            {kind === "list" && Array.isArray(props.value) ? `${props.value.length} items` : props.value === undefined ? (props.placeholder ?? "—") : previewValue(props.value, 24)}
-          </span>
-        );
-      }
+      if (props.compact) return <CompactJson {...props} cls={cls} />;
       return <JsonValue {...props} cls={cls} />;
   }
+}
+
+function SecretValue(props: ValueEditorProps) {
+  const t = props.type;
+  const kind = t.kind === "primitive" && t.name === "secret" ? t.constraints?.kind : undefined;
+  return (
+    <SecretPicker
+      value={typeof props.value === "string" ? props.value : undefined}
+      kind={kind}
+      label={props.label}
+      compact={props.compact === true}
+      disabled={props.disabled === true}
+      onChange={(name) => (name !== undefined ? props.onCommit(name) : props.onClear ? props.onClear() : props.onCommit(null))}
+    />
+  );
 }
 
 function TextValue(props: ValueEditorProps & { cls: (base: string) => string }) {
@@ -243,9 +258,9 @@ function MediaValue(props: ValueEditorProps) {
       ) : (
         <span className="bf-value-note">{compact ? "media" : "no file"}</span>
       )}
-      {!compact && uploadMedia ? (
-        <label className="bf-button bf-button--secondary bf-button--sm bf-media__pick">
-          {busy ? "Uploading…" : "Choose file"}
+      {uploadMedia ? (
+        <label className="bf-button bf-button--secondary bf-button--sm bf-media__pick nodrag" title={compact ? "Upload a file" : undefined}>
+          {busy ? (compact ? "…" : "Uploading…") : compact ? "↑" : "Choose file"}
           <input
             type="file"
             className="bf-visually-hidden"
@@ -277,8 +292,36 @@ function MediaValue(props: ValueEditorProps) {
   );
 }
 
+/** On a node: a preview button that opens the JSON editor under it. */
+function CompactJson(props: ValueEditorProps & { cls: (base: string) => string }) {
+  const [open, setOpen] = useState(false);
+  const kind = widgetKind(props.type, props.scope);
+  const preview =
+    props.value === undefined
+      ? (props.placeholder ?? "—")
+      : kind === "list" && Array.isArray(props.value)
+        ? `${props.value.length} items`
+        : previewValue(props.value, 24);
+  return (
+    <span className="bf-json-compact nodrag">
+      <button
+        type="button"
+        className="bf-value-note bf-code bf-json-compact__toggle"
+        aria-expanded={open}
+        aria-label={`Edit ${props.label} as JSON`}
+        disabled={props.disabled}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? "▾ " : "▸ "}
+        {preview}
+      </button>
+      {open ? <JsonValue {...props} compact={false} cls={(base) => props.cls(base).replace("bf-input--compact", "")} /> : null}
+    </span>
+  );
+}
+
 /**
- * Structs and lists: a JSON textarea. Empty values start from a skeleton of the type (not
+ * json, structs and lists: a JSON textarea with a live syntax check. Empty values start from a skeleton of the type (not
  * stored until edited); valid JSON is pretty-printed on blur; parse errors name line and column.
  */
 function JsonValue(props: ValueEditorProps & { cls: (base: string) => string }) {
@@ -315,7 +358,10 @@ function JsonValue(props: ValueEditorProps & { cls: (base: string) => string }) 
         value={draft}
         disabled={disabled}
         placeholder={placeholder ?? "JSON"}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setError(syntaxError(e.target.value));
+        }}
         onBlur={commit}
         onKeyDown={stop}
         spellCheck={false}
@@ -327,4 +373,16 @@ function JsonValue(props: ValueEditorProps & { cls: (base: string) => string }) 
       ) : null}
     </span>
   );
+}
+
+/** Live check while typing: the parse error with line and column, or undefined. */
+function syntaxError(draft: string): string | undefined {
+  if (draft.trim() === "") return undefined;
+  try {
+    JSON.parse(draft);
+    return undefined;
+  } catch {
+    const where = jsonErrorLocation(draft);
+    return `Not valid JSON${where ? ` (${where})` : ""}. Use double quotes for keys and strings.`;
+  }
 }

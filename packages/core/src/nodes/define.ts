@@ -6,7 +6,7 @@ import { NodeDefinitionError } from "../errors.js";
 import type { TypeSpec, UnknownValue } from "../types/builder.js";
 import { isTypeSpec } from "../types/builder.js";
 import { createTypeScope } from "../types/scope.js";
-import { isValidFieldName, isValidNodeType, RESERVED_FIELD_NAMES } from "../util/names.js";
+import { isValidEnumValue, isValidFieldName, isValidNodeType, RESERVED_FIELD_NAMES } from "../util/names.js";
 import { capitalize, titleFromNodeType } from "../util/titles.js";
 import { checkValue } from "../values/validate.js";
 import type { ConfigField, ConfigFieldKind, ConfigMap, ConfigValues } from "./config.js";
@@ -175,8 +175,17 @@ export interface NodeDefinitionInput<
    * execution line, `failed`, and an `error` output that holds why. Default false.
    */
   canFail?: boolean;
+  /**
+   * A conversion node turns a value of one type into another (As text, As int, …). It must be
+   * pure, have static ports, one output, and take the converted value on its first input
+   * (any other input needs a default). Editors insert it on their own when a wire joins two
+   * types it converts between (`findConversions`).
+   */
+  conversion?: boolean;
   /** Pure, synchronous, deterministic. Replaces static ports when present. */
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
+  /** Only on nodes with variants (see {@link VariantNodeDefinitionInput}). */
+  variants?: undefined;
   /** The work. Returning a missing, ill-typed or undeclared output is a compile error. */
   run(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): R;
 }
@@ -209,8 +218,73 @@ export interface NodeDefinition<I extends PortMap = PortMap, O extends PortMap =
   readonly pure?: true;
   /** Set (true) on nodes with a `failed` line; see {@link NodeDefinitionInput.canFail}. */
   readonly canFail?: true;
+  /** Set (true) on conversion nodes; see {@link NodeDefinitionInput.conversion}. */
+  readonly conversion?: true;
+  /** On a node with variants: the variant this definition is (each variant is a full definition). */
+  readonly variant?: string;
+  /** On a node with variants: the selector and every variant (the same object on each of them). */
+  readonly variants?: NodeVariants;
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   run(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): MaybePromise<NodeOutputs<O>>;
+}
+
+/** What one variant declares: its own ports, config and `run` (see {@link variant}). */
+export interface VariantInput<
+  I extends PortMap,
+  O extends PortMap,
+  C extends ConfigMap,
+  R extends MaybePromise<NodeOutputs<O>> = MaybePromise<NodeOutputs<O>>,
+> {
+  /** Shown in the variant dropdown. Default: the variant name. */
+  title?: string;
+  description?: string;
+  /** The variant still works; editors steer away from it. */
+  deprecated?: string;
+  inputs?: I;
+  outputs?: O;
+  config?: C;
+  resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
+  run(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): R;
+}
+
+/** A variant made by {@link variant}, with its static types erased. */
+export interface NodeVariantDefinition extends VariantInput<PortMap, PortMap, ConfigMap> {
+  readonly kind: "nodeVariant";
+}
+
+/** The `variants` field of `defineNode`. */
+export interface VariantsInput {
+  /** Label of the selector, e.g. "Model". Default "Variant". */
+  title?: string;
+  description?: string;
+  /** Variant of new nodes. Default: the first option. */
+  default?: string;
+  /** Variant name (`gpt-image-1`, `fast`) → variant. Order is the dropdown order. */
+  options: Record<string, NodeVariantDefinition>;
+}
+
+/** `defineNode` input of a node with variants: shared settings plus `variants`. */
+export type VariantNodeDefinitionInput = Omit<
+  NodeDefinitionInput<PortMap, PortMap, ConfigMap>,
+  "inputs" | "outputs" | "config" | "run" | "resolvePorts" | "conversion" | "variants"
+> & { variants: VariantsInput; inputs?: never; outputs?: never; config?: never; run?: never };
+
+/** The selector and the variants of a node type (on every variant's definition). */
+export interface NodeVariants {
+  readonly title: string;
+  readonly description?: string;
+  readonly default: string;
+  readonly options: readonly NodeVariantInfo[];
+}
+
+/** One variant of a node type. */
+export interface NodeVariantInfo {
+  readonly name: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly deprecated?: string;
+  /** The full definition of the node in this variant. */
+  readonly definition: AnyNodeDefinition;
 }
 
 /** A node definition with its static types erased (catalogs, packs). */
@@ -229,6 +303,10 @@ export type ConfigOf<D> = D extends { readonly config: infer C } ? ConfigValues<
  * Defines a node. Validates names, ports, defaults and config at definition time and throws
  * `NodeDefinitionError` (`node_def.invalid`) with a message naming the node type and field.
  *
+ * A node with `variants` (instead of `inputs` / `outputs` / `config` / `run`) is a family of
+ * shapes under one type: each {@link variant} has its own ports, config and `run`, and the
+ * placed node picks one (node-api.md §1.2).
+ *
  * @example
  * ```ts
  * export const shout = defineNode({
@@ -244,8 +322,8 @@ export function defineNode<
   O extends PortMap = Record<never, never>,
   C extends ConfigMap = Record<never, never>,
   const R extends MaybePromise<NodeOutputs<O>> = MaybePromise<NodeOutputs<O>>,
->(def: NodeDefinitionInput<I, O, C, R> & CheckOutputKeys<R, O>): NodeDefinition<I, O, C> {
-  const input = def as NodeDefinitionInput<I, O, C, R>;
+>(def: (NodeDefinitionInput<I, O, C, R> & CheckOutputKeys<R, O>) | VariantNodeDefinitionInput): NodeDefinition<I, O, C> {
+  const input = def as unknown as NodeDefinitionInput<PortMap, PortMap, ConfigMap> & { variants?: VariantsInput };
   const type = input.type;
   if (typeof type !== "string" || !isValidNodeType(type)) {
     throw new NodeDefinitionError(
@@ -255,11 +333,24 @@ export function defineNode<
   const fail = (what: string): never => {
     throw new NodeDefinitionError(`defineNode "${type}": ${what}`);
   };
-  if (typeof input.run !== "function") fail("run must be a function.");
-  if (input.resolvePorts !== undefined && typeof input.resolvePorts !== "function") fail("resolvePorts must be a function.");
-  checkPorts(type, "input", input.inputs ?? {}, true);
-  checkPorts(type, "output", input.outputs ?? {}, false);
-  checkConfig(type, input.config ?? {});
+  const base = commonDefinition(input, fail);
+  if (input.variants !== undefined) return defineVariants(base, input as unknown as VariantNodeDefinitionInput & Record<string, unknown>, fail) as NodeDefinition<I, O, C>;
+  const shape = checkShape(type, input, input.canFail === true, fail);
+  if (input.conversion !== undefined && typeof input.conversion !== "boolean") fail("conversion must be true or false.");
+  if (input.conversion === true) checkConversion(input.inputs ?? {}, input.outputs ?? {}, input.pure === true, input.resolvePorts !== undefined, fail);
+  const out: AnyNodeDefinition = { ...base, ...shape };
+  if (input.conversion === true) (out as { conversion?: true }).conversion = true;
+  return out as NodeDefinition<I, O, C>;
+}
+
+type Fail = (what: string) => never;
+
+/** Internal: everything of a definition except its shape (ports, config, run). */
+export type CommonDefinition = Omit<AnyNodeDefinition, "inputs" | "outputs" | "config" | "run" | "resolvePorts" | "conversion" | "variant" | "variants">;
+type Shape = Pick<AnyNodeDefinition, "inputs" | "outputs" | "config" | "run" | "resolvePorts">;
+
+function commonDefinition(input: Omit<NodeDefinitionInput<PortMap, PortMap, ConfigMap>, "run">, fail: Fail): CommonDefinition {
+  const type = input.type;
   for (const key of ["title", "description", "category", "icon", "cacheVersion", "deprecated"] as const) {
     if (input[key] !== undefined && typeof input[key] !== "string") fail(`${key} must be a string.`);
   }
@@ -269,7 +360,6 @@ export function defineNode<
   if (input.pure !== undefined && typeof input.pure !== "boolean") fail("pure must be true or false.");
   if (input.canFail !== undefined && typeof input.canFail !== "boolean") fail("canFail must be true or false.");
   if (input.pure === true && input.canFail === true) fail("a pure node has no execution line, so it cannot have a failed line (canFail). Drop one of them.");
-  if (input.canFail === true && input.outputs && "error" in input.outputs) fail('canFail adds an "error" output; rename your own "error" output.');
   const timeoutMs = input.timeoutMs ?? 300_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) fail("timeoutMs must be a whole number >= 0 (0 = no timeout).");
   if (input.concurrency !== undefined && (!Number.isSafeInteger(input.concurrency) || input.concurrency < 1)) {
@@ -279,31 +369,158 @@ export function defineNode<
   if (!Array.isArray(secrets) || secrets.some((x) => typeof x !== "string" || x === "")) fail("secrets must be a list of secret names.");
   const retry = normalizeRetry(type, input.retry);
   const namespace = type.split(".")[0] ?? type;
-  const out: NodeDefinition<I, O, C> = {
+  const out: CommonDefinition = {
     kind: "nodeDefinition",
     type,
     title: input.title ?? titleFromNodeType(type),
     description: input.description ?? "",
     category: input.category ?? capitalize(namespace),
-    inputs: (input.inputs ?? {}) as I,
-    outputs: (input.outputs ?? {}) as O,
-    config: (input.config ?? {}) as C,
     secrets: [...secrets],
     cache: input.cache ?? true,
     cacheVersion: input.cacheVersion ?? "1",
     timeoutMs,
     retry,
-    run: input.run as NodeDefinition<I, O, C>["run"],
   };
-  if (input.icon !== undefined) (out as { icon?: string }).icon = input.icon;
-  if (input.color !== undefined) (out as { color?: NodeColor }).color = input.color;
-  if (input.concurrency !== undefined) (out as { concurrency?: number }).concurrency = input.concurrency;
-  if (input.deprecated !== undefined) (out as { deprecated?: string }).deprecated = input.deprecated;
-  if (input.frontend === true) (out as { frontend?: true }).frontend = true;
-  if (input.pure === true) (out as { pure?: true }).pure = true;
-  if (input.canFail === true) (out as { canFail?: true }).canFail = true;
-  if (input.resolvePorts !== undefined) out.resolvePorts = input.resolvePorts;
+  const o = out as { -readonly [K in keyof CommonDefinition]: CommonDefinition[K] };
+  if (input.icon !== undefined) o.icon = input.icon;
+  if (input.color !== undefined) o.color = input.color;
+  if (input.concurrency !== undefined) o.concurrency = input.concurrency;
+  if (input.deprecated !== undefined) o.deprecated = input.deprecated;
+  if (input.frontend === true) o.frontend = true;
+  if (input.pure === true) o.pure = true;
+  if (input.canFail === true) o.canFail = true;
   return out;
+}
+
+/** Checks and copies the shape (ports, config, run) of a node or one of its variants. */
+function checkShape(where: string, input: Partial<Shape> & { inputs?: PortMap; outputs?: PortMap; config?: ConfigMap }, canFail: boolean, fail: Fail): Shape {
+  if (typeof input.run !== "function") fail("run must be a function.");
+  if (input.resolvePorts !== undefined && typeof input.resolvePorts !== "function") fail("resolvePorts must be a function.");
+  checkPorts(where, "input", input.inputs ?? {}, true);
+  checkPorts(where, "output", input.outputs ?? {}, false);
+  checkConfig(where, input.config ?? {});
+  if (canFail && input.outputs && "error" in input.outputs) fail('canFail adds an "error" output; rename your own "error" output.');
+  const shape: Shape = {
+    inputs: input.inputs ?? {},
+    outputs: input.outputs ?? {},
+    config: input.config ?? {},
+    run: input.run as AnyNodeDefinition["run"],
+  };
+  if (input.resolvePorts !== undefined) shape.resolvePorts = input.resolvePorts;
+  return shape;
+}
+
+function defineVariants(base: CommonDefinition, input: VariantNodeDefinitionInput & Record<string, unknown>, fail: Fail): AnyNodeDefinition {
+  for (const key of ["inputs", "outputs", "config", "run", "resolvePorts"] as const) {
+    if (input[key] !== undefined) fail(`a node with variants declares ${key} on each variant, not on the node.`);
+  }
+  if (input["conversion"] === true) fail("a conversion node cannot have variants.");
+  const v = input.variants;
+  if (typeof v !== "object" || v === null || typeof v.options !== "object" || v.options === null) fail("variants must be { options: { name: variant({ … }) } }.");
+  const sel = v as VariantsInput;
+  for (const key of ["title", "description", "default"] as const) {
+    if (sel[key] !== undefined && typeof sel[key] !== "string") fail(`variants.${key} must be a string.`);
+  }
+  const options: VariantOption[] = [];
+  for (const [name, option] of Object.entries(sel.options)) {
+    const vfail = (what: string): never => fail(`variant "${name}": ${what}`);
+    if (!isValidEnumValue(name)) vfail("is not a valid variant name (letters, digits, _ . -; e.g. gpt-image-1).");
+    if (typeof option !== "object" || option === null || (option as { kind?: unknown }).kind !== "nodeVariant") vfail("must be made with variant({ … }).");
+    for (const key of ["title", "description", "deprecated"] as const) {
+      if (option[key] !== undefined && typeof option[key] !== "string") vfail(`${key} must be a string.`);
+    }
+    const shape = checkShape(`${input.type}" variant "${name}`, option, base.canFail === true, vfail);
+    options.push({ name, title: option.title ?? name, ...(option.description === undefined ? {} : { description: option.description }), ...(option.deprecated === undefined ? {} : { deprecated: option.deprecated }), shape });
+  }
+  if (options.length === 0) fail("variants.options needs at least one variant.");
+  const fallback = sel.default ?? (options[0] as VariantOption).name;
+  if (!options.some((o) => o.name === fallback)) fail(`variants.default "${fallback}" is not one of ${options.map((o) => o.name).join(", ")}.`);
+  return linkVariants(base, { title: sel.title ?? "Variant", ...(sel.description === undefined ? {} : { description: sel.description }), default: fallback }, options);
+}
+
+/** Internal: one variant before linking. */
+export interface VariantOption {
+  name: string;
+  title: string;
+  description?: string;
+  deprecated?: string;
+  shape: Shape;
+}
+
+/**
+ * Internal (define, descriptors): builds one definition per variant from the shared fields and
+ * links them through one {@link NodeVariants}. Returns the default variant's definition.
+ */
+export function linkVariants(
+  base: CommonDefinition,
+  selector: { title: string; description?: string; default: string },
+  options: readonly VariantOption[],
+): AnyNodeDefinition {
+  const infos: NodeVariantInfo[] = [];
+  const variants: NodeVariants = { ...selector, options: infos };
+  for (const o of options) {
+    const definition: AnyNodeDefinition = { ...base, ...o.shape, variant: o.name, variants };
+    if (o.deprecated !== undefined) (definition as { deprecated?: string }).deprecated = o.deprecated;
+    const info: NodeVariantInfo = { name: o.name, title: o.title, definition };
+    if (o.description !== undefined) (info as { description?: string }).description = o.description;
+    if (o.deprecated !== undefined) (info as { deprecated?: string }).deprecated = o.deprecated;
+    infos.push(info);
+  }
+  return (infos.find((i) => i.name === selector.default) as NodeVariantInfo).definition;
+}
+
+/**
+ * Defines one variant of a node: its ports, config and `run`, typed like `defineNode`. Shared
+ * ports are plain objects spread into each variant.
+ *
+ * @example
+ * ```ts
+ * const prompt = { prompt: t.text() };
+ * defineNode({
+ *   type: "img.generate",
+ *   variants: {
+ *     title: "Model",
+ *     options: {
+ *       fast: variant({ inputs: prompt, outputs: { image: t.image() }, run: async ({ inputs }) => ({ image: await fast(inputs.prompt) }) }),
+ *       best: variant({ inputs: { ...prompt, steps: t.int() }, outputs: { image: t.image() }, run: async ({ inputs }) => ({ image: await best(inputs) }) }),
+ *     },
+ *   },
+ * });
+ * ```
+ */
+export function variant<
+  I extends PortMap = Record<never, never>,
+  O extends PortMap = Record<never, never>,
+  C extends ConfigMap = Record<never, never>,
+  const R extends MaybePromise<NodeOutputs<O>> = MaybePromise<NodeOutputs<O>>,
+>(def: VariantInput<I, O, C, R> & CheckOutputKeys<R, O>): NodeVariantDefinition {
+  return { ...(def as VariantInput<I, O, C, R>), kind: "nodeVariant" } as unknown as NodeVariantDefinition;
+}
+
+/**
+ * The variant of `def` named `name` (`undefined` = the default one), or `undefined` when there
+ * is no such variant. A node type without variants only answers `undefined` → itself.
+ *
+ * @example
+ * ```ts
+ * variantDefinition(openaiImage, "dall-e-3")?.inputs; // the DALL·E 3 ports
+ * ```
+ */
+export function variantDefinition(def: AnyNodeDefinition, name: string | undefined): AnyNodeDefinition | undefined {
+  if (!def.variants) return name === undefined ? def : undefined;
+  return def.variants.options.find((o) => o.name === (name ?? def.variants?.default))?.definition;
+}
+
+function checkConversion(inputs: PortMap, outputs: PortMap, pure: boolean, dynamic: boolean, fail: (what: string) => never): void {
+  if (!pure) fail("a conversion node must be pure (pure: true).");
+  if (dynamic) fail("a conversion node needs static ports (no resolvePorts).");
+  const ins = Object.entries(inputs);
+  if (ins.length === 0) fail("a conversion node needs an input: the value it converts.");
+  if (Object.keys(outputs).length !== 1) fail("a conversion node has exactly one output.");
+  for (const [name, port] of ins.slice(1)) {
+    const parts = portParts(port);
+    if (!parts || !("default" in parts)) fail(`conversion input "${name}" needs a default; only the first input takes the converted value.`);
+  }
 }
 
 const NODE_COLORS: readonly NodeColor[] = ["mint", "lavender", "peach", "sky", "pink", "yellow"];
