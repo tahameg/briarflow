@@ -13,7 +13,7 @@
 import { definePack, type NodePack } from "@briarflow/core";
 import { convertAsBoolean, convertAsFloat, convertAsInt, convertAsJson, convertAsJsonArray, convertFloatToInt, convertToText, RoundingMode } from "./convert.js";
 import { constant, errorBreak, memberGet, memberSet, structBreak, structMake } from "./data.js";
-import { debugPrint } from "./debug.js";
+import { debugImage, debugPrint } from "./debug.js";
 import { jsonAddField, jsonConstruct, jsonGetField, jsonSetField } from "./json.js";
 import { listGet, listLength, listMake } from "./list.js";
 import { textJoin, textTemplate } from "./text.js";
@@ -23,7 +23,7 @@ export const PACKAGE_NAME = "@briarflow/nodes-std";
 
 export { convertAsBoolean, convertAsFloat, convertAsInt, convertAsJson, convertAsJsonArray, convertFloatToInt, convertToText, RoundingMode, truthOf } from "./convert.js";
 export { constant, errorBreak, memberGet, memberSet, structBreak, structMake } from "./data.js";
-export { debugPrint } from "./debug.js";
+export { debugImage, debugPrint } from "./debug.js";
 export { jsonAddField, jsonConstruct, jsonGetField, jsonSetField } from "./json.js";
 export { listGet, listLength, listMake } from "./list.js";
 export { textJoin, textTemplate } from "./text.js";
@@ -74,5 +74,6 @@ export const stdPack: NodePack = definePack({
     convertAsJsonArray,
     convertFloatToInt,
     debugPrint,
+    debugImage,
   ],
 });

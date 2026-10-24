@@ -9,7 +9,7 @@ conformance suites in `@briarflow/testing` (phase 4).
 1. **Flow id uniqueness is enforced by `ContextStore.save`** (`FlowIdConflictError`), because
    the store is the only component that sees every context. ARCH says flow ids are unique
    across contexts but not who enforces it.
-2. **`MediaStore.put` info accepts `meta?`** (copied into `MediaRef.meta`), so producers can
+2. **`MediaStore.put` info accepts `meta?`** (copied into `BlobRef.meta`), so producers can
    record width/height/duration without a second call.
 3. **Content-addressed media ids may reappear after delete** (DECISIONS #56): `FsMediaStore`
    derives the id from content + info, so delete followed by an identical `put` returns the
@@ -123,16 +123,22 @@ test and repair hook (conformance check 13, corrupt-document tests); `FsContextS
   (`details: { schemaVersion, supported }`). Message: `This database uses schema version
   {schemaVersion}; this @briarflow/storage-sqlite supports up to {supported}. Update Briarflow.`
 
-## 2. `MediaStore`
+## 2. `MediaStore` (blob store)
+
+Since 2026-10-25 media values are ids of media registry entries (docs/specs/media.md). A
+`MediaStore` is now a **blob store**: it keeps the bytes of `stored` entries (uploads), and its
+refs are `BlobRef { uri, mime, bytes?, hash?, meta? }` (the old MediaRef shape). Nodes never
+use it directly; the media registry, the loader (`createMedia`) and `SqliteMediaRegistry` /
+`SqliteLastRunStore` are specified in media.md.
 
 ```ts
 interface MediaStore {
   readonly kind: string;
   put(data: Uint8Array | ReadableStream<Uint8Array>,
-      info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<MediaRef>;
-  get(ref: MediaRef | string): Promise<{ ref: MediaRef; body: ReadableStream<Uint8Array> } | undefined>;
-  delete(ref: MediaRef | string): Promise<boolean>;
-  resolveUrl?(ref: MediaRef): Promise<string | undefined>;
+      info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<BlobRef>;
+  get(ref: BlobRef | string): Promise<{ ref: BlobRef; body: ReadableStream<Uint8Array> } | undefined>;
+  delete(ref: BlobRef | string): Promise<boolean>;
+  resolveUrl?(ref: BlobRef): Promise<string | undefined>;
 }
 ```
 
@@ -160,7 +166,7 @@ interface MediaStore {
 
 ### 2.3 get
 - Accepts a `MediaRef`, a `briar-media://` uri, or a bare id. Anything else (e.g. `https://`)
-  → `undefined` (the store does not fetch remote URLs; core's `readMedia` (§2.6) does).
+  → `undefined` (the store does not fetch remote URLs; the media loader does, media.md §4).
 - Unknown → `undefined`. Returned `ref` is the stored one (same fields as `put` returned).
 - Stored ref data that cannot be parsed → `MediaError` `media.corrupt` (`details: { uri }`).
   Message: `Stored media {uri} cannot be read. Delete it and upload it again.` `delete` still works.
@@ -175,29 +181,12 @@ interface MediaStore {
   signed), or `undefined`. Memory and fs stores do not implement it (the REST API serves
   `/media/:id` instead).
 
-### 2.6 `readMedia` (in `@briarflow/core`, DECISIONS #27)
+### 2.6 `readMedia` (removed 2026-10-25)
 
-```ts
-readMedia(ref: MediaRef | string, options: {
-  media: MediaStore;        // used for briar-media:// uris and bare ids
-  fetch?: typeof fetch;     // used for https:// and http:// uris; default global fetch
-  signal?: AbortSignal;
-  maxBytes?: number;        // default: no limit
-}): Promise<Uint8Array>
-```
-
-- Lives in core (not runtime) so the Python bridge, stores and nodes can use it without
-  depending on `@briarflow/runtime`. Nodes call it as
-  `readMedia(inputs.image, { media: ctx.media, fetch: ctx.fetch, signal: ctx.signal })`.
-- `briar-media://<id>` or bare id → `media.get`; missing → `MediaError("media.not_found")`.
-- `https://` / `http://` → `fetch(uri, { signal })`; 404 → `media.not_found`; other non-2xx
-  → `media.fetch_failed` (`details: { status, uri }`, DECISIONS #40); network errors propagate (a `TypeError`,
-  which the engine maps to the retryable `node.unavailable`).
-- More than `maxBytes` bytes → `MediaError("media.too_large")` (`details: { maxBytes }`). A
-  `content-length` header above `maxBytes` fails before reading the body; otherwise it stops
-  reading as soon as the limit is passed.
-- Any other scheme → `MediaError("media.invalid_uri")`.
-- Aborting `signal` rejects with the signal's reason.
+Replaced by the media loader: nodes call `ctx.media.read(ref)`, which reads memory, the
+registry, the blob store or the web, by the entry's source (media.md §4). The error codes stay
+(`media.not_found`, `media.fetch_failed`, `media.too_large`), plus `media.corrupt`,
+`media.unavailable` and `media.invalid_ref`.
 
 ## 3. Conformance suites (`@briarflow/testing`)
 

@@ -1,23 +1,14 @@
 /**
  * toText rules and template parsing (docs/specs/node-api.md §9).
  */
-import { canonicalJson, isValidFieldName, MEDIA_PRIMITIVE_NAMES, NodeError, type PortError, type TypeRef } from "@briarflow/core";
+import { canonicalJson, isMediaRef, isValidFieldName, MEDIA_PRIMITIVE_NAMES, NodeError, type PortError, type TypeRef } from "@briarflow/core";
 import { getAt, parsePath, type PathSegment } from "./json-path.js";
-
-const MEDIA_REF_KEYS = new Set(["uri", "mime", "bytes", "hash", "meta"]);
-
-function looksLikeMediaRef(value: object): value is { uri: string } {
-  if (Array.isArray(value)) return false;
-  const rec = value as Record<string, unknown>;
-  if (typeof rec["uri"] !== "string" || typeof rec["mime"] !== "string") return false;
-  return Object.keys(rec).every((k) => MEDIA_REF_KEYS.has(k));
-}
 
 /**
  * Renders a value as text (node-api.md §9 toText rules): text as is, numbers via `String()`,
- * booleans `"true"`/`"false"`, enum → member value, `null` → `""`, media → its `uri`,
+ * booleans `"true"`/`"false"`, enum → member value, `null` → `""`, media → its media id,
  * struct/list → canonical JSON (sorted keys, no spaces). Pass the value's type when known so
- * a struct that happens to look like a MediaRef is not mistaken for one.
+ * a struct that happens to look like a media value is not mistaken for one.
  *
  * @example
  * ```ts
@@ -31,11 +22,8 @@ export function valueToText(value: unknown, type?: TypeRef): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value !== "object") return String(value);
   const inner = type?.kind === "optional" ? type.of : type;
-  if (inner?.kind === "primitive" && (MEDIA_PRIMITIVE_NAMES as readonly string[]).includes(inner.name)) {
-    const uri = (value as { uri?: unknown }).uri;
-    if (typeof uri === "string") return uri;
-  }
-  if ((inner === undefined || inner.kind === "var") && looksLikeMediaRef(value)) return value.uri;
+  if (inner?.kind === "primitive" && (MEDIA_PRIMITIVE_NAMES as readonly string[]).includes(inner.name) && isMediaRef(value)) return value.mediaId;
+  if ((inner === undefined || inner.kind === "var") && isMediaRef(value)) return value.mediaId;
   return canonicalJson(value);
 }
 

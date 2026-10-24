@@ -2,10 +2,10 @@
  * React binding of the headless editor store: provider, selector hook, dispatch with error
  * reporting, and small shared UI state (local error toasts, canvas center for "add node").
  */
-import { createContext, useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import type { ApplyResult, BatchResult, Command } from "@briarflow/authoring";
-import type { FlowDocument, MediaRef, Position } from "@briarflow/core";
+import type { FlowDocument, MediaEntry, MediaRef, Position } from "@briarflow/core";
 import type { EditorState, EditorStore } from "@briarflow/editor";
 import { ContextMenuProvider, useHasContextMenu } from "./components/ContextMenu.js";
 import { buildFlowView } from "./graph.js";
@@ -28,6 +28,7 @@ interface EditorContextValue {
   store: EditorStore;
   mediaUrl: ((mediaId: string) => string) | undefined;
   uploadMedia: ((file: File) => Promise<MediaRef>) | undefined;
+  mediaEntry: ((mediaId: string) => Promise<MediaEntry>) | undefined;
   toasts: readonly LocalToast[];
   pushToast(message: string, code?: string): void;
   dismissToast(id: number): void;
@@ -43,6 +44,8 @@ export interface EditorProviderProps {
   mediaUrl?: (mediaId: string) => string;
   /** Upload for media inputs in the run form (`client.media.upload`). */
   uploadMedia?: (file: File) => Promise<MediaRef>;
+  /** The registry entry of a media id (`client.media.entry`): mime, size, file name. */
+  mediaEntry?: (mediaId: string) => Promise<MediaEntry>;
   children?: ReactNode;
 }
 
@@ -56,7 +59,7 @@ export interface EditorProviderProps {
  * </EditorProvider>
  * ```
  */
-export function EditorProvider({ store, mediaUrl, uploadMedia, children }: EditorProviderProps) {
+export function EditorProvider({ store, mediaUrl, uploadMedia, mediaEntry, children }: EditorProviderProps) {
   const [toasts, setToasts] = useState<LocalToast[]>([]);
   const nextId = useRef(0);
   const canvas = useRef<CanvasHandle | null>(null);
@@ -66,8 +69,8 @@ export function EditorProvider({ store, mediaUrl, uploadMedia, children }: Edito
   }, []);
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   const value = useMemo<EditorContextValue>(
-    () => ({ store, mediaUrl, uploadMedia, toasts, pushToast, dismissToast, canvas }),
-    [store, mediaUrl, uploadMedia, toasts, pushToast, dismissToast],
+    () => ({ store, mediaUrl, uploadMedia, mediaEntry, toasts, pushToast, dismissToast, canvas }),
+    [store, mediaUrl, uploadMedia, mediaEntry, toasts, pushToast, dismissToast],
   );
   const hasMenu = useHasContextMenu();
   const body = <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
@@ -90,6 +93,29 @@ export function useEditorStore(): EditorStore {
 export function useMedia(): { mediaUrl: ((mediaId: string) => string) | undefined; uploadMedia: ((file: File) => Promise<MediaRef>) | undefined } {
   const { mediaUrl, uploadMedia } = useEditorContext();
   return { mediaUrl, uploadMedia };
+}
+
+/**
+ * The registry entry of a media value, once loaded (`undefined` while loading, without a
+ * `mediaEntry` provider prop, or when it is gone). Entries never change.
+ */
+export function useMediaEntry(ref: MediaRef | undefined): MediaEntry | undefined {
+  const { mediaEntry } = useEditorContext();
+  const id = ref?.mediaId;
+  const [entry, setEntry] = useState<MediaEntry | undefined>(undefined);
+  useEffect(() => {
+    setEntry(undefined);
+    if (id === undefined || !mediaEntry) return;
+    let live = true;
+    mediaEntry(id).then(
+      (e) => live && setEntry(e),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [id, mediaEntry]);
+  return entry?.id === id ? entry : undefined;
 }
 
 /** Local toasts (rejected commands) and their controls. */

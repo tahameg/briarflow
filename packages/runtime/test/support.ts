@@ -4,6 +4,8 @@
  */
 import {
   createCatalog,
+  createMedia,
+  createMemoryMediaRegistry,
   createSequentialIdGenerator,
   defineNode,
   definePack,
@@ -24,7 +26,7 @@ import {
 import { mockPack } from "@briarflow/nodes-mock";
 import { stdPack } from "@briarflow/nodes-std";
 import { createEngine, type EngineOptions } from "@briarflow/runtime";
-import { context, flow, memoryMediaStore, node as fixtureNode, edge as fixtureEdge } from "@briarflow/testing";
+import { context, flow, node as fixtureNode, edge as fixtureEdge } from "@briarflow/testing";
 
 // ---------------------------------------------------------------------------------------------
 // Gates: nodes wait until the test releases them.
@@ -422,7 +424,7 @@ export interface TestEngineOptions extends Partial<EngineOptions> {
 
 export function makeEngine(options: TestEngineOptions = {}) {
   const { packs, ...rest } = options;
-  const media = memoryMediaStore();
+  const media = createMedia({ registry: createMemoryMediaRegistry() });
   const engine = createEngine({
     catalog: createCatalog(packs ?? [stdPack, mockPack, probePack]),
     media,

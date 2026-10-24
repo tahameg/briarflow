@@ -2,7 +2,8 @@
  * Frontend nodes: node types whose effect happens in the editor (definition `frontend: true`).
  * On the server they are no-ops; when one completes in a run, the store rebuilds its inputs
  * (wired → the source node's output in this run, else the typed value, else the default) and
- * calls its handler. The built-in `debug.print` writes to the editor console.
+ * calls its handler. The built-in `debug.print` writes to the editor console; `debug.image`
+ * puts an image there.
  */
 
 /**
@@ -28,7 +29,7 @@ export interface ConsoleLine {
   readonly text: string;
   /** Error or diagnostic code (`error` / `warning`). */
   readonly code?: string;
-  /** Raw value of an `output` line (media previews). */
+  /** Raw value of an `output` line, or of a `print` line that shows media (media previews). */
   readonly value?: unknown;
 }
 
@@ -39,8 +40,8 @@ export interface FrontendNodeCall {
   readonly title: string;
   /** The node's input values in this run. A wired input whose source has no value yet is absent. */
   readonly inputs: Readonly<Record<string, unknown>>;
-  /** Writes a line to the editor console. */
-  print(text: string): void;
+  /** Writes a line to the editor console; `value` (e.g. a media value) is shown with it. */
+  print(text: string, value?: unknown): void;
 }
 
 /** Runs a frontend node's effect in the editor. */
@@ -65,8 +66,19 @@ export const printNode: FrontendNodeHandler = ({ title, inputs, print }) => {
   if (inputs.browserConsole === true) console.log(`[${title}] ${text}`);
 };
 
+/**
+ * `debug.image` (View image): a console line with the image (its label, or "image"). The canvas
+ * shows the image on the node itself.
+ */
+export const viewImageNode: FrontendNodeHandler = ({ inputs, print }) => {
+  const image = inputs.image;
+  const label = typeof inputs.label === "string" && inputs.label.trim() !== "" ? inputs.label : "image";
+  if (image === null || image === undefined) print(`${label}: ${PRINT_NONE}`);
+  else print(label, image);
+};
+
 /** The handlers the store uses unless `frontendNodes` replaces them. */
-export const DEFAULT_FRONTEND_NODES: Readonly<Record<string, FrontendNodeHandler>> = { "debug.print": printNode };
+export const DEFAULT_FRONTEND_NODES: Readonly<Record<string, FrontendNodeHandler>> = { "debug.print": printNode, "debug.image": viewImageNode };
 
 /** Most lines the console keeps; older ones drop off. */
 export const CONSOLE_LIMIT = 500;

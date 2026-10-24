@@ -4,8 +4,9 @@
  * (media metadata, error fields, length of text and lists) are read-only.
  */
 import type { TypeDecl } from "../documents/model.js";
+import type { MediaEntry } from "../interfaces/media-registry.js";
 import type { MediaRef, TypeRef } from "./ir.js";
-import { MEDIA_FORMATS } from "./media.js";
+import { MEDIA_FORMATS, isMediaRef } from "./media.js";
 
 /** Looks up a struct or enum by id (local → global → pack). */
 export type TypeResolver = (id: string) => TypeDecl | undefined;
@@ -33,7 +34,8 @@ export interface MemberPath {
 }
 
 interface BuiltinMember extends TypeMember {
-  read(value: unknown): unknown;
+  /** `entry` is the registry entry of a media value (media members only). */
+  read(value: unknown, entry: MediaEntry | undefined): unknown;
 }
 
 const text: TypeRef = { kind: "primitive", name: "text" };
@@ -41,37 +43,31 @@ const int: TypeRef = { kind: "primitive", name: "int" };
 const float: TypeRef = { kind: "primitive", name: "float" };
 const opt = (of: TypeRef): TypeRef => (of.kind === "optional" ? of : { kind: "optional", of });
 
-const asMedia = (v: unknown): MediaRef | undefined => (typeof v === "object" && v !== null && typeof (v as MediaRef).uri === "string" ? (v as MediaRef) : undefined);
-const metaNumber = (key: string) => (v: unknown) => {
-  const n = asMedia(v)?.meta?.[key];
+const metaNumber = (key: string) => (_v: unknown, e: MediaEntry | undefined) => {
+  const n = e?.meta?.[key];
   return typeof n === "number" ? n : null;
 };
 
-/** File extension of a media value: from its file name, else from its mime type (`png`). */
-export function mediaExtension(ref: MediaRef): string {
-  const name = ref.meta?.filename;
+/** File extension of a media entry: from its file name, else from its mime type (`png`). */
+export function mediaExtension(entry: Pick<MediaEntry, "mime" | "meta">): string {
+  const name = entry.meta?.filename;
   const dot = typeof name === "string" ? name.lastIndexOf(".") : -1;
   if (typeof name === "string" && dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toLowerCase();
-  for (const [format, mime] of Object.entries(MEDIA_FORMATS)) if (mime === ref.mime) return format;
-  return (ref.mime.split("/")[1] ?? "").replace(/^x-/, "").split("+")[0] ?? "";
+  for (const [format, mime] of Object.entries(MEDIA_FORMATS)) if (mime === entry.mime) return format;
+  return (entry.mime.split("/")[1] ?? "").replace(/^x-/, "").split("+")[0] ?? "";
 }
 
-function member(name: string, title: string, type: TypeRef, read: (v: unknown) => unknown, description?: string): BuiltinMember {
+function member(name: string, title: string, type: TypeRef, read: BuiltinMember["read"], description?: string): BuiltinMember {
   return { name, title, type, writable: false, read, ...(description === undefined ? {} : { description }) };
 }
 
 const MEDIA_COMMON: readonly BuiltinMember[] = [
-  member("url", "URL", text, (v) => asMedia(v)?.uri ?? null, "briar-media://… for stored media, or an http(s) URL."),
-  member("mime", "Mime type", text, (v) => asMedia(v)?.mime ?? null),
-  member("extension", "Extension", text, (v) => {
-    const ref = asMedia(v);
-    return ref ? mediaExtension(ref) : null;
-  }, "From the file name, else from the mime type (png, jpeg, mp4, …)."),
-  member("name", "File name", opt(text), (v) => {
-    const name = asMedia(v)?.meta?.filename;
-    return typeof name === "string" ? name : null;
-  }),
-  member("size", "Size (bytes)", opt(int), (v) => asMedia(v)?.bytes ?? null),
+  member("id", "Media id", text, (v) => (isMediaRef(v) ? v.mediaId : null), "The id of the media's registry entry."),
+  member("mime", "Mime type", text, (_v, e) => e?.mime ?? null),
+  member("extension", "Extension", text, (_v, e) => (e ? mediaExtension(e) : null), "From the file name, else from the mime type (png, jpeg, mp4, …)."),
+  member("name", "File name", opt(text), (_v, e) => (typeof e?.meta?.filename === "string" ? e.meta.filename : null)),
+  member("size", "Size (bytes)", opt(int), (_v, e) => e?.bytes ?? null),
+  member("url", "Web address", opt(text), (_v, e) => (e?.source.kind === "link" ? e.source.url : null), "For media linked from the web; none for media Briarflow keeps."),
 ];
 const WIDTH = member("width", "Width", opt(int), metaNumber("width"), "In pixels; none when unknown.");
 const HEIGHT = member("height", "Height", opt(int), metaNumber("height"), "In pixels; none when unknown.");
@@ -81,7 +77,7 @@ const errorField = (key: "code" | "message" | "node" | "nodeId") => (v: unknown)
   const x = typeof v === "object" && v !== null ? (v as Record<string, unknown>)[key] : undefined;
   return typeof x === "string" ? x : null;
 };
-const LENGTH = member("length", "Length", int, (v) => (typeof v === "string" ? [...v].length : Array.isArray(v) ? v.length : null));
+const LENGTH = member("length", "Length", int, (v: unknown) => (typeof v === "string" ? [...v].length : Array.isArray(v) ? v.length : null));
 
 const PRIMITIVE_MEMBERS: Readonly<Record<string, readonly BuiltinMember[]>> = {
   image: [...MEDIA_COMMON, WIDTH, HEIGHT],
@@ -111,7 +107,7 @@ function builtinMembers(type: TypeRef): readonly BuiltinMember[] {
  * @example
  * ```ts
  * typeMembers({ kind: "primitive", name: "image" }, resolve).map((m) => m.name);
- * // → ["url", "mime", "extension", "name", "size", "width", "height"]
+ * // → ["id", "mime", "extension", "name", "size", "url", "width", "height"]
  * ```
  */
 export function typeMembers(type: TypeRef, resolve: TypeResolver): TypeMember[] {
@@ -180,8 +176,17 @@ export function memberPaths(type: TypeRef, resolve: TypeResolver, depth = 3): Me
   return out;
 }
 
-/** Reads `path` from `value` of `type`. A missing step (none / absent field) gives `null`. */
-export function readMember(value: unknown, type: TypeRef, path: readonly string[], resolve: TypeResolver): unknown {
+/**
+ * Reads `path` from `value` of `type`. A missing step (none / absent field) gives `null`. Media
+ * members are read from the media's registry entry, found with `entryOf`.
+ */
+export async function readMember(
+  value: unknown,
+  type: TypeRef,
+  path: readonly string[],
+  resolve: TypeResolver,
+  entryOf?: (ref: MediaRef) => Promise<MediaEntry | undefined>,
+): Promise<unknown> {
   let current: unknown = value;
   let t = type;
   for (const name of path) {
@@ -198,11 +203,14 @@ export function readMember(value: unknown, type: TypeRef, path: readonly string[
     }
     const m = builtinMembers(t).find((x) => x.name === name);
     if (!m) return null;
-    current = m.read(current);
+    const entry = t.kind === "primitive" && MEDIA_MEMBER_KINDS.has(t.name) && isMediaRef(current) && entryOf ? await entryOf(current) : undefined;
+    current = m.read(current, entry);
     t = m.type;
   }
   return current ?? null;
 }
+
+const MEDIA_MEMBER_KINDS = new Set(["image", "video", "audio", "model3d", "file"]);
 
 /**
  * A copy of struct `value` with the member at `path` replaced (nested structs are copied

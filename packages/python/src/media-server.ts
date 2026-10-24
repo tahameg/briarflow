@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { MediaRef, MediaStore } from "@briarflow/core";
+import type { MediaRef, NodeMedia } from "@briarflow/core";
 import { bridgeError } from "./errors.js";
 
 /** Options of the loopback media server (python-protocol.md §3.3). */
@@ -27,7 +27,7 @@ export interface MediaServerOptions {
 
 interface Entry {
   ref: MediaRef;
-  media: MediaStore;
+  media: NodeMedia;
 }
 
 /**
@@ -48,7 +48,7 @@ export class LoopbackMediaServer {
   }
 
   /** Registers `ref` and returns its URL. Release the token with {@link release}. */
-  async register(ref: MediaRef, media: MediaStore): Promise<{ url: string; token: string }> {
+  async register(ref: MediaRef, media: NodeMedia): Promise<{ url: string; token: string }> {
     const { base } = await this.#start();
     const token = randomBytes(18).toString("base64url");
     this.#entries.set(token, { ref, media });
@@ -101,32 +101,21 @@ export class LoopbackMediaServer {
       return;
     }
     try {
-      const stored = await entry.media.get(entry.ref);
-      if (stored === undefined) {
-        res.writeHead(404, { "Content-Type": "text/plain" }).end(`Media ${entry.ref.uri} not found in the store.`);
+      let bytes: Uint8Array;
+      let mime: string;
+      try {
+        [bytes, mime] = await Promise.all([entry.media.read(entry.ref), entry.media.entry(entry.ref).then((e) => e.mime)]);
+      } catch (err) {
+        if ((err as { code?: unknown }).code !== "media.not_found") throw err;
+        res.writeHead(404, { "Content-Type": "text/plain" }).end(`Media ${entry.ref.mediaId} was not found.`);
         return;
       }
-      const headers: Record<string, string> = { "Content-Type": stored.ref.mime || entry.ref.mime };
-      if (typeof stored.ref.bytes === "number") headers["Content-Length"] = String(stored.ref.bytes);
-      res.writeHead(200, headers);
+      res.writeHead(200, { "Content-Type": mime, "Content-Length": String(bytes.byteLength) });
       if (method === "HEAD") {
-        await stored.body.cancel();
         res.end();
         return;
       }
-      const reader = stored.body.getReader();
-      res.on("close", () => void reader.cancel().catch(() => {}));
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (res.destroyed) break;
-        if (!res.write(value)) {
-          await new Promise((resolve) => {
-            res.once("drain", resolve);
-            res.once("close", resolve);
-          });
-        }
-      }
+      res.write(bytes);
       res.end();
     } catch (err) {
       if (!res.headersSent) {

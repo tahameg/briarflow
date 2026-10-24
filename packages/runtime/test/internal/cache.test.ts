@@ -57,14 +57,15 @@ describe("engine cache", () => {
     expect(probe.runCalls).toBe(2);
   });
 
-  it("keys media inputs by hash, not uri", async () => {
-    const { engine } = testEngine({ packs });
+  it("keys media inputs by media id", async () => {
+    const { engine, media } = testEngine({ packs });
     const doc = context([flow({ inputs: [field("img", ir.image())], nodes: [node("n_m", "tk.media")], edges: [edge("n_in.img", "n_m.image")] })]);
-    const hash = "a".repeat(64);
-    await engine.run({ context: doc, flowId: "flow_t", inputs: { img: { uri: "briar-media://m_1", mime: "image/png", hash } } }).result;
-    const run = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { uri: "briar-media://m_2", mime: "image/png", hash } } });
+    const a = await media.put(new Uint8Array([1]), { mime: "image/png" });
+    const b = await media.put(new Uint8Array([1]), { mime: "image/png" });
+    await engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: a.id } } }).result;
+    const run = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: a.id } } });
     expect(cachedIds(await collect(run.events()))).toEqual(["n_m"]);
-    const run3 = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { uri: "briar-media://m_3", mime: "image/png" } } });
+    const run3 = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: b.id } } });
     expect(cachedIds(await collect(run3.events()))).toEqual([]);
   });
 

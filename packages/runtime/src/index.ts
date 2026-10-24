@@ -17,5 +17,5 @@ export { computeCacheKey, createMemoryCache } from "./cache.js";
 export type { CacheKeyInput, MemoryCache, MemoryCacheOptions, RunCache } from "./cache.js";
 export { checkRunRequest } from "./check.js";
 export type { RunRequestCheck } from "./check.js";
-export type { EngineExecContext } from "./run.js";
+export type { EngineExecContext, RunReuse } from "./run.js";
 export type { Run, RunEvent, RunEventsOptions, RunResult, RunStatus, SerializedError } from "@briarflow/core";

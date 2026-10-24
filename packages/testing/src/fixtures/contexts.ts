@@ -77,14 +77,8 @@ export function largeText(): string {
   return "Briar ✨ 茨 — ".repeat(1024 * 1024 / 16);
 }
 
-/** A valid image ref with every optional field. */
-export const SAMPLE_IMAGE_REF: MediaRef = {
-  uri: "briar-media://m_logo",
-  mime: "image/png",
-  bytes: 2048,
-  hash: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-  meta: { width: 64, height: 32, filename: "logo.png" },
-};
+/** A valid image value (the entry is not looked up when documents are validated). */
+export const SAMPLE_IMAGE_REF: MediaRef = { mediaId: "med_logo" };
 
 /**
  * Valid context exercising every type kind: every primitive (with constraints), lists with

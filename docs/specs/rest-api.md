@@ -92,7 +92,8 @@ their snapshot); global writes of such runs are dropped.
 ```
 Resolved via `locateFlow`; unknown → `404 flow.not_found`.
 
-**POST `/flows/:flowId/runs`** — body `{ "inputs": { … }, "useCache"?: true }`; query
+**POST `/flows/:flowId/runs`** — body `{ "inputs": { … }, "useCache"?: true, "force"?: false }`
+(`force`: run every node again, nothing carried over from the last run, media.md §5); query
 `wait=true`, `waitMs` (1–300 000, default 60 000).
 - Inputs validated before the run is created → `422 run.invalid_inputs` with
   `details.diagnostics`. Invalid flow → `422 run.invalid_flow`.
@@ -126,15 +127,29 @@ with its terminal status (idempotent).
 
 ### Media
 
-**POST `/media`** — raw body, `Content-Type: image/png`, optional `?filename=cat.png`.
-→ `201 MediaRef`. Limit `maxUploadBytes` (default 50 MB) → `413 media.too_large`.
-Missing/invalid content type → `415 media.invalid_mime`.
+Media values are `{ mediaId }`: ids of media registry entries (media.md).
 
-**GET `/media/:mediaId`** → `200` bytes. Headers: `Content-Type` (stored mime),
-`Content-Length`, `ETag: "<hash>"`, `Cache-Control: private, max-age=31536000, immutable`,
-`Content-Disposition: inline; filename="<meta.filename>"` when known. `If-None-Match` → 304.
-SVG is served with `Content-Security-Policy: sandbox` to neutralize scripts.
+**POST `/media`** — raw body, `Content-Type: image/png`, optional `?filename=cat.png`.
+→ `201 MediaEntry` (a kept entry: `stored` in the blob store, or `data` without one; images
+get `meta.width/height` from their header). Use `{ "mediaId": entry.id }` as the value.
+Limit `maxUploadBytes` (default 50 MB) → `413 media.too_large`. Missing/invalid content type →
+`415 media.invalid_mime`.
+
+**POST `/media/links`** — `{ "url": "https://…", "mime": "image/png", "filename"?: "…" }` →
+`201 MediaEntry` (`link`). Invalid body → `400 request.invalid_body`. Permission `media.upload`.
+
+**GET `/media/:mediaId/entry`** → `200 MediaEntry` (immutable, cached like the bytes).
 Unknown → `404 media.not_found`.
+
+**GET `/media/:mediaId`** → `200` bytes. Headers: `Content-Type` (the entry's mime),
+`Content-Length`, `ETag: "<hash or id>"`, `Cache-Control: private, max-age=31536000, immutable`,
+`Content-Disposition: inline; filename="<meta.filename>"` when known. `If-None-Match` → 304.
+SVG is served with `Content-Security-Policy: sandbox` to neutralize scripts. A `link` entry
+answers `302` with `Location: <its url>`. Unknown → `404 media.not_found`.
+
+**GET `/flows/:flowId/last-run`** → `200 { "lastRun": LastRun | null }`: the flow's last run as
+the server keeps it (media.md §5): status, inputs, each node's outputs / error and reuse key,
+and the result. Permission `runs.read`.
 
 ### Secrets (2026-10-24, secrets.md)
 

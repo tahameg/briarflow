@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { NodeError, definePack, defineNode, isBriarError, noopLogger, t } from "@briarflow/core";
-import type { ExecContext, LogData, MediaRef, MediaStore, NodeDescriptor, NodeInstance, PutMediaInfo, StoredMedia } from "@briarflow/core";
+import { NodeError, createMedia, createMemoryMediaRegistry, definePack, defineNode, isBriarError, noopLogger, t } from "@briarflow/core";
+import type { ExecContext, LogData, Media, MediaEntry, MediaRef, NodeDescriptor, NodeInstance, PutMediaInfo } from "@briarflow/core";
 import { pythonPack, spawnPythonWorker } from "../../src/index.js";
 import type { PythonNodePack, PythonWorker } from "../../src/index.js";
 import { PackRuntime, fetchManifest } from "../../src/bridge.js";
+import { LoopbackMediaServer } from "../../src/media-server.js";
 import type { Connection, PythonManifest } from "../../src/bridge.js";
 
 const PYTHON_DIR = fileURLToPath(new URL("../../../../python/", import.meta.url));
@@ -30,44 +31,24 @@ const coreReady = (() => {
 
 // ------------------------------------------------------------------ test doubles
 
-class MemoryMediaStore implements MediaStore {
-  readonly kind = "memory";
-  readonly items = new Map<string, { ref: MediaRef; data: Uint8Array }>();
-  #n = 0;
-  constructor(readonly urlResolver?: (ref: MediaRef, data: Uint8Array) => string) {
-    if (urlResolver) {
-      this.resolveUrl = async (ref) => {
-        const item = this.items.get(ref.uri);
-        return item ? urlResolver(ref, item.data) : undefined;
-      };
-    }
-  }
-  resolveUrl?: (ref: MediaRef) => Promise<string | undefined>;
+/** Media in memory for the bridge tests, with helpers to put and inspect items. */
+class MemoryMediaStore {
+  readonly media: Media = createMedia({ registry: createMemoryMediaRegistry() });
 
-  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<MediaRef> {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(await new Response(data).arrayBuffer());
-    const uri = `briar-media://m_${++this.#n}`;
-    const meta = { ...info.meta, ...(info.filename !== undefined ? { filename: info.filename } : {}) };
-    const ref: MediaRef = {
-      uri,
-      mime: info.mime,
-      bytes: bytes.byteLength,
-      hash: createHash("sha256").update(bytes).digest("hex"),
-      ...(Object.keys(meta).length > 0 ? { meta } : {}),
-    };
-    this.items.set(uri, { ref, data: bytes });
-    return ref;
+  async put(data: Uint8Array, info: PutMediaInfo): Promise<MediaRef> {
+    return { mediaId: (await this.media.put(data, info)).id };
   }
 
-  async get(ref: MediaRef | string): Promise<StoredMedia | undefined> {
-    const uri = typeof ref === "string" ? (ref.startsWith("briar-media://") ? ref : `briar-media://${ref}`) : ref.uri;
-    const item = this.items.get(uri);
-    if (!item) return undefined;
-    return { ref: item.ref, body: new Blob([item.data as Uint8Array<ArrayBuffer>]).stream() };
+  async link(url: string, mime: string): Promise<MediaRef> {
+    return { mediaId: (await this.media.link(url, { mime })).id };
   }
 
-  async delete(ref: MediaRef | string): Promise<boolean> {
-    return this.items.delete(typeof ref === "string" ? ref : ref.uri);
+  entry(ref: MediaRef): Promise<MediaEntry | undefined> {
+    return this.media.entry(ref);
+  }
+
+  bytes(ref: MediaRef): Promise<Uint8Array> {
+    return this.media.read(ref);
   }
 }
 
@@ -78,7 +59,7 @@ interface FakeCtx {
   logs: [string, string, LogData | undefined][];
 }
 
-function fakeCtx(media: MediaStore, secrets: Record<string, string> = {}): FakeCtx {
+function fakeCtx(store: MemoryMediaStore, secrets: Record<string, string> = {}): FakeCtx {
   const controller = new AbortController();
   const progress: FakeCtx["progress"] = [];
   const logs: FakeCtx["logs"] = [];
@@ -92,7 +73,7 @@ function fakeCtx(media: MediaStore, secrets: Record<string, string> = {}): FakeC
     attempt: 1,
     progress: (fraction, message) => void progress.push([fraction, message]),
     log: { ...noopLogger, debug: logAt("debug"), info: logAt("info"), warn: logAt("warn"), error: logAt("error") },
-    media,
+    media: store.media.forNode({ owner: { runId: "run_1" } }),
     secrets: {
       get: async (name) => {
         const value = secrets[name];
@@ -187,10 +168,9 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     expect(c.logs[0]?.[1]).toBe("encoded png");
     expect(c.logs[0]?.[2]).toMatchObject({ bytes: expect.any(Number) });
     const ref = out.result as MediaRef;
-    expect(ref.uri).toMatch(/^briar-media:\/\//);
-    expect(ref).toMatchObject({ mime: "image/png", meta: { width: 3, height: 2, filename: "briar.png" } });
-    const stored = media.items.get(ref.uri);
-    expect(stored && [...stored.data.slice(0, 8)]).toEqual([...pngBytes().slice(0, 8)]);
+    expect(Object.keys(ref)).toEqual(["mediaId"]);
+    expect(await media.entry(ref)).toMatchObject({ mime: "image/png", meta: { width: 3, height: 2, filename: "briar.png" }, owner: { runId: "run_1" } });
+    expect([...(await media.bytes(ref)).slice(0, 8)]).toEqual([...pngBytes().slice(0, 8)]);
   });
 
   it("serves input media through the loopback media server and passes refs through", async () => {
@@ -201,11 +181,19 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     expect(out).toEqual({ image: ref, mime: "image/png", bytes: 12, is_png: true });
   });
 
-  it("uses MediaStore.resolveUrl when the store provides one", async () => {
-    const media = new MemoryMediaStore((ref, data) => `data:${ref.mime};base64,${Buffer.from(data).toString("base64")}`);
-    const ref = await media.put(pngBytes(), { mime: "image/png" });
-    const out = await exec("imaging.imageInfo", { image: ref }, fakeCtx(media));
-    expect(out.is_png).toBe(true);
+  it("hands link entries to the worker by their own URL", async () => {
+    const media = new MemoryMediaStore();
+    const served = await media.put(pngBytes(), { mime: "image/png" });
+    // A link to bytes the worker can fetch: the loopback URL of another entry.
+    const loopback = new LoopbackMediaServer();
+    try {
+      const { url } = await loopback.register(served, media.media.forNode({}));
+      const linked = await media.link(url, "image/png");
+      const out = await exec("imaging.imageInfo", { image: linked }, fakeCtx(media));
+      expect(out).toMatchObject({ image: linked, is_png: true });
+    } finally {
+      await loopback.close();
+    }
   });
 
   it("maps a worker error line to NodeError", async () => {
@@ -506,17 +494,19 @@ describe("NDJSON stream handling (fake worker)", () => {
   });
 
   it("adds urls to nested input media and converts $media outputs", async () => {
-    const media = new MemoryMediaStore((ref) => `https://cdn.example/${ref.uri.slice(-3)}`);
-    const ref = await media.put(pngBytes(), { mime: "image/png" });
+    const media = new MemoryMediaStore();
+    const ref = await media.link("https://cdn.example/m_1", "image/png");
     const b64 = Buffer.from("hello").toString("base64");
     const { runtime, requests } = fakeWorker([
       `{"type":"result","outputs":{"result":{"$media":{"mime":"text/plain","base64":"${b64}","filename":"h.txt"}}}}\n`,
     ]);
     const out = await run(runtime, fakeCtx(media), { pics: [{ img: ref }] });
-    expect((requests[0] as { inputs: unknown }).inputs).toEqual({ pics: [{ img: { ...ref, url: "https://cdn.example/m_1" } }] });
-    const stored = media.items.get((out.result as MediaRef).uri);
-    expect(new TextDecoder().decode(stored?.data)).toBe("hello");
-    expect(stored?.ref.meta).toEqual({ filename: "h.txt" });
+    expect((requests[0] as { inputs: unknown }).inputs).toEqual({
+      pics: [{ img: { uri: `briar-media://${ref.mediaId}`, mime: "image/png", url: "https://cdn.example/m_1" } }],
+    });
+    const made = out.result as MediaRef;
+    expect(new TextDecoder().decode(await media.bytes(made))).toBe("hello");
+    expect((await media.entry(made))?.meta).toEqual({ filename: "h.txt" });
   });
 
   it("maps node.cancelled from the worker to a NodeError", async () => {

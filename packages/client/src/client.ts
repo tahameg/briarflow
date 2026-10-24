@@ -1,4 +1,4 @@
-import type { ContextDocument, ContextSummary, MediaRef, NewSecret, Page, RunResult, RunStatus, SecretInfo } from "@briarflow/core";
+import type { ContextDocument, ContextSummary, LastRun, MediaEntry, NewSecret, Page, RunResult, RunStatus, SecretInfo } from "@briarflow/core";
 import { InvalidRequestError } from "./errors.js";
 import { Http, readJson, seg } from "./http.js";
 import { DEFAULT_RECONNECT, RemoteRun } from "./remote-run.js";
@@ -50,6 +50,8 @@ export interface FlowsApi {
    * run is already finished if the server finished it within `waitMs`.
    */
   run(flowId: string, inputs?: Record<string, unknown>, options?: RunFlowOptions): Promise<RemoteRun>;
+  /** The flow's last run (kept until its next run), or `undefined` (`GET /flows/:id/last-run`). */
+  lastRun(flowId: string, options?: RequestOptions): Promise<LastRun | undefined>;
 }
 
 /** Run endpoints. */
@@ -70,8 +72,12 @@ export interface NodeTypesApi {
 
 /** Media endpoints. */
 export interface MediaApi {
-  /** Uploads raw bytes (`POST /media`). */
-  upload(body: MediaBody, options?: UploadMediaOptions): Promise<MediaRef>;
+  /** Uploads raw bytes (`POST /media`). Use `{ mediaId: entry.id }` as the media value. */
+  upload(body: MediaBody, options?: UploadMediaOptions): Promise<MediaEntry>;
+  /** Registers media on the web (`POST /media/links`). */
+  link(url: string, options: { mime: string; filename?: string } & RequestOptions): Promise<MediaEntry>;
+  /** The registry entry of a media id (`GET /media/:id/entry`). Entries never change; cached. */
+  entry(mediaId: string, options?: RequestOptions): Promise<MediaEntry>;
   /** Downloads bytes as a Blob (`GET /media/:id`). */
   download(mediaId: string, options?: RequestOptions): Promise<Blob>;
   /** Absolute URL of `GET /media/:id` (for `<img src>`; does not carry custom headers). */
@@ -181,7 +187,7 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
         method: "POST",
         path,
         query: o.wait ? { wait: true, waitMs: o.waitMs } : {},
-        json: o.useCache === undefined ? { inputs } : { inputs, useCache: o.useCache },
+        json: { inputs, ...(o.useCache === undefined ? {} : { useCache: o.useCache }), ...(o.force ? { force: true } : {}) },
         ...sig(o),
       });
       if (res.status === 200) {
@@ -190,6 +196,10 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
       }
       const started = await readJson<{ runId: string; status: RunStatus }>(res, `POST ${path}`);
       return new RemoteRun({ http, runId: started.runId, status: started.status, flowId, reconnect });
+    },
+    async lastRun(flowId, o) {
+      const body = await http.json<{ lastRun: LastRun | null }>({ method: "GET", path: `/flows/${seg(flowId)}/last-run`, ...sig(o) });
+      return body.lastRun ?? undefined;
     },
   };
 
@@ -237,6 +247,7 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
     },
   };
 
+  const entries = new Map<string, Promise<MediaEntry>>();
   const media: MediaApi = {
     upload(body, o = {}) {
       const mime = o.mime ?? (typeof Blob !== "undefined" && body instanceof Blob ? body.type : undefined);
@@ -245,7 +256,7 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
           new InvalidRequestError("media.invalid_mime", "media.upload needs a mime type: pass { mime: \"image/png\" } or upload a Blob with a type."),
         );
       }
-      return http.json<MediaRef>({
+      return http.json<MediaEntry>({
         method: "POST",
         path: "/media",
         query: { filename: o.filename },
@@ -253,6 +264,19 @@ export function createBriarClient(options: BriarClientOptions): BriarClient {
         headers: { "content-type": mime },
         ...sig(o),
       });
+    },
+    link(url, o) {
+      const { mime, filename, ...rest } = o;
+      return http.json<MediaEntry>({ method: "POST", path: "/media/links", json: { url, mime, ...(filename === undefined ? {} : { filename }) }, ...sig(rest) });
+    },
+    entry(mediaId, o) {
+      const known = entries.get(mediaId);
+      if (known) return known;
+      const pending = http.json<MediaEntry>({ method: "GET", path: `/media/${seg(mediaId)}/entry`, ...sig(o) });
+      entries.set(mediaId, pending);
+      pending.catch(() => entries.delete(mediaId));
+      if (entries.size > 2000) entries.delete(entries.keys().next().value as string);
+      return pending;
     },
     async download(mediaId, o) {
       const res = await http.send({ method: "GET", path: `/media/${seg(mediaId)}`, headers: { accept: "*/*" }, ...sig(o) });

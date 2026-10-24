@@ -1,7 +1,7 @@
 /**
- * In-memory `MediaStore` for tests and sample `MediaRef`s (types.md §8).
+ * In-memory blob store (`MediaStore`) for tests and sample media values (types.md §8).
  */
-import { MediaError, type MediaPrimitiveName, type MediaRef, type MediaStore, type PutMediaInfo, type StoredMedia } from "@briarflow/core";
+import { MediaError, type BlobRef, type MediaPrimitiveName, type MediaStore, type PutMediaInfo, type StoredMedia } from "@briarflow/core";
 
 const MEDIA_SCHEME = "briar-media://";
 const MIME_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
@@ -62,10 +62,10 @@ export interface MemoryMediaStore extends MediaStore {
  * id, `undefined` for other uris.
  */
 export function memoryMediaStore(options: MemoryMediaStoreOptions = {}): MemoryMediaStore {
-  const items = new Map<string, { ref: MediaRef; bytes: Uint8Array }>();
+  const items = new Map<string, { ref: BlobRef; bytes: Uint8Array }>();
   let counter = 0;
 
-  const idOf = (ref: MediaRef | string): string | undefined => {
+  const idOf = (ref: BlobRef | string): string | undefined => {
     const uri = typeof ref === "string" ? ref : ref.uri;
     if (uri.startsWith(MEDIA_SCHEME)) return uri.slice(MEDIA_SCHEME.length);
     if (/^[A-Za-z0-9_-]{1,128}$/.test(uri)) return uri;
@@ -89,7 +89,7 @@ export function memoryMediaStore(options: MemoryMediaStoreOptions = {}): MemoryM
       counter += 1;
       const id = `m_${counter}`;
       const meta = { ...(info.meta ?? {}), ...(info.filename === undefined ? {} : { filename: info.filename }) };
-      const ref: MediaRef = { uri: MEDIA_SCHEME + id, mime, bytes: bytes.length, hash: await sha256(bytes) };
+      const ref: BlobRef = { uri: MEDIA_SCHEME + id, mime, bytes: bytes.length, hash: await sha256(bytes) };
       if (Object.keys(meta).length > 0) ref.meta = meta;
       items.set(id, { ref, bytes });
       return structuredClone(ref);
@@ -115,66 +115,34 @@ export function utf8(text: string): Uint8Array<ArrayBuffer> {
 /** SHA-256 of `"hello"` (storage.md §3). */
 export const HELLO_SHA256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
-/** A valid MediaRef for a primitive. */
+/** A media value for a primitive. */
 export interface MediaRefCase {
   label: string;
   primitive: MediaPrimitiveName;
   value: unknown;
 }
 
-/** An invalid MediaRef and the expected code (types.md §8). */
+/** An invalid media value and the expected code (types.md §8). */
 export interface InvalidMediaRefCase extends MediaRefCase {
-  code: "media.invalid_uri" | "media.invalid_mime" | "media.kind_mismatch" | "media.invalid_ref";
+  code: "media.invalid_ref";
 }
 
-const png = { uri: "briar-media://m_abc", mime: "image/png" };
-
-/** MediaRefs that must validate (types.md §8). */
+/** Media values that must validate (types.md §8): the shape only, the entry is not looked up. */
 export const validMediaRefs: readonly MediaRefCase[] = [
-  { label: "minimal store ref", primitive: "image", value: png },
-  { label: "https url", primitive: "image", value: { uri: "https://cdn.example.com/a.png", mime: "image/png" } },
-  { label: "http url", primitive: "image", value: { uri: "http://localhost:8080/a.png", mime: "image/png" } },
-  { label: "128-char id", primitive: "file", value: { uri: "briar-media://" + "a".repeat(128), mime: "application/pdf" } },
-  {
-    label: "every optional field",
-    primitive: "video",
-    value: {
-      uri: "briar-media://m_vid-1",
-      mime: "video/mp4",
-      bytes: 0,
-      hash: HELLO_SHA256,
-      meta: { width: 1920, height: 1080, durationSec: 0, fps: 29.97, filename: "clip.mp4", custom: { any: ["json"] } },
-    },
-  },
-  { label: "audio mime", primitive: "audio", value: { uri: "briar-media://m_a", mime: "audio/mpeg" } },
-  { label: "model3d model/*", primitive: "model3d", value: { uri: "briar-media://m_m", mime: "model/gltf-binary" } },
-  { label: "model3d octet-stream", primitive: "model3d", value: { uri: "briar-media://m_m", mime: "application/octet-stream" } },
-  { label: "file accepts any mime", primitive: "file", value: { uri: "briar-media://m_f", mime: "image/png" } },
-  { label: "mime with + and .", primitive: "image", value: { uri: "briar-media://m_s", mime: "image/svg+xml" } },
+  { label: "registry id", primitive: "image", value: { mediaId: "med_abc" } },
+  { label: "128-char id", primitive: "file", value: { mediaId: "a".repeat(128) } },
+  { label: "blob-store id", primitive: "video", value: { mediaId: "a7ffa0806cd81f7d6955b2e6ecd7f2781bbf9a5aacb9e72217e15f9066a6c4cf" } },
+  { label: "id with - and _", primitive: "audio", value: { mediaId: "m_a-1" } },
 ];
 
-/** MediaRefs that must fail with a given code (types.md §8). */
+/** Media values that must fail with `media.invalid_ref` (types.md §8). */
 export const invalidMediaRefs: readonly InvalidMediaRefCase[] = [
-  { label: "ftp uri", primitive: "image", code: "media.invalid_uri", value: { uri: "ftp://x/a.png", mime: "image/png" } },
-  { label: "relative uri", primitive: "image", code: "media.invalid_uri", value: { uri: "/a.png", mime: "image/png" } },
-  { label: "empty media id", primitive: "image", code: "media.invalid_uri", value: { uri: "briar-media://", mime: "image/png" } },
-  { label: "media id with a space", primitive: "image", code: "media.invalid_uri", value: { uri: "briar-media://m a", mime: "image/png" } },
-  { label: "media id too long", primitive: "file", code: "media.invalid_uri", value: { uri: "briar-media://" + "a".repeat(129), mime: "image/png" } },
-  { label: "uppercase mime", primitive: "image", code: "media.invalid_mime", value: { uri: png.uri, mime: "Image/PNG" } },
-  { label: "mime with parameters", primitive: "image", code: "media.invalid_mime", value: { uri: png.uri, mime: "image/png; q=1" } },
-  { label: "mime without slash", primitive: "file", code: "media.invalid_mime", value: { uri: png.uri, mime: "png" } },
-  { label: "video mime for image", primitive: "image", code: "media.kind_mismatch", value: { uri: png.uri, mime: "video/mp4" } },
-  { label: "image mime for video", primitive: "video", code: "media.kind_mismatch", value: { uri: png.uri, mime: "image/png" } },
-  { label: "image mime for audio", primitive: "audio", code: "media.kind_mismatch", value: { uri: png.uri, mime: "image/png" } },
-  { label: "image mime for model3d", primitive: "model3d", code: "media.kind_mismatch", value: { uri: png.uri, mime: "image/png" } },
-  { label: "negative bytes", primitive: "image", code: "media.invalid_ref", value: { ...png, bytes: -1 } },
-  { label: "fractional bytes", primitive: "image", code: "media.invalid_ref", value: { ...png, bytes: 1.5 } },
-  { label: "uppercase hash", primitive: "image", code: "media.invalid_ref", value: { ...png, hash: HELLO_SHA256.toUpperCase() } },
-  { label: "short hash", primitive: "image", code: "media.invalid_ref", value: { ...png, hash: "abc" } },
-  { label: "zero width", primitive: "image", code: "media.invalid_ref", value: { ...png, meta: { width: 0 } } },
-  { label: "fractional height", primitive: "image", code: "media.invalid_ref", value: { ...png, meta: { height: 1.5 } } },
-  { label: "negative duration", primitive: "image", code: "media.invalid_ref", value: { ...png, meta: { durationSec: -1 } } },
-  { label: "zero fps", primitive: "image", code: "media.invalid_ref", value: { ...png, meta: { fps: 0 } } },
-  { label: "meta not an object", primitive: "image", code: "media.invalid_ref", value: { ...png, meta: "big" } },
-  { label: "unknown top-level key", primitive: "image", code: "media.invalid_ref", value: { ...png, url: "https://x" } },
+  { label: "old uri shape", primitive: "image", code: "media.invalid_ref", value: { uri: "briar-media://m_abc", mime: "image/png" } },
+  { label: "empty id", primitive: "image", code: "media.invalid_ref", value: { mediaId: "" } },
+  { label: "id with a space", primitive: "image", code: "media.invalid_ref", value: { mediaId: "m a" } },
+  { label: "id too long", primitive: "file", code: "media.invalid_ref", value: { mediaId: "a".repeat(129) } },
+  { label: "id not text", primitive: "image", code: "media.invalid_ref", value: { mediaId: 7 } },
+  { label: "extra key", primitive: "image", code: "media.invalid_ref", value: { mediaId: "med_abc", mime: "image/png" } },
+  { label: "a string", primitive: "image", code: "media.invalid_ref", value: "med_abc" },
+  { label: "a list", primitive: "image", code: "media.invalid_ref", value: [{ mediaId: "med_abc" }] },
 ];

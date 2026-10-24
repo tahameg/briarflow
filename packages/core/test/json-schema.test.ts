@@ -104,24 +104,22 @@ describe("toJsonSchema: mapping table", () => {
     expect(validate("1")).toBe(false);
   });
 
-  it("media: $ref MediaRef + mime pattern, defined once", () => {
+  it("media: $ref MediaRef ({ mediaId }), defined once, kind as x-briar-media", () => {
     const schema = toJsonSchema(ir.list(ir.image()), empty);
     expect(Object.keys(schema.$defs as object)).toEqual(["MediaRef"]);
     expect(JSON.stringify(schema)).toContain('"#/$defs/MediaRef"');
-    expect(JSON.stringify(schema)).toContain("^image/");
+    expect(JSON.stringify(schema)).toContain('"x-briar-media":"image"');
     const validate = compile(schema);
-    expect(validate([{ uri: "briar-media://m_1", mime: "image/png" }])).toBe(true);
-    expect(validate([{ uri: "briar-media://m_1", mime: "video/mp4" }])).toBe(false);
-    expect(validate([{ mime: "image/png" }])).toBe(false);
-    expect(validate(["briar-media://m_1"])).toBe(false);
+    expect(validate([{ mediaId: "med_1" }])).toBe(true);
+    expect(validate([{ mediaId: "med_1", mime: "image/png" }])).toBe(false);
+    expect(validate([{ uri: "briar-media://m_1", mime: "image/png" }])).toBe(false);
+    expect(validate(["med_1"])).toBe(false);
   });
 
-  it("media with formats uses the enum of mimes", () => {
+  it("media formats are listed as x-briar-formats (checked when the media is read)", () => {
     const schema = toJsonSchema(ir.image({ formats: ["png", "jpeg"] }), empty);
-    expect(keywordValues(schema, "enum")).toContainEqual(["image/png", "image/jpeg"]);
-    const validate = compile(schema);
-    expect(validate({ uri: "https://x/a.jpg", mime: "image/jpeg" })).toBe(true);
-    expect(validate({ uri: "https://x/a.gif", mime: "image/gif" })).toBe(false);
+    expect(JSON.stringify(schema)).toContain('"x-briar-formats":["image/png","image/jpeg"]');
+    expect(compile(schema)({ mediaId: "med_1" })).toBe(true);
   });
 
   it("struct and enum defs (Deviation 1 required rule, defaults, descriptions, labels)", () => {

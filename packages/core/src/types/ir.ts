@@ -150,7 +150,7 @@ export interface VarTypeRef {
  */
 export type TypeRef = PrimitiveTypeRef | NamedTypeRef | ListTypeRef | OptionalTypeRef | VarTypeRef;
 
-/** Extra information on a {@link MediaRef}. Known keys are validated (types.md §8). */
+/** What a media registry entry knows about its content. Known keys are validated (media.md §2). */
 export interface MediaMeta {
   width?: number;
   height?: number;
@@ -162,20 +162,15 @@ export interface MediaMeta {
 }
 
 /**
- * The JSON value of every media primitive (types.md §8).
+ * The JSON value of every media primitive (types.md §8): the id of an entry in the media
+ * registry. Everything else (mime, size, where the bytes are) lives in the entry
+ * (`ctx.media.entry(ref)`).
  *
  * @example
  * ```ts
- * const ref: MediaRef = { uri: "briar-media://m_abc", mime: "image/png", bytes: 2048 };
+ * const ref: MediaRef = { mediaId: "med_3kq9x2" };
  * ```
  */
 export interface MediaRef {
-  /** `briar-media://<id>`, `https://…` or `http://…`. */
-  uri: string;
-  /** Lowercase mime type without parameters. */
-  mime: string;
-  bytes?: number;
-  /** SHA-256 of the content, lowercase hex. Used for caching. */
-  hash?: string;
-  meta?: MediaMeta;
+  mediaId: string;
 }

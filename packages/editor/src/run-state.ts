@@ -1,7 +1,7 @@
 /**
  * Folds run events into per-node status for the canvas.
  */
-import type { RunEvent, RunResult, RunStatus, SerializedError } from "@briarflow/core";
+import type { LastRun, RunEvent, RunResult, RunStatus, SerializedError } from "@briarflow/core";
 
 /** Canvas status of one node in a run. */
 export type NodeRunStatus = "running" | "done" | "cached" | "failed" | "skipped";
@@ -46,6 +46,8 @@ export interface RunState {
   readonly result?: RunResult;
   /** Rejection or run-level error. */
   readonly error?: SerializedError;
+  /** Loaded from the flow's last run (`backend.lastRun`), not watched live. */
+  readonly restored?: boolean;
 }
 
 /** Applies one run event. Returns the same object for events already applied. */
@@ -95,4 +97,28 @@ export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
 export function completeRun(state: RunState, result: RunResult): RunState {
   const next: RunState = { ...state, runId: result.runId, status: result.status, result };
   return result.error ? { ...next, error: result.error } : next;
+}
+
+/**
+ * The canvas view of a flow's last run, as the server kept it. `undefined` for a run that is
+ * still going (its record has no node results yet).
+ */
+export function runStateFromLastRun(last: LastRun): RunState | undefined {
+  if (last.status === "running") return undefined;
+  const nodes: Record<string, NodeRunState> = {};
+  for (const [id, n] of Object.entries(last.nodes)) {
+    if (n.state === "completed") {
+      nodes[id] = { status: n.cached ? "cached" : "done", ...(n.outputs ? { outputs: n.outputs } : {}), ...(n.durationMs === undefined ? {} : { durationMs: n.durationMs }) };
+    } else if (n.state === "failed") {
+      nodes[id] = { status: "failed", ...(n.error ? { error: n.error } : {}) };
+    } else {
+      nodes[id] = { status: "skipped", ...(n.skipReason ? { skipReason: n.skipReason } : {}), ...(n.cause === undefined ? {} : { cause: n.cause }) };
+    }
+  }
+  const base = { runId: last.runId, flowId: last.flowId, nodes, lastSeq: -1, events: [], restored: true } as const;
+  if (last.status === "interrupted") {
+    return { ...base, status: "failed", error: { code: "run.interrupted", message: "The server stopped while this run was going." } };
+  }
+  const state: RunState = { ...base, status: last.status, ...(last.result ? { result: last.result } : {}) };
+  return last.result?.error ? { ...state, error: last.result.error } : state;
 }

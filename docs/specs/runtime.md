@@ -21,7 +21,8 @@ Status: draft v1 (phase 0). Owner: ux-designer. Implemented in `@briarflow/runti
 
 ```ts
 const engine = createEngine({
-  catalog, media, secrets,
+  catalog, secrets,
+  media?: Media,                   // createMedia({ registry, blobs? }); default: a registry in memory
   logger?,                         // default: no-op
   cache?: RunCache,                // default: createMemoryCache({ maxEntries: 500 })
   concurrency?: number,            // nodes running at once across all runs; default 8
@@ -34,7 +35,9 @@ const engine = createEngine({
 const run = engine.run({
   context: doc, flowId, inputs,
   signal?: AbortSignal,            // aborting it = run.cancel()
-  useCache?: boolean,              // default true; false = neither read nor write the cache
+  useCache?: boolean,              // default true; false = neither read nor write the cache, no carry-over
+  force?: boolean,                 // run every node again: no carry-over, no cache reads (§6a)
+  reuse?: RunReuse,                // earlier results to carry over (the facade passes the last run, §6a)
   timeoutMs?: number,              // whole-run timeout; default none
   runId?: string,                  // default idGenerator("run")
 });
@@ -212,7 +215,7 @@ interface RetryPolicy {
   { "v": 1, "nodeType": "...", "pack": "name@version", "cacheVersion": "1",
     "config": { ... }, "typeBindings": { ... }, "inputs": { ... } }
   ```
-  where every MediaRef inside `inputs` is replaced by `{ "$media": hash ?? uri }`. Nodes with
+  where every media value inside `inputs` is replaced by `{ "$media": mediaId }`. Nodes with
   variants add `"variant": "<name>"` (node-api.md §1.2); keys of other nodes are unchanged.
   Node id, title, position, run id and secrets are **not** part of the key.
 - Used only when the definition has `cache: true`, the run has `useCache !== false`; never
@@ -224,6 +227,25 @@ interface RetryPolicy {
 - `RunCache` interface: `get(key): Promise<Outputs | undefined>`, `set(key, outputs): Promise<void>`.
   Default: in-memory LRU, 500 entries, shared by all runs of an engine. Cache errors are
   logged and treated as misses.
+- `force: true` skips cache reads (results are still written).
+- A hit of a node that makes media is used only while every media id in it still exists
+  (media made by a run goes away with it, media.md §5).
+
+## 6a. Carry-over and media checks (media.md §4–§5)
+
+- A catalog node **makes media** when it caches, is not a frontend node, and an output type
+  holds media (through lists, optionals, struct fields). Its reuse key is its cache key.
+- With `reuse` and without `force`, a media-making node whose key is in `reuse.previous` and
+  whose earlier media still exists completes with those outputs (`cached: true`) before secrets
+  are resolved or the cache is read.
+- `reuse.onResult({ nodeId, key, outputs, reused, media })` is awaited whenever a media-making
+  node completes (ran, cache hit or carried over); the facade records keys and adopts reused
+  media for the new run.
+- Before a catalog node runs, every media value in its inputs is looked up: missing →
+  `media.not_found`; mime not fitting the port → `media.kind_mismatch`; a broken constraint →
+  `node.invalid_input`.
+- `ctx.media` is the engine's media scoped to the node: `put` and `link` make entries owned by
+  `{ runId, flowId, contextId }`; `read` uses the node's signal and `ctx.fetch`.
 
 ## 7. Events
 

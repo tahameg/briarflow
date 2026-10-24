@@ -1,6 +1,7 @@
 /**
- * Frontend debug nodes. `debug.print` is a frontend node: a no-op on the server; the studio
- * prints its text to the console when the node completes in a run.
+ * Frontend debug nodes: no-ops on the server; the studio acts when the node completes in a run.
+ * `debug.print` prints text to the console, `debug.image` shows an image on the node and in the
+ * console.
  */
 import { defineNode, t } from "@briarflow/core";
 
@@ -18,6 +19,24 @@ export const debugPrint = defineNode({
   inputs: {
     text: { type: t.text({ multiline: true }), widget: "textarea" },
     browserConsole: { type: t.boolean(), default: false, title: "Browser console", description: "Also write the text to the browser's devtools console." },
+  },
+  run: () => ({}),
+});
+
+/**
+ * `debug.image` (View image): shows the image large on the node and as a thumbnail in the
+ * studio console. On the execution line, so the image nodes before it run.
+ */
+export const debugImage = defineNode({
+  type: "debug.image",
+  title: "View image",
+  category: "Debug",
+  icon: "image",
+  description: "Shows the image on the node (double-click it for the large viewer) and in the studio console, with its size. Runs in the studio, not on the server.",
+  frontend: true,
+  inputs: {
+    image: { type: t.image(), description: "The image to look at." },
+    label: { type: t.optional(t.text()), default: null, description: "Written next to the image in the console." },
   },
   run: () => ({}),
 });

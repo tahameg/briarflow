@@ -188,8 +188,8 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - Planned: nested variants (OPEN_QUESTIONS Q-NODE-10).
 
 ### Members, media previews and the image pack (2026-10-24)
-- Core: members of a type (types.md §12): struct fields (read/write), media metadata (url, mime,
-  extension, name, size, width, height, duration, fps), error fields, length of text and lists
+- Core: members of a type (types.md §12): struct fields (read/write), media metadata (id, mime,
+  extension, name, size, url, width, height, duration, fps), error fields, length of text and lists
   (read-only). `typeMembers`, `memberAt`, `memberPaths`, `readMember`, `writeMember`,
   `MEMBER_NODE_TYPES`.
 - Std: `briar.member.get` / `briar.member.set` (pure; titles "Get .path" / "Set .path").
@@ -201,6 +201,33 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - New pack `@briarflow/nodes-image` (`image`), loaded by the server: Make image (RGBA / RGB
   channels / one color), Split channels (RGBA / RGB), Resize, Crop, Rotate / flip, Grayscale,
   Invert colors, Convert. PNG + JPEG through pure JS codecs.
+
+### Media registry, last runs and View image (2026-10-25)
+- Media values are `{ mediaId }`: ids of entries in a media registry (media.md). An entry holds
+  the mime, size, dimensions, file name and where the bytes are: raw bytes in the registry
+  (`data`), a blob (`stored`, uploads), or a web URL (`link`). `SqliteMediaRegistry` keeps it in
+  the server's database; `MediaStore` is now only the blob store (`BlobRef`). `readMedia` is
+  gone: nodes use `ctx.media.read / entry / put / link`.
+- The loader (`createMedia`) keeps recent bytes in memory (256 MB) in front of the database;
+  another process loads them from the database. The image pack keeps decoded pixels by media
+  id. Image entries get width / height from the file header (uploads too).
+- What nodes make is transient (owned by its run). Each flow keeps its last run
+  (`SqliteLastRunStore`); a new run replaces it, and when it ends the media of older runs of the
+  flow is deleted. At start, unfinished runs become `interrupted` and orphaned media goes.
+- Carry-over: media-making nodes with the same reuse key (cache key) as in the last run take
+  its outputs instead of running (`cached`); Force run (`force: true`, editor checkbox
+  "Force run") runs everything again. A run's result resolves after its record is saved.
+- REST: `POST /media` returns the entry; `POST /media/links`; `GET /media/:id/entry`;
+  `GET /media/:id` redirects links; `GET /flows/:id/last-run`; `force` on run requests.
+- Engine checks media inputs before a node runs (missing → `media.not_found`, wrong kind →
+  `media.kind_mismatch`, constraints → `node.invalid_input`).
+- Editor: restores the active flow's last run after loading, so previews survive reloads;
+  media chips, the viewer and the console read entries (`client.media.entry`).
+- Std: `debug.image` (View image), a frontend node on the execution line: shows the image on
+  the node and in the console (mime · size · bytes); reading it makes the image nodes before it
+  run.
+- Python bridge: wire protocol unchanged; the bridge maps `{ mediaId }` to and from the worker's
+  `{ uri, mime, …, url }`.
 
 ### After MVP (next)
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).

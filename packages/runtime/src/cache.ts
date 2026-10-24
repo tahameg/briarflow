@@ -1,7 +1,7 @@
 /**
  * Node result cache (docs/specs/runtime.md §6).
  */
-import { canonicalJson, sha256Hex, type MediaRef, type TypeDecl, type TypeRef } from "@briarflow/core";
+import { canonicalJson, isMediaRef, sha256Hex, type MediaRef, type TypeDecl, type TypeRef } from "@briarflow/core";
 
 /**
  * Stores successful node outputs by cache key. Errors thrown by an implementation are logged
@@ -78,7 +78,7 @@ export interface CacheKeyInput {
   cacheVersion: string;
   config: Record<string, unknown>;
   typeBindings: Record<string, TypeRef>;
-  /** Resolved inputs with every MediaRef replaced by `{ $media: hash ?? uri }`. */
+  /** Resolved inputs with every media value replaced by `{ $media: mediaId }`. */
   inputs: Record<string, unknown>;
 }
 
@@ -107,21 +107,16 @@ export function computeCacheKey(input: CacheKeyInput): Promise<string> {
 }
 
 const MEDIA_KINDS = new Set(["image", "video", "audio", "model3d", "file"]);
-const MEDIA_REF_KEYS = new Set(["uri", "mime", "bytes", "hash", "meta"]);
 
 function mediaKey(ref: MediaRef): { $media: string } {
-  return { $media: typeof ref.hash === "string" ? ref.hash : ref.uri };
-}
-
-function looksLikeMediaRef(value: Record<string, unknown>): boolean {
-  return typeof value["uri"] === "string" && typeof value["mime"] === "string" && Object.keys(value).every((k) => MEDIA_REF_KEYS.has(k));
+  return { $media: ref.mediaId };
 }
 
 function untyped(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(untyped);
   const rec = value as Record<string, unknown>;
-  if (looksLikeMediaRef(rec)) return mediaKey(rec as unknown as MediaRef);
+  if (isMediaRef(rec)) return mediaKey(rec);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rec)) out[k] = untyped(v);
   return out;
@@ -138,7 +133,7 @@ export function replaceMedia(value: unknown, type: TypeRef | undefined, getType:
     case "optional":
       return replaceMedia(value, type.of, getType);
     case "primitive":
-      return MEDIA_KINDS.has(type.name) ? mediaKey(value as MediaRef) : value;
+      return MEDIA_KINDS.has(type.name) && isMediaRef(value) ? mediaKey(value) : value;
     case "list":
       return Array.isArray(value) ? value.map((item) => replaceMedia(item, type.of, getType)) : value;
     case "named": {

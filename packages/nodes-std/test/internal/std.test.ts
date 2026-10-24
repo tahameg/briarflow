@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCatalog, noopLogger, type AnyNodeDefinition, type ExecContext, type NodeInstance } from "@briarflow/core";
+import { createCatalog, createMedia, createMemoryMediaRegistry, noopLogger, type AnyNodeDefinition, type ExecContext, type NodeInstance } from "@briarflow/core";
 import {
   convertFloatToInt,
   convertAsFloat,
@@ -27,7 +27,7 @@ function ctx(): ExecContext {
     attempt: 1,
     progress() {},
     log: noopLogger,
-    media: { kind: "none", put: async () => ({ uri: "briar-media://m_1", mime: "image/png" }), get: async () => undefined, delete: async () => false },
+    media: createMedia({ registry: createMemoryMediaRegistry() }).forNode({ owner: { runId: "run_1" } }),
     secrets: { get: async () => "", read: async () => "" },
     settings: { get: async () => undefined },
     globals: { get: () => undefined },
@@ -70,6 +70,7 @@ describe("stdPack", () => {
         "convert.asJsonArray",
         "convert.floatToInt",
         "debug.print",
+        "debug.image",
         "json.construct",
         "json.getField",
         "json.setField",
@@ -109,14 +110,14 @@ describe("text.template", () => {
 
   it("renders values with the toText rules", async () => {
     expect(renderTemplate("{{a}}-{{b}}-{{c}}-{{d}} \\{{x}}", { a: "t", b: 1.5, c: true, d: null })).toBe("t-1.5-true- {{x}}");
-    const out = await call(textTemplate, { who: { b: 2, a: [1] }, img: { uri: "briar-media://m_9", mime: "image/png" } }, { template: "{{who}} {{img}}" });
-    expect(out).toEqual({ text: '{"a":[1],"b":2} briar-media://m_9' });
+    const out = await call(textTemplate, { who: { b: 2, a: [1] }, img: { mediaId: "med_9" } }, { template: "{{who}} {{img}}" });
+    expect(out).toEqual({ text: '{"a":[1],"b":2} med_9' });
   });
 
   it("uses type bindings so struct values that look like media are rendered as JSON", async () => {
-    const value = { uri: "x", mime: "y" };
+    const value = { mediaId: "x" };
     const out = await call(textTemplate, { s: value }, { template: "{{s}}" }, { typeBindings: { T1: { kind: "named", id: "ty_s" } } });
-    expect(out).toEqual({ text: '{"mime":"y","uri":"x"}' });
+    expect(out).toEqual({ text: '{"mediaId":"x"}' });
   });
 });
 
@@ -126,7 +127,7 @@ describe("toText", () => {
     expect(valueToText(3)).toBe("3");
     expect(valueToText(false)).toBe("false");
     expect(valueToText(null)).toBe("");
-    expect(valueToText({ uri: "https://x/a.png", mime: "image/png" }, { kind: "primitive", name: "image" })).toBe("https://x/a.png");
+    expect(valueToText({ mediaId: "med_1" }, { kind: "primitive", name: "image" })).toBe("med_1");
     expect(valueToText([{ b: 1, a: 2 }])).toBe('[{"a":2,"b":1}]');
     expect(await call(convertToText, { value: 42 })).toEqual({ text: "42" });
   });

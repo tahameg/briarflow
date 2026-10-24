@@ -1,6 +1,6 @@
 /**
- * Builds and starts the Briarflow server from a {@link ServerConfig}: SQLite contexts and
- * filesystem media under the data dir, std + image + mock packs, optional Python and provider packs,
+ * Builds and starts the Briarflow server from a {@link ServerConfig}: SQLite contexts, media
+ * registry and last runs, and uploaded files under the data dir, std + image + mock packs, optional Python and provider packs,
  * the REST + SSE API, `/health`, the studio start target (`/api/studio`) and the studio UI with
  * SPA fallback.
  */
@@ -11,7 +11,15 @@ import { imagePack } from "@briarflow/nodes-image";
 import { mockPack } from "@briarflow/nodes-mock";
 import { createBriarApp, serve, type BriarServer } from "@briarflow/server";
 import { FsMediaStore } from "@briarflow/storage-fs";
-import { SqliteContextStore, SqliteSecretVault, SqliteSettingsStore, loadVaultKey, parseVaultKey } from "@briarflow/storage-sqlite";
+import {
+  SqliteContextStore,
+  SqliteLastRunStore,
+  SqliteMediaRegistry,
+  SqliteSecretVault,
+  SqliteSettingsStore,
+  loadVaultKey,
+  parseVaultKey,
+} from "@briarflow/storage-sqlite";
 import { createBriar, envSecrets, type Briar } from "briarflow";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { isLoopback, type ServerConfig } from "./config.js";
@@ -65,7 +73,9 @@ export async function startServer(config: ServerConfig, logger: Logger): Promise
   const vaultKey = config.vaultKey !== undefined ? parseVaultKey(config.vaultKey, "BRIAR_VAULT_KEY") : loadVaultKey(join(dataDir, "vault.key"));
   const briar = createBriar({
     store: new SqliteContextStore({ file: dbFile }),
-    media: new FsMediaStore({ dir: join(dataDir, "media") }),
+    media: new SqliteMediaRegistry({ file: dbFile }),
+    blobs: new FsMediaStore({ dir: join(dataDir, "media") }),
+    lastRuns: new SqliteLastRunStore({ file: dbFile }),
     secrets: envSecrets(),
     vault: new SqliteSecretVault({ file: dbFile, key: vaultKey }),
     settings: new SqliteSettingsStore({ file: dbFile }),

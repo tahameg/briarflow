@@ -12,7 +12,8 @@ import { Workspace } from "./Workspace";
 const LAST_CONTEXT_KEY = "briarflow.studio.context";
 const backend = clientBackend(client);
 const mediaUrl = (id: string) => client.media.url(id);
-const uploadMedia = (file: File) => client.media.upload(file, { mime: file.type || "application/octet-stream", filename: file.name });
+const uploadMedia = async (file: File) => ({ mediaId: (await client.media.upload(file, { mime: file.type || "application/octet-stream", filename: file.name })).id });
+const mediaEntry = (id: string) => client.media.entry(id);
 
 function readLast(): string | undefined {
   try {
@@ -138,7 +139,7 @@ export function App() {
   return (
     <VaultProvider vault={client.secrets}>
       {store ? (
-        <EditorProvider store={store} mediaUrl={mediaUrl} uploadMedia={uploadMedia}>
+        <EditorProvider store={store} mediaUrl={mediaUrl} uploadMedia={uploadMedia} mediaEntry={mediaEntry}>
           {workspace}
         </EditorProvider>
       ) : (

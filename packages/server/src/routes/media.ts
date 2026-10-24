@@ -1,10 +1,10 @@
 /**
- * Media upload and download (rest-api.md §3 "Media", phase-5.md §4.5).
+ * Media: upload, links, entries and download (rest-api.md §3 "Media", media.md §6).
  */
-import { BriarError, MediaError, type MediaRef } from "@briarflow/core";
+import { BriarError, MediaError } from "@briarflow/core";
 import type { Env } from "hono";
-import { contentLength, limitUpload, mediaTooLarge } from "../body.js";
-import { invalidQuery } from "../errors.js";
+import { contentLength, isObject, limitUpload, mediaTooLarge, readJson } from "../body.js";
+import { invalidBody, invalidQuery } from "../errors.js";
 import { checkPathId, type RouteKit } from "../kit.js";
 import { matchesEtag } from "./node-types.js";
 
@@ -20,11 +20,6 @@ export function contentDisposition(filename: string): string {
   if (/^[\x20-\x7e]*$/.test(filename)) return `inline; filename="${ascii}"`;
   const encoded = encodeURIComponent(filename).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
   return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
-}
-
-/** Id part of a `briar-media://<id>` uri. */
-function mediaIdOf(ref: MediaRef): string {
-  return ref.uri.startsWith("briar-media://") ? ref.uri.slice("briar-media://".length) : ref.uri;
 }
 
 export function registerMediaRoutes<E extends Env>(kit: RouteKit<E>): void {
@@ -52,9 +47,45 @@ export function registerMediaRoutes<E extends Env>(kit: RouteKit<E>): void {
         throw mediaTooLarge(kit.maxUploadBytes);
       }
       const body = limitUpload(c.req.raw.body, kit.maxUploadBytes);
-      const ref = await briar.media.put(body, filename === undefined || filename === "" ? { mime } : { mime, filename });
-      c.header("Location", `${base}/media/${mediaIdOf(ref)}`);
-      return c.json(ref, 201);
+      const entry = await briar.media.upload(body, {
+        mime,
+        maxBytes: kit.maxUploadBytes,
+        ...(filename === undefined || filename === "" ? {} : { filename }),
+      });
+      c.header("Location", `${base}/media/${entry.id}`);
+      return c.json(entry, 201);
+    }),
+  );
+
+  app.post(
+    `${base}/media/links`,
+    kit.handle(async (c) => {
+      await kit.authorize(c, "media.upload", {});
+      const body = await readJson(c.req.raw, kit.maxBodyBytes);
+      if (!isObject(body)) throw invalidBody([{ path: "", problem: 'must be a JSON object like { "url": "https://…", "mime": "image/png" }' }]);
+      const problems: { path: string; problem: string }[] = [];
+      if (typeof body.url !== "string" || !/^https?:\/\//i.test(body.url)) problems.push({ path: "url", problem: "must be an http(s) URL" });
+      if (typeof body.mime !== "string" || body.mime === "") problems.push({ path: "mime", problem: "must be a mime type like image/png" });
+      if (body.filename !== undefined && typeof body.filename !== "string") problems.push({ path: "filename", problem: "must be a string" });
+      if (problems.length > 0) throw invalidBody(problems);
+      const entry = await briar.media.link(body.url as string, {
+        mime: body.mime as string,
+        ...(typeof body.filename === "string" && body.filename !== "" ? { filename: body.filename } : {}),
+      });
+      c.header("Location", `${base}/media/${entry.id}`);
+      return c.json(entry, 201);
+    }),
+  );
+
+  app.get(
+    `${base}/media/:mediaId/entry`,
+    kit.handle(async (c) => {
+      const mediaId = checkPathId("media", "mediaId", c.req.param("mediaId"));
+      await kit.authorize(c, "media.read", { mediaId });
+      const entry = await briar.media.entry(mediaId);
+      if (!entry) throw mediaNotFound(mediaId);
+      c.header("Cache-Control", "private, max-age=31536000, immutable");
+      return c.json(entry);
     }),
   );
 
@@ -62,30 +93,29 @@ export function registerMediaRoutes<E extends Env>(kit: RouteKit<E>): void {
     `${base}/media/:mediaId`,
     kit.handle(async (c) => {
       const mediaId = checkPathId("media", "mediaId", c.req.param("mediaId"));
-      const stored = await briar.media.get(mediaId);
-      if (!stored) throw mediaNotFound(mediaId);
-      try {
-        await kit.authorize(c, "media.read", { mediaId });
-      } catch (err) {
-        await stored.body.cancel().catch(() => {});
-        throw err;
-      }
-      const { ref } = stored;
+      await kit.authorize(c, "media.read", { mediaId });
+      const entry = await briar.media.entry(mediaId);
+      if (!entry) throw mediaNotFound(mediaId);
+      // Entries never change, so the id is a strong validator.
+      const etag = `"${entry.hash ?? entry.id}"`;
       const headers = new Headers({
         "Cache-Control": "private, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
+        ETag: etag,
       });
-      if (ref.hash !== undefined) headers.set("ETag", `"${ref.hash}"`);
-      if (ref.hash !== undefined && matchesEtag(c.req.header("if-none-match"), `"${ref.hash}"`)) {
-        await stored.body.cancel().catch(() => {});
-        return new Response(null, { status: 304, headers });
+      if (matchesEtag(c.req.header("if-none-match"), etag)) return new Response(null, { status: 304, headers });
+      const opened = await briar.media.open(entry.id, { signal: c.req.raw.signal });
+      if ("url" in opened) {
+        headers.set("Location", opened.url);
+        headers.delete("ETag");
+        return new Response(null, { status: 302, headers });
       }
-      headers.set("Content-Type", ref.mime);
-      if (ref.bytes !== undefined) headers.set("Content-Length", String(ref.bytes));
-      const filename = ref.meta?.filename;
+      headers.set("Content-Type", entry.mime);
+      if (entry.bytes !== undefined) headers.set("Content-Length", String(entry.bytes));
+      const filename = entry.meta?.filename;
       if (typeof filename === "string" && filename !== "") headers.set("Content-Disposition", contentDisposition(filename));
-      if (ref.mime === "image/svg+xml") headers.set("Content-Security-Policy", "sandbox");
-      return new Response(stored.body, { status: 200, headers });
+      if (entry.mime === "image/svg+xml") headers.set("Content-Security-Policy", "sandbox");
+      return new Response(opened.body, { status: 200, headers });
     }),
   );
 }

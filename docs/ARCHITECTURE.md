@@ -185,13 +185,15 @@ All values are JSON:
 
 ```ts
 interface MediaRef {
-  uri: string;            // "briar-media://<id>" or "https://…"
-  mime: string;
-  bytes?: number;
-  hash?: string;          // sha256 of content; used for caching
-  meta?: { width?: number; height?: number; durationSec?: number; fps?: number; [k: string]: unknown };
+  mediaId: string;        // id of a media registry entry (docs/specs/media.md)
 }
 ```
+
+Everything about the media (mime, size, dimensions, file name, and where the bytes are: raw
+bytes in the registry, a `briar-media://` blob, or a web URL) lives in its registry entry. What
+nodes make is transient: it belongs to its run and goes away when the run stops being its
+flow's last run. Each flow keeps its last run (outputs and reuse keys), so previews survive
+reloads and media nodes with unchanged inputs are carried over instead of run again.
 
 `validateValue(value, typeRef, scope, options?)` returns diagnostics with value paths
 (`inputs.character.age must be >= 0`). `normalizeValue(...)` returns
@@ -411,13 +413,16 @@ interface ContextStore {
 interface ContextSummary { id: string; name: string; revision: number; updatedAt: string; flows: { id: string; name: string }[] }
 interface Page<T> { items: T[]; nextCursor?: string }
 
-interface MediaStore {
+interface MediaStore {   // blob store: the bytes of uploaded ("stored") media
   readonly kind: string;
-  put(data: Uint8Array | ReadableStream<Uint8Array>, info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<MediaRef>;
-  get(ref: MediaRef | string): Promise<{ ref: MediaRef; body: ReadableStream<Uint8Array> } | undefined>;
-  delete(ref: MediaRef | string): Promise<boolean>;
-  resolveUrl?(ref: MediaRef): Promise<string | undefined>;      // public/signed URL when available
+  put(data: Uint8Array | ReadableStream<Uint8Array>, info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<BlobRef>;
+  get(ref: BlobRef | string): Promise<{ ref: BlobRef; body: ReadableStream<Uint8Array> } | undefined>;
+  delete(ref: BlobRef | string): Promise<boolean>;
+  resolveUrl?(ref: BlobRef): Promise<string | undefined>;      // public/signed URL when available
 }
+
+interface MediaRegistry { add; get; data; delete; adopt; owners; deleteOwned }  // media.md §2
+interface LastRunStore { get(contextId, flowId); set(run); delete; list }          // media.md §5
 
 interface SecretResolver { get(name: string): Promise<string | undefined> }
 interface Logger { debug(m: string, d?: object): void; info(…): void; warn(…): void; error(…): void }
@@ -431,8 +436,8 @@ Contracts in detail: `docs/specs/storage.md`. Highlights:
   `InvalidCursorError`, `InvalidQueryError`, `InvalidDocumentError`, `StoreClosedError`,
   `MediaError`.
 - Helpers (core): `encodeCursor` / `decodeCursor` (keyset cursors for `list`),
-  `readMedia(ref, { media, fetch?, signal?, maxBytes? })` (bytes of any MediaRef, from the store
-  or via fetch), `sha256Hex`, `canonicalJson`.
+  `createMedia({ registry, blobs? })` (the media loader with an in-memory copy of recent
+  bytes; nodes get it as `ctx.media`), `sha256Hex`, `canonicalJson`.
 
 Adding a new save target = implement `ContextStore` in a new package, then run
 `describeContextStore()` from `@briarflow/testing` against it. Guide:
@@ -615,7 +620,7 @@ briar.runs.get(runId);                  // run registry (in-memory in v1, RunSto
 | GET | `/runs/:runId/events` | **SSE** stream of `RunEvent` (replays past events; resume with `Last-Event-ID` or `?after=<seq>`) |
 | POST | `/runs/:runId/cancel` | cancel |
 | GET | `/node-types` | node descriptors + pack types |
-| POST | `/media` | raw body upload (`Content-Type` = mime, `?filename=`) → `MediaRef` |
+| POST | `/media` | raw body upload (`Content-Type` = mime, `?filename=`) → `MediaEntry` (value: `{ mediaId: entry.id }`) |
 | GET | `/media/:mediaId` | download |
 
 Errors: `{ "error": { "code": "…", "message": "…", "details"?: … } }`. `@briarflow/server` also

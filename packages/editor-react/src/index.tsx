@@ -33,6 +33,7 @@ export {
   useFlowView,
   useLocalToasts,
   useMedia,
+  useMediaEntry,
 } from "./context.js";
 export type { CanvasHandle, DispatchFn, EditorProviderProps, LocalToast } from "./context.js";
 

@@ -20,7 +20,7 @@ export interface ValueCase {
   match?: MessageMatch;
 }
 
-const ref = (mime: string, extra: Record<string, unknown> = {}) => ({ uri: "briar-media://m_1", mime, ...extra });
+const ref = () => ({ mediaId: "med_1" });
 
 /** Rows of the §6 constraint table: one pass and one fail per constraint, exact suffixes. */
 export const constraintCases: readonly ValueCase[] = [
@@ -60,77 +60,9 @@ export const constraintCases: readonly ValueCase[] = [
   { label: "boolean false", type: ir.boolean(), value: false, ok: true },
   { label: "boolean string", type: ir.boolean(), value: "true", ok: false, message: "v must be true or false", match: "prefix" },
   { label: "boolean number", type: ir.boolean(), value: 1, ok: false, message: "v must be true or false", match: "prefix" },
-  // media
-  { label: "image format ok", type: ir.image({ formats: ["png"] }), value: ref("image/png"), ok: true },
-  {
-    label: "image format fail",
-    type: ir.image({ formats: ["png"] }),
-    value: ref("image/gif"),
-    ok: false,
-    message: "v must be one of the formats png (got image/gif)",
-  },
-  { label: "formats are case-insensitive", type: ir.image({ formats: ["PNG"] }), value: ref("image/png"), ok: true },
-  { label: "unknown format is a literal mime", type: ir.file({ formats: ["application/zip"] }), value: ref("application/zip"), ok: true },
-  {
-    label: "literal mime format rejects others",
-    type: ir.file({ formats: ["application/zip"] }),
-    value: ref("application/pdf"),
-    ok: false,
-    message: "v must be one of the formats",
-    match: "prefix",
-  },
-  { label: "maxBytes ok", type: ir.file({ maxBytes: 100 }), value: ref("text/plain", { bytes: 100 }), ok: true },
-  { label: "maxBytes fail", type: ir.file({ maxBytes: 100 }), value: ref("text/plain", { bytes: 101 }), ok: false, message: "v must be at most 100 bytes" },
-  { label: "maxBytes skipped without bytes", type: ir.file({ maxBytes: 1 }), value: ref("text/plain"), ok: true },
-  { label: "minWidth ok", type: ir.image({ minWidth: 10 }), value: ref("image/png", { meta: { width: 10 } }), ok: true },
-  {
-    label: "minWidth fail",
-    type: ir.image({ minWidth: 10 }),
-    value: ref("image/png", { meta: { width: 5, height: 5 } }),
-    ok: false,
-    message: "v must be at least 10 px wide",
-  },
-  { label: "minWidth skipped without meta", type: ir.image({ minWidth: 10 }), value: ref("image/png"), ok: true },
-  {
-    label: "maxWidth fail",
-    type: ir.image({ maxWidth: 100 }),
-    value: ref("image/png", { meta: { width: 200 } }),
-    ok: false,
-    message: "v must be at most 100 px wide",
-  },
-  {
-    label: "minHeight fail",
-    type: ir.image({ minHeight: 10 }),
-    value: ref("image/png", { meta: { height: 5 } }),
-    ok: false,
-    message: "px",
-    match: "contains",
-  },
-  {
-    label: "maxHeight fail",
-    type: ir.image({ maxHeight: 10 }),
-    value: ref("image/png", { meta: { height: 50 } }),
-    ok: false,
-    message: "px",
-    match: "contains",
-  },
-  { label: "maxHeight skipped without height", type: ir.image({ maxHeight: 10 }), value: ref("image/png", { meta: { width: 50 } }), ok: true },
-  { label: "maxDurationSec ok", type: ir.video({ maxDurationSec: 10 }), value: ref("video/mp4", { meta: { durationSec: 10 } }), ok: true },
-  {
-    label: "maxDurationSec fail (video)",
-    type: ir.video({ maxDurationSec: 10 }),
-    value: ref("video/mp4", { meta: { durationSec: 11 } }),
-    ok: false,
-    message: "v must be at most 10 seconds long",
-  },
-  {
-    label: "maxDurationSec fail (audio)",
-    type: ir.audio({ maxDurationSec: 2 }),
-    value: ref("audio/wav", { meta: { durationSec: 2.5 } }),
-    ok: false,
-    message: "v must be at most 2 seconds long",
-  },
-  { label: "maxDurationSec skipped without duration", type: ir.audio({ maxDurationSec: 2 }), value: ref("audio/wav"), ok: true },
+  // media: constraints are checked against the registry entry when a node reads it (checkMediaEntry)
+  { label: "media constraints are not checked on the value", type: ir.image({ formats: ["png"], maxWidth: 1 }), value: ref(), ok: true },
+  { label: "media old uri shape", type: ir.image(), value: { uri: "briar-media://m_1", mime: "image/png" }, ok: false, message: "v is not a valid image", match: "prefix" },
   // list
   { label: "list minItems ok", type: ir.list(ir.text(), { minItems: 2 }), value: ["a", "b"], ok: true },
   { label: "list minItems fail", type: ir.list(ir.text(), { minItems: 2 }), value: ["a"], ok: false, message: "v must have at least 2 items" },
@@ -145,8 +77,8 @@ export const shapeCases: readonly ValueCase[] = [
   { label: "text rejects null", type: ir.text(), value: null, ok: false, message: "v ", match: "prefix" },
   { label: "int rejects a numeric string", type: ir.int(), value: "27", ok: false, message: 'v must be a whole number (got "27")' },
   { label: "float rejects a string", type: ir.float(), value: "1.5", ok: false, message: "v must be a number", match: "prefix" },
-  { label: "media accepts a MediaRef", type: ir.image(), value: ref("image/png"), ok: true },
-  { label: "media rejects a string", type: ir.image(), value: "briar-media://m_1", ok: false, message: "v ", match: "prefix" },
+  { label: "media accepts a media value", type: ir.image(), value: ref(), ok: true },
+  { label: "media rejects a string", type: ir.image(), value: "med_1", ok: false, message: "v ", match: "prefix" },
   { label: "list accepts an array", type: ir.list(ir.int()), value: [1, 2], ok: true },
   { label: "list rejects an object", type: ir.list(ir.int()), value: { 0: 1 }, ok: false, message: "v ", match: "prefix" },
   { label: "list element path", type: ir.list(ir.int({ min: 0 })), value: [1, -1], ok: false, message: "v[1] must be >= 0" },

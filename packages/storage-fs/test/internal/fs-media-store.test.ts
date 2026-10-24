@@ -2,8 +2,8 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readMedia, validateMediaRef } from "@briarflow/core";
-import type { MediaRef } from "@briarflow/core";
+import { createMedia, createMemoryMediaRegistry } from "@briarflow/core";
+import type { BlobRef } from "@briarflow/core";
 import { FsMediaStore } from "../../src/index.js";
 import { caught } from "./helpers.js";
 
@@ -21,7 +21,7 @@ function chunked(bytes: Uint8Array, size: number): ReadableStream<Uint8Array> {
   });
 }
 
-async function bytesOf(store: FsMediaStore, ref: MediaRef | string): Promise<Uint8Array | undefined> {
+async function bytesOf(store: FsMediaStore, ref: BlobRef | string): Promise<Uint8Array | undefined> {
   const got = await store.get(ref);
   return got ? new Uint8Array(await new Response(got.body).arrayBuffer()) : undefined;
 }
@@ -41,7 +41,6 @@ describe("FsMediaStore (storage.md §3 MediaStore checks)", () => {
     const ref = await store.put(enc.encode("hello"), { mime: "Text/Plain; charset=utf-8" });
     expect(ref.uri).toMatch(/^briar-media:\/\/[A-Za-z0-9_-]{1,128}$/);
     expect(ref).toEqual({ uri: ref.uri, mime: "text/plain", bytes: 5, hash: HELLO_SHA });
-    expect(validateMediaRef(ref, "file", "ref")).toEqual([]);
     expect((await caught(store.put(enc.encode("x"), { mime: "not a mime" }))).code).toBe("media.invalid_mime");
     expect((await caught(store.put(enc.encode("x"), { mime: "" }))).code).toBe("media.invalid_mime");
   });
@@ -71,7 +70,8 @@ describe("FsMediaStore (storage.md §3 MediaStore checks)", () => {
     const one = await store.get(ref);
     const two = await store.get(ref);
     expect(one!.body).not.toBe(two!.body);
-    expect(await readMedia(ref, { media: store })).toEqual(enc.encode("hello"));
+    // The media loader reads a blob as a stored entry, found by its blob id.
+    expect(await createMedia({ registry: createMemoryMediaRegistry(), blobs: store }).read(id)).toEqual(enc.encode("hello"));
     await one!.body.cancel();
     await two!.body.cancel();
   });

@@ -14,7 +14,7 @@ import type {
   UnknownValue,
 } from "@briarflow/core";
 import { PythonBridgeError, isAbortError } from "./errors.js";
-import { attachMediaUrls, storeMediaOutputs } from "./media.js";
+import { attachMediaUrls, storeMediaOutputs, workerMedia } from "./media.js";
 import type { TypeLookup } from "./media.js";
 import { LoopbackMediaServer } from "./media-server.js";
 import type { MediaServerOptions } from "./media-server.js";
@@ -246,14 +246,13 @@ export class PackRuntime {
     const target = await this.connection.acquire(ctx.signal);
     const tokens: string[] = [];
     try {
-      const inputs = await attachMediaUrls(args.inputs, desc.inputs, this.types, async (ref) => {
-        const resolved = ctx.media.resolveUrl ? await ctx.media.resolveUrl(ref) : undefined;
-        if (resolved) return resolved;
-        if (/^https?:\/\//i.test(ref.uri)) return ref.uri;
-        const registered = await this.mediaServer.register(ref, ctx.media);
-        tokens.push(registered.token);
-        return registered.url;
-      });
+      const inputs = await attachMediaUrls(args.inputs, desc.inputs, this.types, (ref) =>
+        workerMedia(ref, ctx.media, async (r) => {
+          const registered = await this.mediaServer.register(r, ctx.media);
+          tokens.push(registered.token);
+          return registered.url;
+        }),
+      );
       const secrets: Record<string, string> = {};
       for (const name of desc.secrets) secrets[name] = await ctx.secrets.get(name);
       const body = {

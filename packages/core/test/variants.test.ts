@@ -28,14 +28,14 @@ const image = defineNode({
     title: "Model",
     default: "best",
     options: {
-      fast: variant({ title: "Fast", inputs: prompt, outputs: { image: t.image() }, run: () => ({ image: { uri: "x", mime: "image/png" } }) }),
+      fast: variant({ title: "Fast", inputs: prompt, outputs: { image: t.image() }, run: () => ({ image: { mediaId: "x" } }) }),
       best: variant({
         title: "Best",
         description: "Slow and sharp.",
         config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
         inputs: { ...prompt, negative: t.optional(t.text()) },
         outputs: { image: t.image(), seed: t.int() },
-        run: ({ config }) => ({ image: { uri: "y", mime: "image/png" }, seed: config.steps }),
+        run: ({ config }) => ({ image: { mediaId: "y" }, seed: config.steps }),
       }),
     },
   },

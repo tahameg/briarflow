@@ -2,7 +2,19 @@
  * node-api.md §10, phase-3.md §4.10: the deterministic offline mock pack.
  */
 import { describe, expect, it } from "vitest";
-import { canonicalJson, isBriarError, noopLogger, sha256Hex, type ExecContext, type MediaRef, type MediaStore } from "@briarflow/core";
+import {
+  canonicalJson,
+  createMedia,
+  createMemoryMediaRegistry,
+  isBriarError,
+  isMediaRef,
+  noopLogger,
+  sha256Hex,
+  type ExecContext,
+  type Media,
+  type MediaEntry,
+  type MediaRef,
+} from "@briarflow/core";
 import {
   mockDelay,
   mockFail,
@@ -15,7 +27,7 @@ import {
   mockStructured,
   PACKAGE_NAME,
 } from "@briarflow/nodes-mock";
-import { context, describeNodePack, enumType, field, flow, ir, memoryMediaStore, readStream, runNode, struct } from "@briarflow/testing";
+import { context, describeNodePack, enumType, field, flow, ir, runNode, struct } from "@briarflow/testing";
 
 async function rejects(p: Promise<unknown>): Promise<{ code: string; message: string; retryable?: boolean }> {
   try {
@@ -27,11 +39,13 @@ async function rejects(p: Promise<unknown>): Promise<{ code: string; message: st
   throw new Error("expected a rejection");
 }
 
-async function text(media: MediaStore, ref: MediaRef): Promise<string> {
-  const got = await media.get(ref);
-  expect(got).toBeDefined();
-  return new TextDecoder().decode(await readStream(got!.body));
+async function text(media: Media, ref: MediaRef): Promise<string> {
+  return new TextDecoder().decode(await media.read(ref));
 }
+
+const newMedia = () => createMedia({ registry: createMemoryMediaRegistry() });
+/** The registry entry of a media output. */
+const entry = (r: { media: Media }, ref: MediaRef) => r.media.entry(ref) as Promise<MediaEntry>;
 
 const structCtx = () =>
   context({
@@ -143,10 +157,10 @@ describe("mock.llm", () => {
 
 describe("mock.image", () => {
   it("stores a deterministic SVG via ctx.media with meta.width/height", async () => {
-    const media = memoryMediaStore();
+    const media = newMedia();
     const r = await runNode(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 2 }, { media });
     const ref = r.outputs.image;
-    expect(ref).toMatchObject({ mime: "image/svg+xml", meta: { width: 100, height: 50 } });
+    expect(await entry(r, ref)).toMatchObject({ mime: "image/svg+xml", meta: { width: 100, height: 50 } });
     const svg = await text(media, ref);
     expect(svg.startsWith("<svg")).toBe(true);
     expect(svg).toContain('width="100"');
@@ -156,15 +170,15 @@ describe("mock.image", () => {
     const hex = await mockHash({ prompt: "A <cat> & dog", seed: 2 });
     expect(svg).toContain(`fill="#${hex.slice(0, 6)}"`);
     const again = await runNode(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 2 }, { media });
-    expect(again.outputs.image.hash).toBe(ref.hash);
+    expect((await entry(again, again.outputs.image)).hash).toBe((await entry(r, ref)).hash);
     expect(await text(media, again.outputs.image)).toBe(svg);
   });
 
   it("writes only the first 60 characters of the prompt; defaults 512×512", async () => {
-    const media = memoryMediaStore();
+    const media = newMedia();
     const prompt = "x".repeat(59) + "YZ";
     const r = await runNode(mockImage, { prompt }, { media });
-    expect(r.outputs.image.meta).toMatchObject({ width: 512, height: 512 });
+    expect((await entry(r, r.outputs.image)).meta).toMatchObject({ width: 512, height: 512 });
     const svg = await text(media, r.outputs.image);
     expect(svg).toContain("x".repeat(59) + "Y<");
     expect(svg).not.toContain("YZ");
@@ -174,7 +188,8 @@ describe("mock.image", () => {
     const a = await runNode(mockImage, { prompt: "a", width: 8, height: 8 });
     const b = await runNode(mockImage, { prompt: "a", width: 8, height: 8, seed: 1 });
     const c = await runNode(mockImage, { prompt: "b", width: 8, height: 8 });
-    expect(new Set([a.outputs.image.hash, b.outputs.image.hash, c.outputs.image.hash]).size).toBe(3);
+    const hashes = await Promise.all([a, b, c].map(async (x) => (await entry(x, x.outputs.image)).hash));
+    expect(new Set(hashes).size).toBe(3);
   });
 
   it("validates width/height 1–4096", async () => {
@@ -184,9 +199,9 @@ describe("mock.image", () => {
 
 describe("mock.model3d", () => {
   it("stores a minimal glTF 2.0 cube colored from the hash", async () => {
-    const media = memoryMediaStore();
+    const media = newMedia();
     const r = await runNode(mockModel3d, { prompt: "box", seed: 1 }, { media });
-    expect(r.outputs.model.mime).toBe("model/gltf+json");
+    expect((await entry(r, r.outputs.model)).mime).toBe("model/gltf+json");
     const gltf = JSON.parse(await text(media, r.outputs.model)) as {
       asset: { version: string };
       meshes: unknown[];
@@ -198,9 +213,10 @@ describe("mock.model3d", () => {
     expect(color).toHaveLength(4);
     for (const c of color) expect(c >= 0 && c <= 1).toBe(true);
     const again = await runNode(mockModel3d, { prompt: "box", seed: 1 });
-    expect(again.outputs.model.hash).toBe(r.outputs.model.hash);
+    const hashOf = async (x: { media: Media; outputs: { model: MediaRef } }) => (await entry(x, x.outputs.model)).hash;
+    expect(await hashOf(again)).toBe(await hashOf(r));
     const other = await runNode(mockModel3d, { prompt: "box", seed: 2 });
-    expect(other.outputs.model.hash).not.toBe(r.outputs.model.hash);
+    expect(await hashOf(other)).not.toBe(await hashOf(r));
   });
 });
 
@@ -246,7 +262,7 @@ describe("mock.fail", () => {
 
 describe("mock.structured", () => {
   it("fills every field kind deterministically and the result validates against the struct", async () => {
-    const media = memoryMediaStore();
+    const media = newMedia();
     const opts = { config: { typeId: "ty_all" }, context: structCtx(), media };
     const r = await runNode(mockStructured, { prompt: "hero", seed: 1 }, opts);
     const v = r.outputs.value as Record<string, unknown>;
@@ -262,19 +278,23 @@ describe("mock.structured", () => {
     expect(v["three"]).toHaveLength(3);
     expect(typeof v["maybe"]).toBe("string");
     expect(typeof (v["inner"] as { flag: unknown }).flag).toBe("boolean");
-    expect(v["image"]).toMatchObject({ mime: "image/svg+xml" });
-    expect(v["doc"]).toMatchObject({ mime: "image/svg+xml" });
-    expect(v["model"]).toMatchObject({ mime: "model/gltf+json" });
-    expect(v["sound"]).toMatchObject({ mime: "audio/wav" });
+    expect(await entry(r, v["image"] as MediaRef)).toMatchObject({ mime: "image/svg+xml" });
+    expect(await entry(r, v["doc"] as MediaRef)).toMatchObject({ mime: "image/svg+xml" });
+    expect(await entry(r, v["model"] as MediaRef)).toMatchObject({ mime: "model/gltf+json" });
+    expect(await entry(r, v["sound"] as MediaRef)).toMatchObject({ mime: "audio/wav" });
     expect(v["clip"]).toBeNull();
     expect(v["clips"]).toEqual([null]);
-    for (const key of ["image", "doc", "model", "sound"]) expect(await media.get(v[key] as MediaRef)).toBeDefined();
-    const again = await runNode(mockStructured, { prompt: "hero", seed: 1 }, { ...opts, media: memoryMediaStore() });
-    const strip = (x: Record<string, unknown>) =>
-      Object.fromEntries(Object.entries(x).map(([k, val]) => [k, val && typeof val === "object" && "uri" in val ? (val as MediaRef).hash : val]));
-    expect(strip(again.outputs.value as Record<string, unknown>)).toEqual(strip(v));
-    const other = await runNode(mockStructured, { prompt: "hero", seed: 2 }, { ...opts, media: memoryMediaStore() });
-    expect(strip(other.outputs.value as Record<string, unknown>)).not.toEqual(strip(v));
+    for (const key of ["image", "doc", "model", "sound"]) expect(await media.read(v[key] as MediaRef)).toBeInstanceOf(Uint8Array);
+    const again = await runNode(mockStructured, { prompt: "hero", seed: 1 }, { ...opts, media: newMedia() });
+    const strip = async (x: { media: Media; outputs: { value: unknown } }) =>
+      Object.fromEntries(
+        await Promise.all(
+          Object.entries(x.outputs.value as Record<string, unknown>).map(async ([k, val]) => [k, isMediaRef(val) ? (await x.media.entry(val))?.hash : val] as const),
+        ),
+      );
+    expect(await strip(again)).toEqual(await strip(r));
+    const other = await runNode(mockStructured, { prompt: "hero", seed: 2 }, { ...opts, media: newMedia() });
+    expect(await strip(other)).not.toEqual(await strip(r));
   });
 
   it("a required video field → mock.unsupported_type with the spec message", async () => {
@@ -318,7 +338,7 @@ function fakeCtx(extra: Partial<ExecContext>): ExecContext {
     attempt: 1,
     progress() {},
     log: noopLogger,
-    media: memoryMediaStore(),
+    media: newMedia().forNode({ owner: { runId: "run_1" } }),
     secrets: { get: async () => "", read: async () => "" },
     settings: { get: async () => undefined },
     globals: { get: () => undefined },

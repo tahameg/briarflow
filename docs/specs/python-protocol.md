@@ -81,6 +81,9 @@ Request:
               "factor": 2 },
   "config": {}, "secrets": { } }
 ```
+- Inside Briarflow a media value is `{ mediaId }` (media.md); the bridge expands each one into
+  the MediaRef below from its registry entry, so this wire format did not change (2026-10-25).
+  Pass-through refs come back as `{ mediaId }`, `$media` outputs become transient entries.
 - Every MediaRef in `inputs` (also nested) gets an extra `url` the worker can GET without
   auth for the duration of the request (see §3.3).
 - `secrets` contains only the names the node declared.
@@ -397,11 +400,10 @@ Behaviour:
 
 ### 3.3 Media to the worker
 
-For each input MediaRef the bridge adds `url`, first match wins:
-1. `media.resolveUrl(ref)` if the store implements it and returns a URL;
-2. if `ref.uri` is itself `https://` or `http://`, `url = uri` (the store cannot read such refs,
-   so the loopback server could not serve them; the worker fetches the origin directly);
-3. otherwise a **loopback media server** the bridge starts lazily on `127.0.0.1:<random>`
+For each input media value the bridge adds `url`, first match wins (`ctx.media.url`):
+1. a `link` entry: its own URL (the worker fetches the origin directly);
+2. a `stored` entry whose blob store implements `resolveUrl`: that URL;
+3. otherwise (transient `data` entries included) a **loopback media server** the bridge starts lazily on `127.0.0.1:<random>`
    serving `GET /media/<token>`, where `token` is a random id mapped to the ref, valid
    (any number of reads) until the execute call settles.
 

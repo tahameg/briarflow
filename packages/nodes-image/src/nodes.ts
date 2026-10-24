@@ -3,7 +3,7 @@
  * stores the result as a new image (PNG by default) with its width and height in `meta`.
  */
 import { cfg, defineNode, NodeError, t, variant, type ExecContext, type MediaRef } from "@briarflow/core";
-import { blank, encodeGray, luma, readPixels, storeImage, storePixels, type OutputFormat, type Pixels } from "./pixels.js";
+import { blank, copyPixels, encodeGray, luma, readPixels, storeImage, storePixels, type OutputFormat, type Pixels } from "./pixels.js";
 
 const common = { pure: true, category: "Image", icon: "image", color: "lavender" } as const;
 
@@ -320,7 +320,7 @@ export const imageGrayscale = defineNode({
   inputs: { image: t.image() },
   outputs: { image: t.image() },
   run: async ({ inputs, config, ctx }) => {
-    const p = await readPixels(inputs.image, ctx);
+    const p = copyPixels(await readPixels(inputs.image, ctx));
     for (let i = 0; i < p.width * p.height; i++) {
       const g = luma(p, i);
       p.data[i * 4] = g;
@@ -341,7 +341,7 @@ export const imageInvert = defineNode({
   inputs: { image: t.image() },
   outputs: { image: t.image() },
   run: async ({ inputs, config, ctx }) => {
-    const p = await readPixels(inputs.image, ctx);
+    const p = copyPixels(await readPixels(inputs.image, ctx));
     for (let i = 0; i < p.data.length; i++) if (i % 4 !== 3) p.data[i] = 255 - p.data[i]!;
     return { image: await save(ctx, p, config, "inverted") };
   },

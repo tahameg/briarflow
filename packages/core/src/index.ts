@@ -109,11 +109,26 @@ export { mediaExtension, memberAt, memberPaths, readMember, typeMembers, writeMe
 export type { MemberPath, TypeMember, TypeResolver } from "./types/members.js";
 export { bindTypeVars, collectOneOf, collectTypeVars, joinTypes, meetTypes, substituteTypeVars } from "./types/generics.js";
 export type { BindTypeVarsResult, BindingConflict, GenericConnection, TypeBindings } from "./types/generics.js";
-export { MEDIA_FORMATS, MEDIA_URI_SCHEME, MIME_PATTERN, formatToMime, mediaIdFromUri, normalizeMime, validateMediaRef } from "./types/media.js";
+export {
+  MEDIA_FORMATS,
+  MEDIA_ID_PATTERN,
+  MEDIA_URI_SCHEME,
+  MIME_PATTERN,
+  checkMediaEntry,
+  formatToMime,
+  isMediaRef,
+  mediaIdFromUri,
+  mediaMetaProblems,
+  mimeMatchesKind,
+  normalizeMime,
+  validateMediaRef,
+} from "./types/media.js";
 
 // Values and JSON Schema
 export { emptyValue } from "./values/empty.js";
 export { normalizeValue, validateValue } from "./values/validate.js";
+export { findMedia, typeHasMedia } from "./values/media-walk.js";
+export type { FoundMedia } from "./values/media-walk.js";
 export type { NormalizeResult, ValueCheckOptions } from "./values/validate.js";
 export { flowSignatureSchema, toJsonSchema } from "./schema/json-schema.js";
 export type { FlowSignatureSchema, JsonSchema, JsonSchemaOptions } from "./schema/json-schema.js";
@@ -236,8 +251,15 @@ export type {
   Page,
   SaveContextOptions,
 } from "./interfaces/context-store.js";
-export { readMedia } from "./interfaces/media-store.js";
-export type { MediaStore, PutMediaInfo, ReadMediaOptions, StoredMedia } from "./interfaces/media-store.js";
+export { readAll } from "./interfaces/media-store.js";
+export type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "./interfaces/media-store.js";
+export { createMemoryMediaRegistry, mediaExists, normalizeMediaEntry, ownerMatches, ownerOf } from "./interfaces/media-registry.js";
+export type { MediaEntry, MediaOwner, MediaRegistry, MediaSource, MemoryMediaRegistryOptions, NewMediaEntry } from "./interfaces/media-registry.js";
+export { createMedia, mediaIdOf } from "./media/service.js";
+export type { Media, MediaBody, MediaOptions, MediaReadOptions, NodeMedia } from "./media/service.js";
+export { imageSize } from "./media/sniff.js";
+export { createMemoryLastRuns } from "./interfaces/last-runs.js";
+export type { LastRun, LastRunNode, LastRunStore } from "./interfaces/last-runs.js";
 export type { SecretResolver } from "./interfaces/secrets.js";
 export { assertNewSecret, createMemoryVault, secretNotFound, secretProblem, secretValueProblem } from "./interfaces/vault.js";
 export type { NewSecret, SecretInfo, SecretVault } from "./interfaces/vault.js";

@@ -180,7 +180,7 @@ export function typeInferenceChecks(): void {
           outputs: { image: t.image() },
           run({ inputs }) {
             expectTypeOf(inputs.prompt).toEqualTypeOf<string>();
-            return { image: { uri: "x", mime: "image/png" } };
+            return { image: { mediaId: "x" } };
           },
         }),
         best: variant({
@@ -190,7 +190,7 @@ export function typeInferenceChecks(): void {
           run({ inputs, config }) {
             expectTypeOf(inputs.negative).toEqualTypeOf<string | null>();
             expectTypeOf(config.steps).toEqualTypeOf<number>();
-            return { image: { uri: "x", mime: "image/png" }, seed: 1 };
+            return { image: { mediaId: "x" }, seed: 1 };
           },
         }),
         wrong: variant({

@@ -4,9 +4,10 @@
  * problems, outputs and run start / end. Click a row with a node to select it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MediaRef } from "@briarflow/core";
 import type { ConsoleKind, ConsoleLine } from "@briarflow/editor";
-import { useEditorState, useEditorStore, useMedia } from "../context.js";
-import { isMediaRef, mediaHref } from "../values.js";
+import { useEditorState, useEditorStore, useMedia, useMediaEntry } from "../context.js";
+import { formatBytes, isMediaRef, mediaHref } from "../values.js";
 
 /** Props of {@link ConsolePanel}. */
 export interface ConsolePanelProps {
@@ -120,30 +121,40 @@ function Row({ line, onSelect }: { line: ConsoleLine; onSelect: (() => void) | u
         {line.nodeType ? <span className="bf-console__type">{line.nodeType}</span> : null}
       </td>
       <td className="bf-console__code">{line.code ?? ""}</td>
-      <td className="bf-console__text">{line.kind === "output" ? <OutputCell line={line} /> : line.text}</td>
+      <td className="bf-console__text">{line.kind === "output" || line.value !== undefined ? <OutputCell line={line} /> : line.text}</td>
     </tr>
   );
 }
 
 function OutputCell({ line }: { line: ConsoleLine }) {
-  const { mediaUrl } = useMedia();
   const refs = isMediaRef(line.value) ? [line.value] : Array.isArray(line.value) ? line.value.filter(isMediaRef) : [];
   if (refs.length === 0) return <>{line.text}</>;
   return (
     <span className="bf-console__media">
-      {refs.map((ref, i) => {
-        const href = mediaHref(ref, mediaUrl);
-        if (!href) return <span key={i}>{ref.uri}</span>;
-        return ref.mime.startsWith("image/") ? (
-          <a key={i} href={href} target="_blank" rel="noreferrer">
-            <img src={href} alt={ref.meta?.filename ?? line.title} />
-          </a>
-        ) : (
-          <a key={i} href={href} target="_blank" rel="noreferrer">
-            {ref.meta?.filename ?? ref.mime}
-          </a>
-        );
-      })}
+      {line.kind === "print" ? <span className="bf-console__label">{line.text}</span> : null}
+      {refs.map((ref, i) => (
+        <ConsoleMedia key={i} mediaRef={ref} title={line.title} />
+      ))}
     </span>
+  );
+}
+
+function ConsoleMedia({ mediaRef, title }: { mediaRef: MediaRef; title: string }) {
+  const { mediaUrl } = useMedia();
+  const entry = useMediaEntry(mediaRef);
+  const href = mediaHref(mediaRef, mediaUrl);
+  if (!href) return <span>{mediaRef.mediaId}</span>;
+  const name = entry?.meta?.filename ?? entry?.mime ?? mediaRef.mediaId;
+  const { width, height } = entry?.meta ?? {};
+  const info = entry
+    ? [entry.mime, typeof width === "number" && typeof height === "number" ? `${width}×${height}` : undefined, entry.bytes === undefined ? undefined : formatBytes(entry.bytes)]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+  return (
+    <a href={href} target="_blank" rel="noreferrer" title={info}>
+      {!entry || entry.mime.startsWith("image/") ? <img src={href} alt={typeof name === "string" ? name : title} /> : name}
+      {info ? <span className="bf-console__media-info">{info}</span> : null}
+    </a>
   );
 }

@@ -186,9 +186,15 @@ describe("runs", () => {
 
     const res = await json(app, "POST", "/flows/flow_p/runs?wait=true", { inputs: { character: CHARACTER } });
     expect(res.status).toBe(200);
-    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { uri: string; mime: string } } };
+    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { mediaId: string } } };
     expect(result.status).toBe("succeeded");
-    expect(result.outputs.image.mime).toBe("image/svg+xml");
+    expect(Object.keys(result.outputs.image)).toEqual(["mediaId"]);
+    const entry = await app.request(`${BASE}/media/${result.outputs.image.mediaId}/entry`);
+    expect(await entry.json()).toMatchObject({ mime: "image/svg+xml", source: { kind: "data" }, owner: { runId: result.runId, flowId: "flow_p" } });
+
+    const last = (await (await app.request(`${BASE}/flows/flow_p/last-run`)).json()) as { lastRun: { runId: string; status: string; nodes: Record<string, { state: string; key?: string }> } };
+    expect(last.lastRun).toMatchObject({ runId: result.runId, status: "succeeded" });
+    expect(Object.values(last.lastRun.nodes).some((n) => n.state === "completed" && n.key !== undefined)).toBe(true);
 
     const run = await json(app, "GET", `/runs/${result.runId}`);
     expect(await run.json()).toMatchObject({ runId: result.runId, flowId: "flow_p", contextId: "ctx_portraits", status: "succeeded" });
@@ -208,7 +214,7 @@ describe("runs", () => {
     const nothing = await readEvents(await app.request(`${BASE}/runs/${result.runId}/events?after=${all.length - 1}`));
     expect(nothing.raw).toBe("");
 
-    const mediaId = result.outputs.image.uri.replace("briar-media://", "");
+    const mediaId = result.outputs.image.mediaId;
     const image = await app.request(`${BASE}/media/${mediaId}`);
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/svg+xml");
@@ -333,9 +339,10 @@ describe("media", () => {
       body: "hello",
     });
     expect(up.status).toBe(201);
-    const ref = (await up.json()) as { uri: string; mime: string; bytes: number };
+    const ref = (await up.json()) as { id: string; mime: string; bytes: number };
     expect(ref).toMatchObject({ mime: "text/plain", bytes: 5 });
-    const id = ref.uri.replace("briar-media://", "");
+    expect(ref).not.toHaveProperty("owner");
+    const id = ref.id;
     expect(up.headers.get("location")).toBe(`/api/v1/media/${id}`);
     const down = await app.request(`${BASE}/media/${id}`);
     expect(await down.text()).toBe("hello");
@@ -366,7 +373,25 @@ describe("media", () => {
     expect(bigStream.status).toBe(413);
 
     expect((await app.request(`${BASE}/media/m_missing`)).status).toBe(404);
+    expect((await app.request(`${BASE}/media/m_missing/entry`)).status).toBe(404);
     expect((await app.request(`${BASE}/media/bad%20id`)).status).toBe(400);
+  });
+
+  it("registers links and redirects downloads of them to the web", async () => {
+    const app = createBriarApp(briar);
+    const made = await json(app, "POST", "/media/links", { url: "https://cdn.example.com/cat.png", mime: "image/png", filename: "cat.png" });
+    expect(made.status).toBe(201);
+    const entry = (await made.json()) as { id: string; source: unknown; meta: unknown };
+    expect(entry).toMatchObject({ source: { kind: "link", url: "https://cdn.example.com/cat.png" }, meta: { filename: "cat.png" } });
+    const down = await app.request(`${BASE}/media/${entry.id}`);
+    expect(down.status).toBe(302);
+    expect(down.headers.get("location")).toBe("https://cdn.example.com/cat.png");
+    const bad = await json(app, "POST", "/media/links", { url: "ftp://x", mime: "" });
+    expect(bad.status).toBe(400);
+    expect((await errorOf(bad)).details).toEqual([
+      { path: "url", problem: "must be an http(s) URL" },
+      { path: "mime", problem: "must be a mime type like image/png" },
+    ]);
   });
 });
 

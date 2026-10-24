@@ -24,12 +24,13 @@ describe("package", () => {
 });
 
 describe("createEngine", () => {
-  const base = () => ({ catalog: createCatalog([probePack]), media: memoryMediaStore(), secrets: { get: async () => undefined } });
+  const base = () => ({ catalog: createCatalog([probePack]), secrets: { get: async () => undefined } });
 
-  it("needs catalog, media and secrets", () => {
+  it("needs catalog and secrets (media defaults to memory)", () => {
     const err = expectBriarError(() => createEngine({} as never), "engine.invalid_options");
-    expect(err.message).toBe("createEngine needs { catalog, media, secrets }.");
-    expectBriarError(() => createEngine({ ...base(), media: undefined } as never), "engine.invalid_options");
+    expect(err.message).toBe("createEngine needs { catalog, secrets }.");
+    expectBriarError(() => createEngine({ ...base(), secrets: undefined } as never), "engine.invalid_options");
+    expect(() => createEngine(base())).not.toThrow();
     expectBriarError(() => createEngine(undefined as never), "engine.invalid_options");
   });
 
@@ -261,7 +262,7 @@ describe("start sequence failures", () => {
       const result = await engine.run({ context: d, flowId: FLOW_ID, inputs: { img: { uri: "ftp://x/a.png", mime: "image/png" } } }).result;
       expect(result.error?.code).toBe("run.invalid_inputs");
       const diags = (result.error?.details as { diagnostics: { code: string; path: { valuePath?: string } }[] }).diagnostics;
-      expect(diags[0]?.code).toBe("media.invalid_uri");
+      expect(diags[0]?.code).toBe("media.invalid_ref");
       expect(diags[0]?.path.valuePath?.startsWith("inputs.img")).toBe(true);
     });
   });

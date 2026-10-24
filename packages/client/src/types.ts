@@ -94,6 +94,8 @@ export interface FlowInfo {
 export interface RunFlowOptions extends RequestOptions {
   /** Default true (server side). */
   useCache?: boolean;
+  /** Run every node again, even ones whose earlier result could be carried over. */
+  force?: boolean;
   /** Wait for the result (server answers with the result if it finishes within `waitMs`). */
   wait?: boolean;
   /** 1–300 000; server default 60 000. Only with `wait`. */

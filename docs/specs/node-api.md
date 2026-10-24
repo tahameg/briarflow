@@ -316,7 +316,7 @@ interface ExecContext {
   attempt: number;                     // 1-based
   progress(fraction: number, message?: string): void;
   log: Logger;                         // tagged with runId/nodeId
-  media: MediaStore;
+  media: NodeMedia;                    // put / link (transient, owned by the run), entry, read (media.md §4)
   secrets: {
     get(name: string): Promise<string>;              // only names listed in `secrets` (resolver / env)
     read(ref: SecretRef): Promise<string>;           // a vault secret the node was given (secrets.md)
@@ -383,8 +383,9 @@ Non-`NodeError` exceptions are wrapped as `node.failed` with the original messag
   (any error); the engine reports `node.cancelled` / `node.timeout`. Ignoring the signal is
   tolerated: the engine stops waiting after a grace period (runtime.md §4).
 - **Outputs.** Return an object with every output port. Optional outputs may be omitted
-  (become `null`). Media outputs: store bytes with `ctx.media.put(...)` and return the
-  `MediaRef`.
+  (become `null`). Media outputs: store bytes with `ctx.media.put(bytes, { mime, filename?,
+  meta? })` and return the `{ mediaId }` it gives. Read media inputs with
+  `ctx.media.read(inputs.image)` and their mime / size with `ctx.media.entry(inputs.image)`.
 
 ## 7. Packs and pack types
 
@@ -481,6 +482,8 @@ built-ins are labelled **"Input"** and **"Output"** (DECISIONS #36).
 | `briar.struct.break` | `typeId` | `value: S` | one per field | |
 | `briar.member.get` ("Get .path") | `type: cfg.type()`, `path: cfg.text()` | `value: <type>` | one, named after the last step, the member's type | `value.path` (types.md §12); offered from a dropped wire, not the palette |
 | `briar.member.set` ("Set .path") | same | `value: <type>`, `to: <member type>` | `value: <type>` | copy with the struct field replaced; only struct fields (types.md §12) |
+| `debug.print` ("Print") | — | `text: text`, `browserConsole: boolean` (false) | — | frontend node: the studio writes the text to its console |
+| `debug.image` ("View image") | — | `image: image`, `label: text?` | — | frontend node on the execution line: the studio shows the image on the node (double-click: viewer) and as a console line with mime, size and bytes; reading it makes the pure image nodes before it run |
 | `briar.constant` | `type: cfg.type()` | `value: <type>` (set as constant) | `value: <type>` | identity when wired |
 | `text.template` (title "Template builder") | `template: cfg.text({multiline:true})` | one port per distinct `{{name}}`, in order of first appearance: generic (synthetic type var `T1`, `T2`, … by order of first appearance) or `json` when any slot reads a field path of it (`{{user.address.city}}`, `{{items[0]}}`); `{{$(name)}}` reads a flow variable, else a global, and adds no port | `text: text` | `cache:false` (it reads variables). Values rendered with toText rules; a field path that does not exist → `NodeError("json.field_missing")`; `\{{` is a literal `{{`, single braces are plain text; bad slot → `PortError` `text.invalid_placeholder`, unclosed `{{` → `text.invalid_template`, unknown variable → `text.unknown_variable`. Variables are read at run start (like `ctx.variables`); use a Get variable node and a port for a value written earlier in the same run |
 | `text.join` | — | `items: list<text>`, `separator: text` (default `""`) | `text: text` | |
@@ -524,7 +527,9 @@ Pure, cached. Read PNG and JPEG inputs (other formats → `image.unsupported_for
 8-bit RGBA, store a new image (config `format: png | jpeg`, `quality` for JPEG; PNG drops the
 alpha channel when every pixel is opaque) with `meta.width/height`. Up to 64 MP
 (`image.invalid_size` beyond, or for sizes below 1×1). Pure JavaScript codecs (fast-png,
-jpeg-js); no native modules.
+jpeg-js); no native modules. Decoded pixels are kept in memory by media id (256 MB, least
+recently used dropped), and the PNGs the pack makes leave their pixels there, so a chain of
+image nodes decodes each image once.
 
 | Type | Variants / config | Inputs | Outputs | Notes |
 |---|---|---|---|---|

@@ -1,5 +1,6 @@
 /**
- * Extension interfaces and helpers: cursors, readMedia, logger (phase-1.md §5.11; storage.md).
+ * Extension interfaces and helpers: cursors, the blob-store fixture, logger (phase-1.md §5.11; storage.md).
+ * The media registry and loader are tested in media.test.ts.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -8,7 +9,6 @@ import {
   decodeCursor,
   encodeCursor,
   noopLogger,
-  readMedia,
   type CursorPosition,
 } from "@briarflow/core";
 import { expectBriarError, expectBriarRejection, memoryMediaStore, streamOf, utf8 } from "@briarflow/testing";
@@ -60,86 +60,6 @@ describe("encodeCursor / decodeCursor", () => {
 
   it("compares normalized (trimmed) searches", () => {
     expect(decodeCursor(encodeCursor(position), "  mark ")).toEqual(position);
-  });
-});
-
-describe("readMedia", () => {
-  async function setup() {
-    const media = memoryMediaStore();
-    const ref = await media.put(utf8("hello"), { mime: "text/plain" });
-    return { media, ref };
-  }
-
-  it("reads store refs, briar-media uris and bare ids", async () => {
-    const { media, ref } = await setup();
-    const id = ref.uri.slice("briar-media://".length);
-    for (const input of [ref, ref.uri, id]) {
-      expect(new TextDecoder().decode(await readMedia(input, { media }))).toBe("hello");
-    }
-  });
-
-  it("reads streamed puts byte-exactly", async () => {
-    const media = memoryMediaStore();
-    const bytes = new Uint8Array(1000).map((_v, i) => i % 256);
-    const ref = await media.put(streamOf(bytes, 7), { mime: "application/octet-stream" });
-    expect(await readMedia(ref, { media })).toEqual(bytes);
-  });
-
-  it("https uses the injected fetch with the signal", async () => {
-    const { media } = await setup();
-    const controller = new AbortController();
-    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(utf8("remote"), { status: 200 }));
-    const bytes = await readMedia({ uri: "https://cdn.example.com/a.txt", mime: "text/plain" }, {
-      media,
-      fetch: fetchMock as unknown as typeof fetch,
-      signal: controller.signal,
-    });
-    expect(new TextDecoder().decode(bytes)).toBe("remote");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("https://cdn.example.com/a.txt");
-    expect(fetchMock.mock.calls[0]![1]?.signal).toBe(controller.signal);
-  });
-
-  it("http uris use fetch as well", async () => {
-    const { media } = await setup();
-    const fetchMock = vi.fn(async () => new Response(utf8("x")));
-    await readMedia("http://localhost:1/a", { media, fetch: fetchMock as unknown as typeof fetch });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("unknown store items → media.not_found", async () => {
-    const { media } = await setup();
-    await expectBriarRejection(readMedia("briar-media://m_ghost", { media }), "media.not_found", MediaError);
-    await expectBriarRejection(readMedia("m_ghost", { media }), "media.not_found", MediaError);
-  });
-
-  it("a 404 → media.not_found", async () => {
-    const { media } = await setup();
-    const fetchMock = vi.fn(async () => new Response("nope", { status: 404 }));
-    await expectBriarRejection(
-      readMedia("https://x.test/a.png", { media, fetch: fetchMock as unknown as typeof fetch }),
-      "media.not_found",
-      MediaError,
-    );
-  });
-
-  it("maxBytes → media.too_large (store and fetch)", async () => {
-    const { media, ref } = await setup();
-    await expectBriarRejection(readMedia(ref, { media, maxBytes: 4 }), "media.too_large", MediaError);
-    expect(await readMedia(ref, { media, maxBytes: 5 })).toHaveLength(5);
-    const fetchMock = vi.fn(async () => new Response(utf8("123456")));
-    await expectBriarRejection(
-      readMedia("https://x.test/a", { media, fetch: fetchMock as unknown as typeof fetch, maxBytes: 5 }),
-      "media.too_large",
-      MediaError,
-    );
-  });
-
-  it.each(["ftp://x/a.png", "file:///etc/passwd", "data:text/plain,hi", "not a uri"])("%s → media.invalid_uri", async (uri) => {
-    const { media } = await setup();
-    const fetchMock = vi.fn(async () => new Response(utf8("x")));
-    await expectBriarRejection(readMedia(uri, { media, fetch: fetchMock as unknown as typeof fetch }), "media.invalid_uri", MediaError);
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -2,7 +2,7 @@
  * Decoded images: RGBA pixels, 8 bits per channel. PNG and JPEG are read and written with pure
  * JavaScript codecs; other formats are rejected with `image.unsupported_format`.
  */
-import { NodeError, readMedia, type ExecContext, type MediaRef } from "@briarflow/core";
+import { NodeError, type ExecContext, type MediaRef } from "@briarflow/core";
 import { convertIndexedToRgb, decode as decodePng, encode as encodePng } from "fast-png";
 import jpeg from "jpeg-js";
 
@@ -81,6 +81,11 @@ function fromPng(bytes: Uint8Array): Pixels {
   return { width: png.width, height: png.height, data: out };
 }
 
+/** A copy to change: pixels from {@link readPixels} may be shared. */
+export function copyPixels(p: Pixels): Pixels {
+  return { width: p.width, height: p.height, data: p.data.slice() };
+}
+
 /** Is every pixel opaque? */
 export function isOpaque(p: Pixels): boolean {
   for (let i = 3; i < p.data.length; i += 4) if (p.data[i] !== 255) return false;
@@ -110,10 +115,43 @@ export function encodeGray(width: number, height: number, values: Uint8Array): U
   return encodePng({ width, height, data: values, channels: 1, depth: 8 });
 }
 
-/** Reads and decodes an image input. */
+/**
+ * Decoded images by media id, most recently used last. Media entries never change, so a decoded
+ * copy stays right; images the pack makes go in here too, so the next image node skips decoding.
+ */
+const decoded = new Map<string, Pixels>();
+let decodedBytes = 0;
+/** Bytes of decoded pixels kept across runs. */
+export const DECODED_CACHE_BYTES = 256 * 1024 * 1024;
+
+function remember(id: string, p: Pixels): void {
+  const old = decoded.get(id);
+  if (old) {
+    decoded.delete(id);
+    decodedBytes -= old.data.byteLength;
+  }
+  if (p.data.byteLength > DECODED_CACHE_BYTES / 4) return;
+  decoded.set(id, p);
+  decodedBytes += p.data.byteLength;
+  for (const [key, value] of decoded) {
+    if (decodedBytes <= DECODED_CACHE_BYTES) break;
+    decoded.delete(key);
+    decodedBytes -= value.data.byteLength;
+  }
+}
+
+/** Reads and decodes an image input. Treat the pixels as read-only: they may be shared. */
 export async function readPixels(ref: MediaRef, ctx: ExecContext): Promise<Pixels> {
-  const bytes = await readMedia(ref, { media: ctx.media, fetch: ctx.fetch, signal: ctx.signal });
-  return decodeImage(bytes, ref.mime);
+  const hit = decoded.get(ref.mediaId);
+  if (hit) {
+    decoded.delete(ref.mediaId);
+    decoded.set(ref.mediaId, hit);
+    return hit;
+  }
+  const [entry, bytes] = await Promise.all([ctx.media.entry(ref), ctx.media.read(ref)]);
+  const p = decodeImage(bytes, entry.mime);
+  remember(ref.mediaId, p);
+  return p;
 }
 
 /** Stores encoded bytes as an image with its size in `meta`. */
@@ -121,10 +159,12 @@ export function storeImage(ctx: ExecContext, bytes: Uint8Array, mime: string, wi
   return ctx.media.put(bytes, { mime, filename: `${name}.${mime === "image/jpeg" ? "jpg" : "png"}`, meta: { width, height } });
 }
 
-/** Encodes and stores pixels. */
-export function storePixels(ctx: ExecContext, p: Pixels, format: OutputFormat, quality: number, name: string): Promise<MediaRef> {
+/** Encodes and stores pixels. PNG output keeps the pixels decoded for the next node; JPEG changes them. */
+export async function storePixels(ctx: ExecContext, p: Pixels, format: OutputFormat, quality: number, name: string): Promise<MediaRef> {
   const { bytes, mime } = encodeImage(p, format, quality);
-  return storeImage(ctx, bytes, mime, p.width, p.height, name);
+  const ref = await storeImage(ctx, bytes, mime, p.width, p.height, name);
+  if (format === "png") remember(ref.mediaId, p);
+  return ref;
 }
 
 /** Brightness (Rec. 601 luma) of pixel `i`, 0–255. Gray images give their gray value. */

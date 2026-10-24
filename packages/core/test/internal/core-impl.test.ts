@@ -11,7 +11,6 @@ import {
   deserializeContext,
   encodeCursor,
   flowSignatureSchema,
-  readMedia,
   resolveFlowPorts,
   serializeContext,
   t,
@@ -179,34 +178,13 @@ describe("validation", () => {
   void briarPack;
 });
 
-describe("cursors and readMedia", () => {
+describe("cursors", () => {
   it("round-trips cursors", () => {
     const c = encodeCursor({ updatedAt: "2026-01-01T00:00:00.000Z", id: "ctx_ü", search: "mark" });
     expect(c).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(decodeCursor(c, " mark ")).toEqual({ updatedAt: "2026-01-01T00:00:00.000Z", id: "ctx_ü", search: "mark" });
     expect(() => decodeCursor(c, "other")).toThrow(expect.objectContaining({ code: "store.invalid_cursor" }));
     expect(() => decodeCursor("!!")).toThrow(expect.objectContaining({ code: "store.invalid_cursor" }));
-  });
-
-  const media: MediaStore = {
-    kind: "test",
-    put: async () => ({ uri: "briar-media://m_1", mime: "text/plain" }),
-    get: async (ref) =>
-      (typeof ref === "string" ? ref : ref.uri).endsWith("m_1")
-        ? { ref: { uri: "briar-media://m_1", mime: "text/plain" }, body: new Response("hello").body! }
-        : undefined,
-    delete: async () => false,
-  };
-
-  it("reads from the store and from http", async () => {
-    expect(new TextDecoder().decode(await readMedia("m_1", { media }))).toBe("hello");
-    await expect(readMedia("briar-media://m_2", { media })).rejects.toMatchObject({ code: "media.not_found" });
-    await expect(readMedia("m_1", { media, maxBytes: 2 })).rejects.toMatchObject({ code: "media.too_large", details: { maxBytes: 2 } });
-    const fetch = (async (url: string) => new Response(url.includes("missing") ? "" : "x", { status: url.includes("missing") ? 404 : url.includes("err") ? 500 : 200 })) as typeof globalThis.fetch;
-    expect(await readMedia("https://a.test/ok", { media, fetch })).toEqual(new Uint8Array([120]));
-    await expect(readMedia("https://a.test/missing", { media, fetch })).rejects.toMatchObject({ code: "media.not_found" });
-    await expect(readMedia("https://a.test/err", { media, fetch })).rejects.toMatchObject({ code: "media.fetch_failed", details: { status: 500 } });
-    await expect(readMedia("ftp://x", { media })).rejects.toMatchObject({ code: "media.invalid_uri" });
   });
 });
 

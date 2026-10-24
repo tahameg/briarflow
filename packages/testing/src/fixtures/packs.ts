@@ -25,6 +25,9 @@ import {
   type UnknownValue,
 } from "@briarflow/core";
 
+/** A 1×1 PNG (what `kit.imageSource` outputs). */
+const KIT_PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="), (c) => c.charCodeAt(0));
+
 function memo<T>(create: () => T): () => T {
   let cached: { value: T } | undefined;
   return () => {
@@ -301,7 +304,7 @@ function createKitPack(): NodePack {
       type: "kit.imageSource",
       pure: true,
       outputs: { image: t.image() },
-      run: () => ({ image: { uri: "briar-media://m_kit", mime: "image/png" } }),
+      run: async ({ ctx }) => ({ image: await ctx.media.put(KIT_PNG, { mime: "image/png", filename: "kit.png" }) }),
     }),
     defineNode({
       type: "kit.passText",

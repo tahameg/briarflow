@@ -4,7 +4,7 @@
  */
 import type { Command } from "@briarflow/authoring";
 import type { BriarClient, NodeTypesInfo } from "@briarflow/client";
-import type { ContextDocument, Diagnostic, Run } from "@briarflow/core";
+import type { ContextDocument, Diagnostic, LastRun, Run } from "@briarflow/core";
 
 /** Body of {@link EditorBackend.apply}. */
 export interface BackendApplyInput {
@@ -25,6 +25,8 @@ export interface BackendApplyResult {
 /** Options of {@link EditorBackend.run}. */
 export interface BackendRunOptions {
   useCache?: boolean;
+  /** Run every node again: nothing is carried over from the last run. */
+  force?: boolean;
   signal?: AbortSignal;
 }
 
@@ -52,6 +54,8 @@ export interface EditorBackend {
   nodeTypes(signal?: AbortSignal): Promise<NodeTypesInfo>;
   /** Starts a run of a flow on the backend. */
   run(flowId: string, inputs: Record<string, unknown>, options?: BackendRunOptions): Promise<Run>;
+  /** The flow's last run as the backend kept it (media.md §5), so its results show after a reload. */
+  lastRun?(flowId: string, signal?: AbortSignal): Promise<LastRun | undefined>;
 }
 
 /**
@@ -74,8 +78,10 @@ export function clientBackend(client: BriarClient): EditorBackend {
     run: (flowId, inputs, options = {}) =>
       client.flows.run(flowId, inputs, {
         ...(options.useCache === undefined ? {} : { useCache: options.useCache }),
+        ...(options.force ? { force: true } : {}),
         ...sig(options.signal),
       }),
+    lastRun: (flowId, signal) => client.flows.lastRun(flowId, sig(signal)),
   };
 }
 

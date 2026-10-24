@@ -29,7 +29,9 @@ describe("ExecContext", () => {
     expect(seen).toMatchObject({ runId: "run_x", flowId: FLOW_ID, nodeId: "n_ctx", attempt: 1 });
     expect(seen["signal"]).toBeInstanceOf(AbortSignal);
     expect((seen["signal"] as AbortSignal).aborted).toBe(false);
-    expect(seen["media"]).toBe(media);
+    // ctx.media is the engine media scoped to the node: what it puts belongs to the run.
+    expect(Object.keys(seen["media"] as object).sort()).toEqual(["entry", "link", "put", "read", "url"]);
+    expect(media).toBeDefined();
     expect(seen["resolveType"]).toEqual({ kind: "struct", id: "ty_char", name: "Character", fields: [{ name: "name", type: ir.text() }] });
     expect((seen["node"] as { id: string }).id).toBe("n_ctx");
   });
@@ -181,10 +183,8 @@ describe("phase 3 exit flow", () => {
     const reply = `Mock reply ${hash.slice(0, 8)}: ${prompt}`;
     expect(result.outputs?.["reply"]).toBe(reply);
     const image = result.outputs?.["portrait"] as MediaRef;
-    expect(image).toMatchObject({ mime: "image/svg+xml", meta: { width: 64, height: 32 } });
-    const stored = await media.get(image);
-    expect(stored).toBeDefined();
-    const svg = new TextDecoder().decode(await readStream(stored!.body));
+    expect(await media.entry(image)).toMatchObject({ mime: "image/svg+xml", meta: { width: 64, height: 32 } });
+    const svg = new TextDecoder().decode(await media.read(image));
     expect(svg.startsWith("<svg")).toBe(true);
     expect(svg).toContain(reply.slice(0, 20));
     // Second run is fully cached and deterministic.

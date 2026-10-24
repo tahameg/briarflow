@@ -4,10 +4,12 @@
 import {
   BriarError,
   createIdGenerator,
+  createMedia,
+  createMemoryMediaRegistry,
   noopLogger,
   type ContextDocument,
   type Logger,
-  type MediaStore,
+  type Media,
   type NodeCatalog,
   type Run,
   type SecretResolver,
@@ -15,13 +17,14 @@ import {
   type SettingsStore,
 } from "@briarflow/core";
 import { createMemoryCache, type RunCache } from "./cache.js";
-import { LocalRun, type RunServices } from "./run.js";
+import { LocalRun, type RunReuse, type RunServices } from "./run.js";
 import { Scheduler } from "./scheduler.js";
 
 /** Options of {@link createEngine}. */
 export interface EngineOptions {
   catalog: NodeCatalog;
-  media: MediaStore;
+  /** Media registry and loader (`createMedia`). Default: a registry in memory. */
+  media?: Media;
   secrets: SecretResolver;
   /** Default: no-op. */
   logger?: Logger;
@@ -55,8 +58,15 @@ export interface RunOptions {
   inputs?: Record<string, unknown>;
   /** Aborting it cancels the run. */
   signal?: AbortSignal;
-  /** Default `true`; `false` neither reads nor writes the cache. */
+  /** Default `true`; `false` neither reads nor writes the cache, and carries nothing over. */
   useCache?: boolean;
+  /**
+   * Run every node again, even when the cache or `reuse` has a result for the same inputs
+   * (runtime.md §6a). New results are still cached. Default `false`.
+   */
+  force?: boolean;
+  /** Results of an earlier run of the flow to carry over (the facade passes the flow's last run). */
+  reuse?: RunReuse;
   /** Whole-run timeout, counted from leaving `queued`. Default none. */
   timeoutMs?: number;
   /**
@@ -99,8 +109,8 @@ function positiveInt(name: string, value: number | undefined, fallback: number):
  * ```
  */
 export function createEngine(options: EngineOptions): Engine {
-  if (!options || typeof options !== "object" || !options.catalog || !options.media || !options.secrets) {
-    throw new BriarError("engine.invalid_options", "createEngine needs { catalog, media, secrets }.");
+  if (!options || typeof options !== "object" || !options.catalog || !options.secrets) {
+    throw new BriarError("engine.invalid_options", "createEngine needs { catalog, secrets }.");
   }
   const concurrency = positiveInt("concurrency", options.concurrency, 8);
   const maxConcurrentRuns = positiveInt("maxConcurrentRuns", options.maxConcurrentRuns, 16);
@@ -136,7 +146,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   const services: RunServices = {
     catalog: options.catalog,
-    media: options.media,
+    media: options.media ?? createMedia({ registry: createMemoryMediaRegistry() }),
     secrets: options.secrets,
     ...(options.vault ? { vault: options.vault } : {}),
     ...(options.settings ? { settings: options.settings } : {}),
@@ -179,6 +189,8 @@ export function createEngine(options: EngineOptions): Engine {
         flowId,
         inputs: runOptions.inputs,
         useCache: runOptions.useCache !== false,
+        force: runOptions.force === true,
+        reuse: runOptions.reuse,
         timeoutMs: runOptions.timeoutMs,
         signal: runOptions.signal,
       });

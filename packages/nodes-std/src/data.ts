@@ -128,9 +128,9 @@ export const memberGet = defineNode({
     const name = m.path[m.path.length - 1]!;
     return { inputs: { value: t.fromRef(config.type) }, outputs: { [name]: portOf(m.type, m.titles[m.titles.length - 1]!, m.description) } };
   },
-  run: ({ inputs, config, ctx }) => {
+  run: async ({ inputs, config, ctx }) => {
     const path = pathOf(config.path);
-    const out: Record<string, UnknownValue> = { [path[path.length - 1]!]: readMember(inputs.value, config.type, path, (id) => ctx.resolveType(id)) as UnknownValue };
+    const out: Record<string, UnknownValue> = { [path[path.length - 1]!]: (await readMember(inputs.value, config.type, path, (id) => ctx.resolveType(id), (ref) => ctx.media.entry(ref))) as UnknownValue };
     return out;
   },
 });

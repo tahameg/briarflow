@@ -3,7 +3,7 @@
 Status: draft v1 (phase 0). Owner: ux-designer. Implemented in `@briarflow/core` (phase 1).
 
 This spec makes ARCHITECTURE §4.1–4.5 precise: shorthand grammar, identifiers, scopes,
-assignability, generics, constraints, MediaRef validation, JSON Schema mapping, diagnostics.
+assignability, generics, constraints, media values, JSON Schema mapping, diagnostics.
 
 ## Deviations from ARCHITECTURE.md
 
@@ -342,7 +342,7 @@ interface ValueCheckOptions {
 | boolean | `true`/`false` | as is |
 | json | any JSON value: object, array (also at the root), string, finite number, boolean, `null` | as is |
 | secret | a secret name (`^[A-Za-z_][A-Za-z0-9_.-]{0,63}$`) | as is |
-| media | MediaRef object (§8) | as is |
+| media | `{ mediaId }` (§8) | as is |
 | enum | string equal to one member `value` (case-sensitive) | as is |
 | struct | object; no unknown keys; every non-optional field without default present | every field present; omitted optional → `null`; omitted defaulted → default |
 | list | array | element-wise |
@@ -374,24 +374,26 @@ Unknown field: ``inputs.character.nickname is not a field of Character. Known fi
 Missing field: ``inputs.character.name is required``.
 Enum: ``inputs.character.style must be one of anime, realistic, pixel (got "Anime")``.
 
-## 8. MediaRef validation
+## 8. Media values
+
+Since 2026-10-25 a media value is the id of a media registry entry (docs/specs/media.md):
 
 ```ts
-interface MediaRef { uri: string; mime: string; bytes?: number; hash?: string; meta?: {...} }
+interface MediaRef { mediaId: string }
 ```
 
-| Field | Rule | Code on failure |
-|---|---|---|
-| `uri` | `briar-media://<id>` with id `^[A-Za-z0-9_-]{1,128}$`, or an absolute `https://` URL, or `http://` URL (allowed by core; servers may refuse) | `media.invalid_uri` |
-| `mime` | `^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$` (lowercase, no parameters) | `media.invalid_mime` |
-| mime vs primitive | `image` → `image/*`; `video` → `video/*`; `audio` → `audio/*`; `model3d` → `model/*` or `application/octet-stream`; `file` → any | `media.kind_mismatch` |
-| `bytes` | safe integer ≥ 0 | `media.invalid_ref` |
-| `hash` | `^[0-9a-f]{64}$` (sha-256, lowercase hex) | `media.invalid_ref` |
-| `meta` | object; `width`,`height` positive ints; `durationSec` ≥ 0; `fps` > 0; other keys free (JSON) | `media.invalid_ref` |
-| other top-level keys | not allowed | `media.invalid_ref` |
+| Rule | Code on failure |
+|---|---|
+| an object with exactly the key `mediaId` | `media.invalid_ref` |
+| `mediaId` matches `^[A-Za-z0-9_-]{1,128}$` | `media.invalid_ref` |
 
-Core never fetches media to validate it. `meta.filename` is the conventional place for an
-original file name.
+Validation checks the shape only: core never looks entries up while validating documents or
+inputs. The entry's mime against the primitive (`media.kind_mismatch`: `image` → `image/*`,
+`video` → `video/*`, `audio` → `audio/*`, `model3d` → `model/*` or `application/octet-stream`,
+`file` → any) and the §6 constraints (`value.invalid`, skipped when the entry does not know the
+size, dimensions or duration) are checked by the engine when a node gets the media
+(`checkMediaEntry`, media.md §4). The old `{ uri, mime, … }` shape fails with a message that
+says to upload the file again.
 
 ## 9. JSON Schema mapping (`toJsonSchema`)
 
@@ -405,7 +407,7 @@ Target: JSON Schema draft 2020-12. Output is one schema with `$defs` for named t
 | boolean | `{"type":"boolean"}` |
 | json | `{}` (any value) |
 | secret | `{"type":"string","minLength":1}` (the name) |
-| media primitive | `{"$ref":"#/$defs/MediaRef"}` combined via `allOf` with `{"properties":{"mime":{"pattern":"^image/"}}}` (or the `enum` of mimes when `formats` is set) |
+| media primitive | `{"$ref":"#/$defs/MediaRef", "x-briar-media": "image"}` (plus `"x-briar-formats": [mimes]` when `formats` is set; strict mode: the `$ref` alone). `MediaRef` = `{ mediaId }` (§8); mime and formats are checked when the media is read |
 | struct `X` | `{"$ref":"#/$defs/X"}`; def: `{"type":"object","title":"X","description":…,"properties":{…},"required":[…],"additionalProperties":false}` |
 | enum `E` | `{"$ref":"#/$defs/E"}`; def: `{"type":"string","enum":["a","b"],"title":"E"}` (labels in `x-briar-labels`) |
 | list | `{"type":"array","items":…,"minItems":…,"maxItems":…}` |
@@ -417,8 +419,7 @@ Target: JSON Schema draft 2020-12. Output is one schema with `$defs` for named t
 - Option `{ strict: true }` (for LLM structured output): every field listed in `required`;
   **drops** every `default` and every `pattern` — including the mime `pattern` on media
   primitives — and no `format` keywords; optional stays `anyOf [..., null]`; the `MediaRef`
-  def is reduced to `{uri, mime}` (both required, `additionalProperties: false`)
-  (DECISIONS #37).
+  def is `{ mediaId }` without its pattern (DECISIONS #37).
 - Enum member labels go to the non-standard keyword `x-briar-labels`. Validators in strict
   mode (Ajv's default) reject unknown keywords: use Ajv with `strict: false`, or register the
   keyword.
@@ -511,17 +512,19 @@ up to 3 steps; a struct is not entered again inside itself).
 | Type | Members | Writable |
 |---|---|---|
 | struct | its fields, with their types | yes (Set member returns a copy with the field replaced) |
-| `image` | `url: text` (the uri), `mime: text`, `extension: text` (from the file name, else the mime type), `name: text?` (`meta.filename`), `size: int?` (bytes), `width: int?`, `height: int?` | no |
+| `image` | `id: text` (the media id), `mime: text`, `extension: text` (from the file name, else the mime type), `name: text?` (`meta.filename`), `size: int?` (bytes), `url: text?` (the web address of a link entry; none for media Briarflow keeps), `width: int?`, `height: int?` | no |
 | `video` | as image, plus `duration: float?` (seconds), `fps: float?` | no |
-| `audio` | url, mime, extension, name, size, `duration: float?` | no |
-| `file`, `model3d` | url, mime, extension, name, size | no |
+| `audio` | id, mime, extension, name, size, url, `duration: float?` | no |
+| `file`, `model3d` | id, mime, extension, name, size, url | no |
 | `error` | `code: text`, `message: text`, `node: text?`, `nodeId: text?` | no |
 | `text`, `list<T>` | `length: int` (text: code points) | no |
 | `T?` | the members of `T`, each optional (`none` when the value is none) | no |
 | others (`int`, `float`, `boolean`, `json`, `secret`, enums) | none | — |
 
-- A path is writable when every step is a struct field. Media metadata is read-only: the bytes
-  belong to the media store, and image processing nodes make new images instead.
+- A path is writable when every step is a struct field. Media members are read-only and are
+  read from the media's registry entry (`readMember(…, entryOf)`; Get member uses
+  `ctx.media.entry`, so a removed entry fails with `media.not_found`). The bytes belong to the
+  registry; image processing nodes make new images instead.
 - Reading a missing step (a `none` value, an absent field) gives `none`; an absent struct field
   with a default gives the default.
 - Both nodes are pure. Config `{ type: TypeRef, path: "a.b" }`; Get member has input `value`

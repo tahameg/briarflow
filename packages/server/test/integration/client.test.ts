@@ -145,10 +145,12 @@ describe("client ⇄ server", () => {
     expect(result.status).toBe("succeeded");
     expect((await client.runs.get(run.id)).result).toEqual(result);
 
-    const image = result.outputs?.["image"] as { uri: string; mime: string; bytes: number };
-    const blob = await client.media.download(image.uri.replace("briar-media://", ""));
-    expect(blob.size).toBe(image.bytes);
-    expect(blob.type).toBe(image.mime);
+    const image = result.outputs?.["image"] as { mediaId: string };
+    const entry = await client.media.entry(image.mediaId);
+    const blob = await client.media.download(image.mediaId);
+    expect(blob.size).toBe(entry.bytes);
+    expect(blob.type).toBe(entry.mime);
+    expect((await client.flows.lastRun("flow_p"))?.runId).toBe(run.id);
   });
 
   it("waits for a result, rejects invalid inputs and cancels a running flow", async () => {
@@ -165,10 +167,11 @@ describe("client ⇄ server", () => {
 
   it("uploads and downloads media; lists node types with revalidation", async () => {
     const bytes = new TextEncoder().encode("hello media");
-    const ref = await client.media.upload(bytes, { mime: "text/plain", filename: "hello.txt" });
-    expect(ref).toMatchObject({ mime: "text/plain", bytes: bytes.length });
-    const blob = await client.media.download(ref.uri.replace("briar-media://", ""));
+    const entry = await client.media.upload(bytes, { mime: "text/plain", filename: "hello.txt" });
+    expect(entry).toMatchObject({ mime: "text/plain", bytes: bytes.length, meta: { filename: "hello.txt" } });
+    const blob = await client.media.download(entry.id);
     expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
+    expect(await client.media.entry(entry.id)).toEqual(entry);
 
     const first = await client.nodeTypes.list();
     expect(first.nodes.some((n) => n.type === "mock.image")).toBe(true);

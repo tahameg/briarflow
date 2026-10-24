@@ -117,11 +117,12 @@ if (run.status !== "succeeded") fail(`run ${run.status}`, run.result?.error);
 const { description, portrait } = run.result.outputs;
 console.log(`✓ run succeeded; description: ${JSON.stringify(String(description).slice(0, 80))}…`);
 
-const mediaId = String(portrait?.uri ?? "").replace(/^briar-media:\/\//, "");
+const mediaId = String(portrait?.mediaId ?? "");
+const entry = await call("GET", `/media/${mediaId}/entry`, undefined, [200]);
 const image = await fetch(`${api}/media/${mediaId}`);
 if (!image.ok) fail(`GET /media/${mediaId} answered ${image.status}`);
 const bytes = new Uint8Array(await image.arrayBuffer());
-if (bytes.length === 0 || bytes.length !== portrait.bytes) fail(`image size ${bytes.length} does not match the ref (${portrait.bytes})`);
+if (bytes.length === 0 || bytes.length !== entry.bytes) fail(`image size ${bytes.length} does not match the entry (${entry.bytes})`);
 console.log(`✓ downloaded portrait ${mediaId.slice(0, 12)}… (${image.headers.get("content-type")}, ${bytes.length} bytes)`);
 
 if (keep) {

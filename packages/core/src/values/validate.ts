@@ -5,7 +5,7 @@ import type { Diagnostic, DiagnosticPath } from "../validation/diagnostic.js";
 import type { MediaPrimitiveName, PrimitiveTypeRef, TypeRef } from "../types/ir.js";
 import { MEDIA_PRIMITIVE_NAMES } from "../types/ir.js";
 import { compilePattern } from "../types/constraints.js";
-import { describe, formatToMime, validateMediaRef } from "../types/media.js";
+import { describe, validateMediaRef } from "../types/media.js";
 import type { TypeScope } from "../types/scope.js";
 import { cloneJson } from "../util/json.js";
 import { isValidSecretName } from "../util/names.js";
@@ -251,46 +251,14 @@ class Checker {
         return value;
       }
       default:
-        return this.media(value, type.name, c, path);
+        return this.media(value, type.name, path);
     }
   }
 
-  private media(value: unknown, kind: MediaPrimitiveName, c: Record<string, unknown> | undefined, path: string): unknown {
+  /** Shape only: the entry's mime and the constraints are checked when a node reads it (media.md §4). */
+  private media(value: unknown, kind: MediaPrimitiveName, path: string): unknown {
     if (!MEDIA_PRIMITIVE_NAMES.includes(kind)) return value;
-    const problems = validateMediaRef(value, kind, path);
-    for (const p of problems) this.diagnostics.push({ ...p, path: { ...this.options.at, ...p.path } });
-    if (problems.length > 0 || !c) return value;
-    const ref = value as { mime: string; bytes?: number; meta?: Record<string, unknown> };
-    const formats = c["formats"];
-    if (Array.isArray(formats) && formats.length > 0) {
-      const mimes = formats.map((f) => formatToMime(String(f)));
-      if (!mimes.includes(ref.mime.toLowerCase())) {
-        this.invalid(path, `must be one of the formats ${formats.join(", ")} (got ${ref.mime})`);
-      }
-    }
-    const maxBytes = c["maxBytes"];
-    if (typeof maxBytes === "number" && typeof ref.bytes === "number" && ref.bytes > maxBytes) {
-      this.invalid(path, `must be at most ${maxBytes} bytes`);
-    }
-    const meta = ref.meta ?? {};
-    const width = meta["width"];
-    const height = meta["height"];
-    const dims: [string, unknown, (n: number) => string, boolean][] = [
-      ["minWidth", width, (n) => `must be at least ${n} px wide`, true],
-      ["maxWidth", width, (n) => `must be at most ${n} px wide`, false],
-      ["minHeight", height, (n) => `must be at least ${n} px tall`, true],
-      ["maxHeight", height, (n) => `must be at most ${n} px tall`, false],
-    ];
-    for (const [key, actual, msg, isMin] of dims) {
-      const bound = c[key];
-      if (typeof bound !== "number" || typeof actual !== "number") continue;
-      if (isMin ? actual < bound : actual > bound) this.invalid(path, msg(bound));
-    }
-    const maxDuration = c["maxDurationSec"];
-    const duration = meta["durationSec"];
-    if (typeof maxDuration === "number" && typeof duration === "number" && duration > maxDuration) {
-      this.invalid(path, `must be at most ${maxDuration} seconds long`);
-    }
+    for (const p of validateMediaRef(value, kind, path)) this.diagnostics.push({ ...p, path: { ...this.options.at, ...p.path } });
     return value;
   }
 }

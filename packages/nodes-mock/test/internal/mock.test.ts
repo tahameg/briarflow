@@ -22,15 +22,16 @@ function harness(attempt = 1, types: TypeDecl[] = []): Harness {
     progress: (f: number, m?: string) => progress.push([f, m]),
     log: noopLogger,
     media: {
-      kind: "test",
-      put: async (data: Uint8Array | ReadableStream<Uint8Array>, info: { mime: string; meta?: Record<string, unknown> }) => {
-        stored.push({ bytes: data as Uint8Array, mime: info.mime, ...(info.meta ? { meta: info.meta } : {}) });
-        const ref: MediaRef = { uri: `briar-media://m_${stored.length}`, mime: info.mime };
-        if (info.meta) ref.meta = info.meta;
-        return ref;
+      put: async (data: Uint8Array, info: { mime: string; meta?: Record<string, unknown> }) => {
+        stored.push({ bytes: data, mime: info.mime, ...(info.meta ? { meta: info.meta } : {}) });
+        return { mediaId: `med_${stored.length}` };
       },
-      get: async () => undefined,
-      delete: async () => false,
+      link: async () => ({ mediaId: "med_link" }),
+      entry: async () => {
+        throw new Error("not in this harness");
+      },
+      read: async () => new Uint8Array(),
+      url: async () => undefined,
     },
     secrets: { get: async () => "", read: async () => "" },
     settings: { get: async () => undefined },
@@ -80,7 +81,8 @@ describe("mock.image and mock.model3d", () => {
     const h = harness();
     const a = await call(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 1 }, h);
     await call(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 1 }, h);
-    expect(a).toEqual({ image: { uri: "briar-media://m_1", mime: "image/svg+xml", meta: { width: 100, height: 50 } } });
+    expect(a).toEqual({ image: { mediaId: "med_1" } });
+    expect(h.stored[0]).toMatchObject({ mime: "image/svg+xml", meta: { width: 100, height: 50 } });
     const svg = new TextDecoder().decode(h.stored[0]?.bytes);
     expect(svg).toBe(new TextDecoder().decode(h.stored[1]?.bytes));
     expect(svg).toContain("A &lt;cat&gt; &amp; dog");
@@ -92,7 +94,8 @@ describe("mock.image and mock.model3d", () => {
   it("stores a glTF 2.0 cube", async () => {
     const h = harness();
     const out = (await call(mockModel3d, { prompt: "cube", seed: 0 }, h)) as { model: MediaRef };
-    expect(out.model.mime).toBe("model/gltf+json");
+    expect(out.model).toEqual({ mediaId: "med_1" });
+    expect(h.stored[0]?.mime).toBe("model/gltf+json");
     const gltf = JSON.parse(new TextDecoder().decode(h.stored[0]?.bytes));
     expect(gltf.asset.version).toBe("2.0");
     expect(gltf.accessors[1].count).toBe(36);
@@ -135,7 +138,8 @@ describe("mock.structured", () => {
     expect(["happy", "sad"]).toContain(v["mood"]);
     expect(v["tags"]).toHaveLength(3);
     expect(typeof v["nick"]).toBe("string");
-    expect(v["avatar"]).toMatchObject({ mime: "image/svg+xml" });
+    expect(v["avatar"]).toEqual({ mediaId: `med_${h.stored.length}` });
+    expect(h.stored.at(-1)?.mime).toBe("image/svg+xml");
     const hex = await mockHash({ prompt: "hero", seed: 0, path: "value.tags[0]" });
     expect((v["tags"] as string[])[0]).toBe(`tags ${hex.slice(0, 4)}`);
   });

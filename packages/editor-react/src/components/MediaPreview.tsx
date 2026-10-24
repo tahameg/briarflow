@@ -4,10 +4,10 @@
  */
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import type { MediaRef } from "@briarflow/core";
-import { useMedia } from "../context.js";
+import type { MediaEntry } from "@briarflow/core";
+import { useMedia, useMediaEntry } from "../context.js";
 import type { MediaPreview } from "../graph.js";
-import { mediaHref } from "../values.js";
+import { formatBytes, mediaHref } from "../values.js";
 import { Modal } from "./ui.js";
 
 function MediaElement({ kind, href, alt, large }: { kind: "image" | "video"; href: string; alt: string; large?: boolean }) {
@@ -17,7 +17,8 @@ function MediaElement({ kind, href, alt, large }: { kind: "image" | "video"; hre
   return <img src={href} alt={alt} className={large ? "bf-viewer__media" : "bf-node__media-el"} draggable={false} />;
 }
 
-const kindOf = (ref: MediaRef, fallback: "image" | "video") => (ref.mime.startsWith("video/") ? "video" : ref.mime.startsWith("image/") ? "image" : fallback);
+const kindOf = (entry: MediaEntry | undefined, fallback: "image" | "video") =>
+  entry?.mime.startsWith("video/") ? "video" : entry?.mime.startsWith("image/") ? "image" : fallback;
 
 /** Preview windows of a node's image / video outputs. Double-click one to open the viewer. */
 export function MediaWindow({ media, nodeTitle, running }: { media: readonly MediaPreview[]; nodeTitle: string; running: boolean }) {
@@ -40,7 +41,7 @@ export function MediaWindow({ media, nodeTitle, running }: { media: readonly Med
             }}
           >
             {first && href ? (
-              <MediaElement kind={kindOf(first, m.kind)} href={href} alt={`${nodeTitle} ${m.title}`} />
+              <MediaElement kind={m.kind} href={href} alt={`${nodeTitle} ${m.title}`} />
             ) : (
               <span className="bf-node__media-hint">{running ? `Making the ${m.kind}…` : first ? "No media URL" : `Run the flow to see the ${m.kind}`}</span>
             )}
@@ -60,13 +61,14 @@ export function MediaWindow({ media, nodeTitle, running }: { media: readonly Med
   );
 }
 
-function describe(ref: MediaRef): string {
-  const parts = [ref.mime];
-  const { width, height, durationSec, filename } = ref.meta ?? {};
+function describe(entry: MediaEntry): string {
+  const parts = [entry.mime];
+  const { width, height, durationSec, filename } = entry.meta ?? {};
   if (typeof width === "number" && typeof height === "number") parts.push(`${width}×${height}`);
   if (typeof durationSec === "number") parts.push(`${durationSec.toFixed(1)} s`);
-  if (typeof ref.bytes === "number") parts.push(ref.bytes >= 1024 * 1024 ? `${(ref.bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(ref.bytes / 1024))} KB`);
+  if (typeof entry.bytes === "number") parts.push(formatBytes(entry.bytes));
   if (typeof filename === "string") parts.push(filename);
+  if (entry.owner) parts.push("from the last run");
   return parts.join(" · ");
 }
 
@@ -74,6 +76,7 @@ function describe(ref: MediaRef): string {
 export function MediaViewer({ preview, nodeTitle, index, onIndex, onClose }: { preview: MediaPreview; nodeTitle: string; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const { mediaUrl } = useMedia();
   const ref = preview.refs[Math.min(index, preview.refs.length - 1)];
+  const entry = useMediaEntry(ref);
   const href = ref ? mediaHref(ref, mediaUrl) : undefined;
   return (
     <Modal
@@ -89,15 +92,15 @@ export function MediaViewer({ preview, nodeTitle, index, onIndex, onClose }: { p
         ) : null
       }
     >
-      <div className="bf-viewer__stage">{ref && href ? <MediaElement kind={kindOf(ref, preview.kind)} href={href} alt={`${nodeTitle} ${preview.title}`} large /> : <span className="bf-muted">No media URL.</span>}</div>
-      {ref ? <p className="bf-viewer__info bf-code">{describe(ref)}</p> : null}
+      <div className="bf-viewer__stage">{ref && href ? <MediaElement kind={kindOf(entry, preview.kind)} href={href} alt={`${nodeTitle} ${preview.title}`} large /> : <span className="bf-muted">No media URL.</span>}</div>
+      {entry ? <p className="bf-viewer__info bf-code">{describe(entry)}</p> : null}
       {preview.refs.length > 1 ? (
         <div className="bf-viewer__strip" role="listbox" aria-label="Items">
           {preview.refs.map((r, i) => {
             const h = mediaHref(r, mediaUrl);
             return (
               <button key={i} type="button" role="option" aria-selected={i === index} className={i === index ? "bf-viewer__thumb bf-viewer__thumb--on" : "bf-viewer__thumb"} onClick={() => onIndex(i)}>
-                {h ? <MediaElement kind={kindOf(r, preview.kind)} href={h} alt={`Item ${i + 1}`} /> : i + 1}
+                {h ? <MediaElement kind={preview.kind} href={h} alt={`Item ${i + 1}`} /> : i + 1}
               </button>
             );
           })}

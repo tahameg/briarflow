@@ -5,15 +5,17 @@
 import {
   createCatalog,
   createSequentialIdGenerator,
-  MediaError,
+  createMedia,
+  createMemoryMediaRegistry,
   type ContextDocument,
   type Edge,
   type FieldDecl,
   type FlowDocument,
   type FlowVariable,
   type GlobalVariable,
+  type Media,
   type MediaRef,
-  type MediaStore,
+  type MediaRegistry,
   type NodeInstance,
   type NodePack,
   type RunEvent,
@@ -93,58 +95,28 @@ export function context(flows: FlowDocument[], extra: { types?: TypeDecl[]; glob
   };
 }
 
-/** In-memory MediaStore with ids m_1, m_2, … */
-export interface TestMediaStore extends MediaStore {
-  readonly items: Map<string, { ref: MediaRef; bytes: Uint8Array }>;
-  text(ref: MediaRef): string;
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const view = new Uint8Array(bytes.byteLength);
-  view.set(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", view);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** Media in memory with ids med_1, med_2, …, plus test helpers. */
+export interface TestMediaStore extends Media {
+  /** The content of a media value as UTF-8 text. */
+  text(ref: MediaRef): Promise<string>;
+  /** Entries added so far. */
+  readonly added: number;
 }
 
 export function testMediaStore(): TestMediaStore {
-  const items = new Map<string, { ref: MediaRef; bytes: Uint8Array }>();
   let n = 0;
-  const idOf = (ref: MediaRef | string) => {
-    const uri = typeof ref === "string" ? ref : ref.uri;
-    return uri.startsWith("briar-media://") ? uri.slice("briar-media://".length) : uri;
-  };
-  return {
-    kind: "test-memory",
-    items,
-    text: (ref) => new TextDecoder().decode(items.get(idOf(ref))?.bytes ?? new Uint8Array()),
-    async put(data, info) {
-      if (!(data instanceof Uint8Array)) throw new MediaError("media.invalid_mime", "test store only takes bytes");
-      n += 1;
-      const id = `m_${n}`;
-      const ref: MediaRef = { uri: `briar-media://${id}`, mime: info.mime, bytes: data.byteLength, hash: await sha256(data) };
-      const meta = { ...(info.meta ?? {}), ...(info.filename ? { filename: info.filename } : {}) };
-      if (Object.keys(meta).length > 0) ref.meta = meta;
-      items.set(id, { ref, bytes: data.slice() });
-      return { ...ref };
-    },
-    async get(ref) {
-      const item = items.get(idOf(ref));
-      if (!item) return undefined;
-      const bytes = item.bytes;
-      return {
-        ref: { ...item.ref },
-        body: new ReadableStream({
-          start(c) {
-            c.enqueue(bytes);
-            c.close();
-          },
-        }),
-      };
-    },
-    async delete(ref) {
-      return items.delete(idOf(ref));
+  let added = 0;
+  const inner = createMemoryMediaRegistry({ idGenerator: (prefix) => `${prefix}_${++n}` });
+  const registry: MediaRegistry = {
+    ...inner,
+    add: (entry, data) => {
+      added += 1;
+      return inner.add(entry, data);
     },
   };
+  const media = createMedia({ registry });
+  const text = async (ref: MediaRef) => new TextDecoder().decode(await media.read(ref));
+  return Object.defineProperties(media, { text: { value: text }, added: { get: () => added } }) as TestMediaStore;
 }
 
 export function secretsOf(values: Record<string, string>): SecretResolver {

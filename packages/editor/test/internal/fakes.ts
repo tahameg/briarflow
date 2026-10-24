@@ -6,7 +6,7 @@ import { CommandError } from "@briarflow/authoring";
 import type { BatchResult, Command, CreatedIds } from "@briarflow/authoring";
 import type { NodeTypesInfo } from "@briarflow/client";
 import { createContextDocument, createFlowDocument, createSequentialIdGenerator } from "@briarflow/core";
-import type { ContextDocument, FlowDocument, Run, RunEvent, RunResult, RunStatus } from "@briarflow/core";
+import type { ContextDocument, FlowDocument, LastRun, Run, RunEvent, RunResult, RunStatus } from "@briarflow/core";
 import type { BackendApplyInput, BackendApplyResult, CommandApplier, EditorBackend } from "../../src/index.js";
 
 export const CLOCK = () => new Date("2026-01-01T00:00:00Z");
@@ -148,10 +148,16 @@ export class FakeBackend implements EditorBackend {
     this.held.shift()?.release();
   }
 
-  runCalls: { flowId: string; inputs: Record<string, unknown>; useCache: boolean | undefined }[] = [];
+  runCalls: { flowId: string; inputs: Record<string, unknown>; useCache: boolean | undefined; force?: boolean }[] = [];
+  /** What `lastRun` answers, by flow id. */
+  readonly lastRuns = new Map<string, LastRun>();
 
-  async run(flowId: string, inputs: Record<string, unknown> = {}, options: { useCache?: boolean } = {}): Promise<Run> {
-    this.runCalls.push({ flowId, inputs, useCache: options.useCache });
+  async lastRun(flowId: string): Promise<LastRun | undefined> {
+    return this.lastRuns.get(flowId);
+  }
+
+  async run(flowId: string, inputs: Record<string, unknown> = {}, options: { useCache?: boolean; force?: boolean } = {}): Promise<Run> {
+    this.runCalls.push({ flowId, inputs, useCache: options.useCache, ...(options.force ? { force: true } : {}) });
     if (this.runError) throw this.runError;
     const run = new FakeRun(`run_${this.runs.length + 1}`, flowId);
     this.runs.push(run);

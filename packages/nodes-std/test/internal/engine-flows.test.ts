@@ -44,7 +44,6 @@ const e = (id: string, from: string, to: string) => {
 async function run(d: ContextDocument, inputs: Record<string, unknown> = {}): Promise<RunResult> {
   const engine = createEngine({
     catalog: createCatalog([stdPack, mockPack]),
-    media: { kind: "none", put: async () => ({ uri: "briar-media://m_1", mime: "image/png" }), get: async () => undefined, delete: async () => false },
     secrets: { get: async () => undefined },
   });
   return engine.run({ context: d, flowId: "flow_s", inputs }).result;

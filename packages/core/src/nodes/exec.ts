@@ -3,7 +3,7 @@
  */
 import type { NodeInstance, TypeDecl } from "../documents/model.js";
 import type { Logger } from "../interfaces/logger.js";
-import type { MediaStore } from "../interfaces/media-store.js";
+import type { NodeMedia } from "../media/service.js";
 import type { SecretRef } from "../types/ir.js";
 
 /**
@@ -22,7 +22,8 @@ export interface ExecContext {
   progress(fraction: number, message?: string): void;
   /** Tagged with runId/nodeId. */
   readonly log: Logger;
-  readonly media: MediaStore;
+  /** Media of the run: `put` keeps new media (transient), `read` loads any media value. */
+  readonly media: NodeMedia;
   readonly secrets: {
     /**
      * Secrets the definition declared in `secrets` (environment / secret resolver). Resolved

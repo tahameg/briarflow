@@ -83,11 +83,13 @@ export function registerRunRoutes<E extends Env>(kit: RouteKit<E>): void {
       const problems: { path: string; problem: string }[] = [];
       if (body.inputs !== undefined && !isObject(body.inputs)) problems.push({ path: "inputs", problem: "must be an object of flow input values" });
       if (body.useCache !== undefined && typeof body.useCache !== "boolean") problems.push({ path: "useCache", problem: "must be true or false" });
+      if (body.force !== undefined && typeof body.force !== "boolean") problems.push({ path: "force", problem: "must be true or false" });
       if (problems.length > 0) throw invalidBody(problems);
 
       const run = await briar.run(flowId, (body.inputs as Record<string, unknown> | undefined) ?? {}, {
         throwOnInvalid: true,
         ...(typeof body.useCache === "boolean" ? { useCache: body.useCache } : {}),
+        ...(body.force === true ? { force: true } : {}),
       });
 
       if (wait) {
@@ -96,6 +98,16 @@ export function registerRunRoutes<E extends Env>(kit: RouteKit<E>): void {
       }
       c.header("Location", `${base}/runs/${run.id}`);
       return c.json({ runId: run.id, status: run.status }, 202);
+    }),
+  );
+
+  app.get(
+    `${base}/flows/:flowId/last-run`,
+    kit.handle(async (c) => {
+      const flowId = checkPathId("flow", "flowId", c.req.param("flowId"));
+      const contextId = await locate(flowId);
+      await kit.authorize(c, "runs.read", { flowId, contextId });
+      return c.json({ lastRun: (await briar.runs.last(flowId)) ?? null });
     }),
   );
 

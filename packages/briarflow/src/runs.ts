@@ -84,6 +84,8 @@ export class FacadeRun implements BriarRun {
     /** Global name → id in the document the run used (variables.md §8 step 2). */
     globalIds: ReadonlyMap<string, string>,
     services: WriteBackServices,
+    /** Settles once the run is saved as its flow's last run (never rejects). */
+    recorded: Promise<void> = Promise.resolve(),
   ) {
     this.createdAt = services.clock().toISOString();
     this.result = inner.result.then(async (result) => {
@@ -91,6 +93,7 @@ export class FacadeRun implements BriarRun {
       if (writes && Object.keys(writes).length > 0) {
         this.#globalWriteStatus = await applyGlobalWrites(result.runId, contextId, writes, globalIds, services);
       }
+      await recorded;
       this.#finished = result;
       this.#finishedAtMs = services.clock().getTime();
       return result;

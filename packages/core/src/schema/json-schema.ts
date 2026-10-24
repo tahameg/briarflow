@@ -3,7 +3,7 @@
  */
 import type { ContextDocument, FieldDecl, TypeDecl } from "../documents/model.js";
 import { TypeDefinitionError } from "../errors.js";
-import type { MediaPrimitiveName, TypeRef } from "../types/ir.js";
+import type { TypeRef } from "../types/ir.js";
 import { formatToMime } from "../types/media.js";
 import type { PackTypeSource, TypeOrigin, TypeScope } from "../types/scope.js";
 import { scopeForFlow } from "../types/scope.js";
@@ -21,14 +21,6 @@ export interface JsonSchemaOptions {
 }
 
 const SCHEMA_URI = "https://json-schema.org/draft/2020-12/schema";
-
-const MIME_PATTERNS: Record<MediaPrimitiveName, string | undefined> = {
-  image: "^image/",
-  video: "^video/",
-  audio: "^audio/",
-  model3d: "^(model/|application/octet-stream$)",
-  file: undefined,
-};
 
 /**
  * Compiles a type to one schema with `$schema` and `$defs` (named types; `MediaRef` once when
@@ -173,15 +165,12 @@ class SchemaCompiler {
             };
           default: {
             this.media = true;
-            const ref = { $ref: "#/$defs/MediaRef" };
+            // The value is a registry id; mime, size and formats are checked when a node reads it.
+            const ref: JsonSchema = { $ref: "#/$defs/MediaRef" };
             const formats = c["formats"];
-            if (Array.isArray(formats) && formats.length > 0) {
-              const mimes = [...new Set(formats.map((f) => formatToMime(String(f))))];
-              return { allOf: [ref, { properties: { mime: { enum: mimes } } }] };
-            }
-            const pattern = MIME_PATTERNS[type.name];
-            if (pattern === undefined || this.strict) return ref;
-            return { allOf: [ref, { properties: { mime: { pattern } } }] };
+            if (this.strict) return ref;
+            if (!Array.isArray(formats) || formats.length === 0) return { ...ref, "x-briar-media": type.name };
+            return { ...ref, "x-briar-media": type.name, "x-briar-formats": [...new Set(formats.map((f) => formatToMime(String(f))))] };
           }
         }
       }
@@ -234,26 +223,12 @@ class SchemaCompiler {
   }
 
   private mediaRefDef(): JsonSchema {
-    if (this.strict) {
-      return {
-        type: "object",
-        title: "MediaRef",
-        properties: { uri: { type: "string" }, mime: { type: "string" } },
-        required: ["uri", "mime"],
-        additionalProperties: false,
-      };
-    }
     return {
       type: "object",
       title: "MediaRef",
-      properties: {
-        uri: { type: "string" },
-        mime: { type: "string", pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$" },
-        bytes: { type: "integer", minimum: 0 },
-        hash: { type: "string", pattern: "^[0-9a-f]{64}$" },
-        meta: { type: "object" },
-      },
-      required: ["uri", "mime"],
+      description: "The id of an entry in the media registry (upload with POST /media).",
+      properties: { mediaId: this.strict ? { type: "string" } : { type: "string", pattern: "^[A-Za-z0-9_-]{1,128}$" } },
+      required: ["mediaId"],
       additionalProperties: false,
     };
   }

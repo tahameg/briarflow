@@ -122,15 +122,12 @@ describe("node.add", () => {
     const e = reject(
       richDoc(),
       [{ op: "node.add", flowId: KIT, id: "n_img", type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "ftp://x", mime: "image/png" } } }],
-      "media.invalid_uri",
+      "media.invalid_ref",
     );
     expect(e.message).toContain("nodes.n_img.values.value");
-    reject(
-      richDoc(),
-      [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "https://x.test/a.txt", mime: "text/plain" } } }],
-      "media.kind_mismatch",
-    );
-    accept(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "https://x.test/a.png", mime: "image/png" } } }]);
+    reject(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { mediaId: "bad id" } } }], "media.invalid_ref");
+    // The entry (mime, size) is checked when a node reads the media, not when the document is edited.
+    accept(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { mediaId: "med_1" } } }]);
   });
 
   it("a constant on an unbound generic port → value.generic_unbound", () => {

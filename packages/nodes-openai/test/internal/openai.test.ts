@@ -1,3 +1,4 @@
+import type { MediaRef } from "@briarflow/core";
 import { describeNodePack, runNode } from "@briarflow/testing";
 import { describe, expect, it } from "vitest";
 import { answerText, decodeBase64, openaiPack, redact } from "../../src/index.js";
@@ -112,7 +113,7 @@ describe("openai.image", () => {
     const { def, packs } = nodeOf("openai.image", f.fn);
     const r = await runNode(def, { prompt: "A cat" }, { packs, config: { size: "1024x1536", quality: "xhigh", format: "webp", compression: 80, background: "transparent", moderation: "low" }, vault: { IMG: KEY }, settings: { imageKey: "IMG" } });
     expect(Object.keys(r.outputs)).toEqual(["image"]);
-    expect(r.outputs["image"]).toMatchObject({ mime: "image/webp", meta: { width: 1024, height: 1536 } });
+    expect(await r.media.entry(r.outputs["image"] as MediaRef)).toMatchObject({ mime: "image/webp", meta: { width: 1024, height: 1536 } });
     expect(f.calls[0]!.url).toBe("https://api.openai.com/v1/images/generations");
     expect(f.calls[0]!.body).toEqual({ model: "gpt-image-2.5-flare", prompt: "A cat", n: 1, size: "1024x1536", quality: "xhigh", output_format: "webp", output_compression: 80, background: "transparent", moderation: "low" });
   });
@@ -122,7 +123,7 @@ describe("openai.image", () => {
     const { def, packs } = nodeOf("openai.image", f.fn);
     const r = await runNode(def, { prompt: "A cat" }, { packs, variant: "gpt-image-2", config: { compression: 50 }, vault: { K: KEY }, settings: { imageKey: "K" } });
     expect(f.calls[0]!.body).toEqual({ model: "gpt-image-2", prompt: "A cat", n: 1, output_format: "png" });
-    expect(r.outputs["image"]).toMatchObject({ mime: "image/png", meta: { width: 1536, height: 1024 } });
+    expect(await r.media.entry(r.outputs["image"] as MediaRef)).toMatchObject({ mime: "image/png", meta: { width: 1536, height: 1024 } });
   });
 
   it("sends a custom size and rejects one the models do not take", async () => {

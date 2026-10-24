@@ -10,7 +10,7 @@
  * ```
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isBriarError, type MediaRef, type MediaStore } from "@briarflow/core";
+import { isBriarError, type BlobRef, type MediaStore } from "@briarflow/core";
 import { HELLO_SHA256, streamOf, utf8 } from "../fixtures/media.js";
 
 /** What the factory of {@link describeMediaStore} returns: a fresh, empty store. */
@@ -58,7 +58,7 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-function idOf(ref: MediaRef): string {
+function idOf(ref: BlobRef): string {
   return ref.uri.slice("briar-media://".length);
 }
 
@@ -225,7 +225,7 @@ export function describeMediaStore(
     it(
       "6. ids over 1000 puts of identical content: unique (or one ref when content-addressed)",
       async () => {
-        const refs: MediaRef[] = [];
+        const refs: BlobRef[] = [];
         for (let i = 0; i < 1000; i++) refs.push(await store.put(utf8("same"), { mime: "text/plain" }));
         const uris = new Set(refs.map((r) => r.uri));
         if (contentAddressed) {

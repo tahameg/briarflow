@@ -2,7 +2,7 @@
  * In-memory MediaStore (docs/specs/storage.md §2). Portable: web-standard APIs only.
  */
 import { MEDIA_URI_SCHEME, MediaError, canonicalJson, mediaIdFromUri, normalizeMime, sha256Hex } from "@briarflow/core";
-import type { MediaRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
+import type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
 
 /** Options of {@link MemoryMediaStore}. */
 export interface MemoryMediaStoreOptions {
@@ -39,7 +39,7 @@ export class MemoryMediaStore implements MediaStore {
   readonly contentAddressed = false;
   readonly #maxBytes: number | undefined;
   readonly #newId: () => string;
-  #items = new Map<string, { ref: MediaRef; bytes: Uint8Array }>();
+  #items = new Map<string, { ref: BlobRef; bytes: Uint8Array }>();
   #used = new Set<string>();
 
   constructor(options: MemoryMediaStoreOptions = {}) {
@@ -47,7 +47,7 @@ export class MemoryMediaStore implements MediaStore {
     this.#newId = options.idGenerator ?? randomMediaId;
   }
 
-  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<MediaRef> {
+  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<BlobRef> {
     const mime = normalizeMime(info?.mime);
     const meta: Record<string, unknown> = { ...(info.meta ?? {}) };
     if (info.filename !== undefined) meta["filename"] = info.filename;
@@ -56,13 +56,13 @@ export class MemoryMediaStore implements MediaStore {
     const bytes = data instanceof Uint8Array ? data.slice() : await this.#readAll(data);
     if (this.#maxBytes !== undefined && bytes.byteLength > this.#maxBytes) throw this.#tooLarge();
     const id = this.#allocateId();
-    const ref: MediaRef = { uri: MEDIA_URI_SCHEME + id, mime, bytes: bytes.byteLength, hash: await sha256Hex(bytes) };
+    const ref: BlobRef = { uri: MEDIA_URI_SCHEME + id, mime, bytes: bytes.byteLength, hash: await sha256Hex(bytes) };
     if (hasMeta) ref.meta = structuredClone(meta);
     this.#items.set(id, { ref, bytes });
     return cloneRef(ref);
   }
 
-  async get(ref: MediaRef | string): Promise<StoredMedia | undefined> {
+  async get(ref: BlobRef | string): Promise<StoredMedia | undefined> {
     const id = idOf(ref);
     const item = id === undefined ? undefined : this.#items.get(id);
     if (!item) return undefined;
@@ -76,7 +76,7 @@ export class MemoryMediaStore implements MediaStore {
     return { ref: cloneRef(item.ref), body };
   }
 
-  async delete(ref: MediaRef | string): Promise<boolean> {
+  async delete(ref: BlobRef | string): Promise<boolean> {
     const id = idOf(ref);
     return id !== undefined && this.#items.delete(id);
   }
@@ -129,12 +129,12 @@ export class MemoryMediaStore implements MediaStore {
   }
 }
 
-function cloneRef(ref: MediaRef): MediaRef {
+function cloneRef(ref: BlobRef): BlobRef {
   return ref.meta ? { ...ref, meta: structuredClone(ref.meta) } : { ...ref };
 }
 
 
-function idOf(ref: MediaRef | string): string | undefined {
+function idOf(ref: BlobRef | string): string | undefined {
   const uri = typeof ref === "string" ? ref : typeof ref === "object" && ref !== null ? ref.uri : undefined;
   if (typeof uri !== "string") return undefined;
   if (typeof ref !== "string" && !uri.startsWith(MEDIA_URI_SCHEME)) return undefined;

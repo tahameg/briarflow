@@ -120,11 +120,13 @@ describe("createBriarClient: requests", () => {
 
   it("uploads media as a raw body and downloads it as a Blob", async () => {
     const { fetch, calls } = fakeFetch((c) =>
-      c.method === "POST" ? json(201, { uri: "briar-media://m1", mime: "image/png", bytes: 3 }) : new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } }),
+      c.method === "POST"
+        ? json(201, { id: "m1", mime: "image/png", bytes: 3, source: { kind: "stored", uri: "briar-media://m1" }, createdAt: "2026-10-25T00:00:00.000Z" })
+        : new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } }),
     );
     const client = createBriarClient({ baseUrl: BASE, fetch });
-    const ref = await client.media.upload(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }), { filename: "cat.png" });
-    expect(ref.uri).toBe("briar-media://m1");
+    const entry = await client.media.upload(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }), { filename: "cat.png" });
+    expect(entry.id).toBe("m1");
     expect(calls[0]!.url).toBe("http://api.test/api/v1/media?filename=cat.png");
     expect(calls[0]!.headers.get("content-type")).toBe("image/png");
     const blob = await client.media.download("m1");

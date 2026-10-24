@@ -1984,6 +1984,14 @@ button.bf-diagnostics__btn:hover {
   max-height: 120px;
   margin: 2px 0;
 }
+.bf-console__label {
+  display: block;
+}
+.bf-console__media-info {
+  display: block;
+  color: #8f877a;
+  font-size: 11px;
+}
 .bf-console__empty {
   color: #8f877a;
 }

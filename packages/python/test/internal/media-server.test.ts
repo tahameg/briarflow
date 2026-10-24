@@ -1,25 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { isBriarError } from "@briarflow/core";
-import type { MediaRef, MediaStore, StoredMedia } from "@briarflow/core";
+import { createMedia, createMemoryMediaRegistry, isBriarError } from "@briarflow/core";
+import type { MediaRef } from "@briarflow/core";
 import { LoopbackMediaServer } from "../../src/media-server.js";
 
-const REF: MediaRef = { uri: "briar-media://m1", mime: "text/plain", bytes: 2 };
-
-const store: MediaStore = {
-  kind: "fake",
-  put: () => Promise.reject(new Error("unused")),
-  delete: () => Promise.resolve(false),
-  get: (): Promise<StoredMedia> =>
-    Promise.resolve({
-      ref: REF,
-      body: new ReadableStream<Uint8Array>({
-        start(c) {
-          c.enqueue(new TextEncoder().encode("hi"));
-          c.close();
-        },
-      }),
-    }),
-};
+const media = createMedia({ registry: createMemoryMediaRegistry() });
+const REF: MediaRef = { mediaId: (await media.put(new TextEncoder().encode("hi"), { mime: "text/plain" })).id };
+const store = media.forNode({});
 
 describe("LoopbackMediaServer publicUrl (REQ-18)", () => {
   const servers: LoopbackMediaServer[] = [];

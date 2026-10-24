@@ -361,7 +361,12 @@ export function buildFlowView(
     }
     const preview = node.type === "text.template" ? (node.config?.template as string | undefined) : previewOf(node);
     if (preview) view.preview = preview;
-    const media = view.builtin ? [] : mediaPreviews(view.outputs, view.run);
+    // Frontend nodes (View image) show the media they were given; other nodes show what they made.
+    const media = view.builtin
+      ? []
+      : view.frontend
+        ? mediaPreviews(view.inputs, inputValues(flow, node, runNodes))
+        : mediaPreviews(view.outputs, view.run?.outputs);
     if (media.length > 0) view.media = media;
     return view;
   });
@@ -451,12 +456,24 @@ export function visualMediaKind(type: TypeRef): "image" | "video" | undefined {
   return inner.kind === "primitive" && (inner.name === "image" || inner.name === "video") ? inner.name : undefined;
 }
 
-function mediaPreviews(outputs: readonly PortView[], run: NodeRunState | undefined): MediaPreview[] {
+/** What a node's inputs were in the run: the wired source's output, else the node's constant. */
+function inputValues(flow: FlowDocument, node: NodeInstance, runNodes: RunState["nodes"] | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(node.values ?? {}) };
+  for (const e of flow.edges) {
+    if (e.to.node !== node.id) continue;
+    const source = runNodes?.[e.from.node]?.outputs;
+    if (source && e.from.port in source) out[e.to.port] = source[e.from.port];
+    else delete out[e.to.port];
+  }
+  return out;
+}
+
+function mediaPreviews(ports: readonly PortView[], values: Readonly<Record<string, unknown>> | undefined): MediaPreview[] {
   const out: MediaPreview[] = [];
-  for (const p of outputs) {
+  for (const p of ports) {
     const kind = visualMediaKind(p.type);
     if (!kind) continue;
-    const value = run?.outputs?.[p.name];
+    const value = values?.[p.name];
     const refs = (Array.isArray(value) ? value.flat() : [value]).filter(isMediaRef);
     out.push({ port: p.name, title: p.title, kind, refs });
   }

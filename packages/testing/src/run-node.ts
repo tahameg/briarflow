@@ -7,6 +7,8 @@
  */
 import {
   ERROR_OUTPUT,
+  createMedia,
+  createMemoryMediaRegistry,
   containsVar,
   emptyValue,
   createCatalog,
@@ -26,7 +28,7 @@ import {
   type FlowDocument,
   type LogData,
   type Logger,
-  type MediaStore,
+  type Media,
   type NodeCatalog,
   type NodeInstance,
   type NodePack,
@@ -35,7 +37,6 @@ import {
   type TypeDecl,
   type TypeRef,
 } from "@briarflow/core";
-import { memoryMediaStore } from "./fixtures/media.js";
 
 function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): void {
   if (value === null || value === undefined) return;
@@ -83,8 +84,8 @@ export interface RunNodeOptions {
   packs?: readonly NodePack[];
   /** Generic bindings of the node instance (`node.typeBindings`); bound ports are checked. */
   typeBindings?: Record<string, TypeRef>;
-  /** Default: a fresh `memoryMediaStore()`. */
-  media?: MediaStore;
+  /** Media registry and loader. Default: a fresh one in memory (`createMedia`). */
+  media?: Media;
   /** Secret values by name. Declared secrets missing here fail with `node.missing_secret`. */
   secrets?: Record<string, string>;
   /** Vault secret values by name, for `ctx.secrets.read` (only names the node was given). */
@@ -123,8 +124,8 @@ export interface RunNodeResult<O = Readonly<Record<string, unknown>>> {
   progress: CapturedProgress[];
   /** Every `ctx.log` line, in order. */
   logs: CapturedLog[];
-  /** The media store the node used. */
-  media: MediaStore;
+  /** The media the node used: `result.media.read(outputs.image)` gives the bytes. */
+  media: Media;
   /** The inputs passed to `run` (resolved and normalized). */
   inputs: Record<string, unknown>;
   /** Resolved ports of the node. */
@@ -301,7 +302,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
 
   const progress: CapturedProgress[] = [];
   const logs: CapturedLog[] = [];
-  const media = options.media ?? memoryMediaStore();
+  const media = options.media ?? createMedia({ registry: createMemoryMediaRegistry() });
   let usedState = false;
   const tag = { runId: options.runId ?? "run_test", nodeId };
   const logAt =
@@ -344,7 +345,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
       progress.push(entry);
     },
     log: { debug: logAt("debug"), info: logAt("info"), warn: logAt("warn"), error: logAt("error") },
-    media,
+    media: media.forNode({ owner: { runId: tag.runId, flowId }, fetch: baseFetch, signal }),
     secrets: {
       async get(name: string) {
         const value = secretValues.get(name);

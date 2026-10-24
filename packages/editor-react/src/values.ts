@@ -2,7 +2,7 @@
  * Pure helpers for value widgets: which widget a type gets, starting values and short
  * previews.
  */
-import { MEDIA_PRIMITIVE_NAMES, mediaIdFromUri } from "@briarflow/core";
+import { MEDIA_PRIMITIVE_NAMES, isMediaRef } from "@briarflow/core";
 import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 
 /** Widget kinds of the constant / input editors (design-system.md §7). */
@@ -57,16 +57,11 @@ export function initialValue(type: TypeRef, scope: TypeScope | undefined): unkno
   }
 }
 
-/** Is `value` a MediaRef-shaped object? */
-export function isMediaRef(value: unknown): value is MediaRef {
-  return typeof value === "object" && value !== null && typeof (value as MediaRef).uri === "string" && typeof (value as MediaRef).mime === "string";
-}
+export { isMediaRef };
 
-/** Browser URL of a media ref: `briar-media://<id>` goes through `mediaUrl(id)`; http(s) as is. */
+/** Browser URL of a media value (`mediaUrl(id)`; the server redirects links to the web). */
 export function mediaHref(ref: MediaRef, mediaUrl: ((mediaId: string) => string) | undefined): string | undefined {
-  if (/^https?:\/\//.test(ref.uri)) return ref.uri;
-  const id = mediaIdFromUri(ref.uri);
-  return id !== undefined && mediaUrl ? mediaUrl(id) : undefined;
+  return mediaUrl ? mediaUrl(ref.mediaId) : undefined;
 }
 
 /** One-line preview of a value (code font). */
@@ -75,7 +70,7 @@ export function previewValue(value: unknown, max = 60): string {
   if (value === undefined) s = "—";
   else if (value === null) s = "none";
   else if (typeof value === "string") s = JSON.stringify(value);
-  else if (isMediaRef(value)) s = `${value.mime}${value.meta?.filename ? ` · ${value.meta.filename}` : ""}`;
+  else if (isMediaRef(value)) s = `media ${value.mediaId}`;
   else s = JSON.stringify(value) ?? String(value);
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }

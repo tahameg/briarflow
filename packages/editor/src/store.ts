@@ -8,7 +8,7 @@ import type { NodeTypesInfo } from "@briarflow/client";
 import { BriarError, createCatalogFromDescriptors, createIdGenerator, nodeDefinition, serializeError, validateContext } from "@briarflow/core";
 import type { ContextDocument, Diagnostic, NodeCatalog, Run, RunEvent, RunResult, SerializedError, Viewport } from "@briarflow/core";
 import { isCommandRejection, isRevisionConflict } from "./backend.js";
-import { completeRun, reduceRunEvent } from "./run-state.js";
+import { completeRun, reduceRunEvent, runStateFromLastRun } from "./run-state.js";
 import { CONSOLE_LIMIT, DEFAULT_FRONTEND_NODES } from "./frontend.js";
 import type { ConsoleLine } from "./frontend.js";
 import { readRunInputs, writeRunInputs } from "./run-inputs.js";
@@ -84,6 +84,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     run: undefined,
     runInputs: options.runInputsStorage ? readRunInputs(options.runInputsStorage, contextId) : {},
     useCache: true,
+    force: false,
     console: [],
     notices: [],
   };
@@ -226,6 +227,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
         sync: syncState(),
         history: historyState(),
       });
+      void restoreLastRun(state.activeFlowId ?? doc.flows[0]?.id);
       // Flows made before execution lines get wired once (saved like any edit).
       const unwired = doc.flows.filter((f) => f.execEdges === undefined).map((f) => ({ op: "flow.exec.enable" as const, flowId: f.id }));
       if (unwired.length > 0) dispatchBatch(unwired);
@@ -441,6 +443,24 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
   function setActiveFlow(flowId: string | undefined): void {
     if (flowId === state.activeFlowId) return;
     set({ activeFlowId: flowId, selection: EMPTY_SELECTION });
+    void restoreLastRun(flowId);
+  }
+
+  /** Shows the flow's last run (kept by the backend) unless a run is going or already shown. */
+  async function restoreLastRun(flowId: string | undefined): Promise<void> {
+    if (flowId === undefined || !backend.lastRun) return;
+    const idle = () => !disposed && state.activeFlowId === flowId && (!state.run || (TERMINAL.has(state.run.status) || state.run.status === "rejected")) && state.run?.flowId !== flowId;
+    if (!idle()) return;
+    const token = runToken;
+    let last;
+    try {
+      last = await backend.lastRun(flowId, abort.signal);
+    } catch {
+      return;
+    }
+    if (!last || token !== runToken || !idle()) return;
+    const run = runStateFromLastRun(last);
+    if (run) set({ run });
   }
 
   function select(sel: Partial<Selection>, mode: SelectMode = "replace"): void {
@@ -502,10 +522,11 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     currentRun = undefined;
     const inputs = opts.inputs ?? storedInputs(flowId);
     const useCache = opts.useCache ?? state.useCache;
+    const force = opts.force ?? state.force;
     set({ run: { runId: undefined, flowId, status: "starting", nodes: {}, lastSeq: -1, events: [] } });
     let started: Run;
     try {
-      started = await backend.run(flowId, inputs, { ...(useCache ? {} : { useCache: false }), signal: abort.signal });
+      started = await backend.run(flowId, inputs, { ...(useCache ? {} : { useCache: false }), ...(force ? { force: true } : {}), signal: abort.signal });
     } catch (error) {
       if (token === runToken && !disposed) {
         const err = serializeError(error);
@@ -659,7 +680,8 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
       }
     }
     const title = node.title?.trim() || def?.title || node.type;
-    const print = (text: string) => writeLine({ kind: "print", runId, nodeId, nodeType: node.type, title, text: String(text) });
+    const print = (text: string, value?: unknown) =>
+      writeLine({ kind: "print", runId, nodeId, nodeType: node.type, title, text: String(text), ...(value === undefined ? {} : { value }) });
     try {
       handler({ runId, nodeId, title, inputs, print });
     } catch (err) {
@@ -721,6 +743,7 @@ export function createEditorStore(options: EditorStoreOptions): EditorStore {
     clearRun,
     setRunInput,
     setUseCache: (useCache) => set({ useCache }),
+    setForce: (force) => set({ force }),
     clearConsole,
     dismissNotice,
     dispose,

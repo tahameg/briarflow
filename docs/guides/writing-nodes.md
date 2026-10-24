@@ -72,7 +72,7 @@ Things to notice:
 | `t.text({ maxLength, multiline })` | `string` |
 | `t.int({ min, max })`, `t.float()` | `number` |
 | `t.boolean()` | `boolean` |
-| `t.image()`, `t.video()`, `t.audio()`, `t.model3d()`, `t.file()` | `MediaRef` (`{ uri, mime, … }`) |
+| `t.image()`, `t.video()`, `t.audio()`, `t.model3d()`, `t.file()` | `MediaRef` (`{ mediaId }`, the id of a media registry entry) |
 | `t.list(x, { maxItems })` | array |
 | `t.optional(x)` | value or `null` |
 | `t.ref(MyStruct)` | the struct's object type |
@@ -150,7 +150,7 @@ async run({ inputs, ctx }) {
   const res = await ctx.fetch(url, { signal: ctx.signal, headers: { authorization: `Bearer ${key}` } });
   if (res.status === 429) throw new NodeError("node.rate_limited", "Slow down", { retryable: true });
   const bytes = new Uint8Array(await res.arrayBuffer());
-  const image = await ctx.media.put(bytes, { mime: "image/png" });   // store media, get a MediaRef
+  const image = await ctx.media.put(bytes, { mime: "image/png" });   // keep media for this run, get { mediaId }
   return { image };
 }
 ```

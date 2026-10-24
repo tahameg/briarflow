@@ -35,7 +35,7 @@ const softCases: SoftCase[] = [
   {
     name: "media.* on a constant → node.invalid_value",
     command: { op: "node.add", flowId: KIT, id: "n_x", type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "ftp://x", mime: "image/png" } } },
-    normalCode: "media.invalid_uri",
+    normalCode: "media.invalid_ref",
     diagnostic: "node.invalid_value",
   },
   {

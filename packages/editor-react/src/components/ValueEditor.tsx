@@ -7,6 +7,7 @@ import { useEffect, useId, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 import { formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
+import { useMediaEntry } from "../context.js";
 import { SecretPicker } from "./Vault.js";
 
 /** Props of {@link ValueEditor}. */
@@ -245,14 +246,15 @@ function MediaValue(props: ValueEditorProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const ref = isMediaRef(value) ? value : undefined;
+  const entry = useMediaEntry(ref);
   const href = ref ? mediaHref(ref, mediaUrl) : undefined;
   return (
     <span className="bf-media">
       {ref ? (
-        <span className="bf-media__chip" title={ref.uri}>
-          {href && ref.mime.startsWith("image/") && !compact ? <img className="bf-media__thumb" src={href} alt={ref.meta?.filename ?? label} /> : null}
+        <span className="bf-media__chip" title={ref.mediaId}>
+          {href && entry?.mime.startsWith("image/") && !compact ? <img className="bf-media__thumb" src={href} alt={entry.meta?.filename ?? label} /> : null}
           <span className="bf-code">
-            {ref.meta?.filename ?? ref.mime} {ref.bytes !== undefined ? `· ${formatBytes(ref.bytes)}` : ""}
+            {entry ? `${entry.meta?.filename ?? entry.mime}${entry.bytes !== undefined ? ` · ${formatBytes(entry.bytes)}` : ""}` : ref.mediaId}
           </span>
         </span>
       ) : (

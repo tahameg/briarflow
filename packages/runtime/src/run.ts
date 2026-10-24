@@ -2,8 +2,11 @@
  * Internal: one local run (docs/specs/runtime.md §2–§8, variables.md §6–§8).
  */
 import {
+  checkMediaEntry,
   emptyValue,
   ERROR_OUTPUT,
+  findMedia,
+  typeHasMedia,
   EXEC_FAILED,
   EXEC_THEN,
   NodeError,
@@ -12,7 +15,7 @@ import {
   type ContextDocument,
   type ExecContext,
   type Logger,
-  type MediaStore,
+  type Media,
   type NodeCatalog,
   type RetryPolicy,
   type Run,
@@ -36,7 +39,7 @@ import { inputSecretRefs, nodeAccess } from "./node-access.js";
 /** What a run needs from its engine. */
 export interface RunServices {
   catalog: NodeCatalog;
-  media: MediaStore;
+  media: Media;
   secrets: SecretResolver;
   vault?: SecretVault;
   settings?: SettingsStore;
@@ -55,6 +58,20 @@ export interface RunServices {
   finished(run: LocalRun): void;
 }
 
+/**
+ * Carry-over from an earlier run (runtime.md §6a): nodes that make media and get the same
+ * inputs as then take their earlier outputs instead of running again.
+ */
+export interface RunReuse {
+  /** Earlier outputs of media-making nodes, by reuse key. */
+  previous: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
+  /**
+   * Called (and awaited) when a media-making node completes: it ran, came from the cache, or
+   * was carried over (`reused`). `media` lists the media ids in its outputs.
+   */
+  onResult?(result: { nodeId: string; key: string; outputs: Record<string, unknown>; reused: boolean; media: string[] }): void | Promise<void>;
+}
+
 /** Options of one run, defaults applied. */
 export interface LocalRunOptions {
   runId: string;
@@ -62,6 +79,8 @@ export interface LocalRunOptions {
   flowId: string;
   inputs: unknown;
   useCache: boolean;
+  force: boolean;
+  reuse: RunReuse | undefined;
   timeoutMs: number | undefined;
   signal: AbortSignal | undefined;
 }
@@ -735,6 +754,26 @@ export class LocalRun implements Run {
       return;
     }
 
+    const makesMedia = this.makesMedia(node);
+    let reuseKey: string | undefined;
+    if (makesMedia && this.options.useCache) {
+      reuseKey = await this.cacheKey(node, inputs.values);
+      if (this.cancelKind) return this.cancelNode(node, ex);
+      const earlier = reuseKey !== undefined && !this.options.force ? this.options.reuse?.previous.get(reuseKey) : undefined;
+      if (earlier && reuseKey !== undefined) {
+        const carried = await this.usableOutputs(node, earlier);
+        if (this.cancelKind) return this.cancelNode(node, ex);
+        if (carried) {
+          await this.reportResult(node, reuseKey, carried, true);
+          return this.completeNode(node, ex, carried, true);
+        }
+      }
+    }
+
+    const mediaProblem = await this.checkMediaInputs(node, inputs.values);
+    if (this.cancelKind) return this.cancelNode(node, ex);
+    if (mediaProblem) return this.failNode(node, ex, mediaProblem);
+
     const secretValues = new Map<string, string>();
     for (const name of def.secrets) {
       const r = await this.raceAbort(() => this.services.secrets.get(name));
@@ -754,8 +793,8 @@ export class LocalRun implements Run {
 
     let cacheKey: string | undefined;
     if (def.cache && this.options.useCache) {
-      cacheKey = await this.cacheKey(node, inputs.values);
-      if (cacheKey !== undefined) {
+      cacheKey = reuseKey ?? (await this.cacheKey(node, inputs.values));
+      if (cacheKey !== undefined && !this.options.force) {
         const key = cacheKey;
         const r = await this.raceAbort(() => this.services.cache.get(key));
         if (this.cancelKind) return this.cancelNode(node, ex);
@@ -763,12 +802,23 @@ export class LocalRun implements Run {
         else if (r.kind === "value" && r.value !== undefined && r.value !== null) {
           // A shared or stale cache may hold outputs that no longer fit the ports (REQ-14).
           const cached = this.normalizeOutputs(node, typeof r.value === "object" ? { ...(r.value as object) } : r.value);
-          if (cached.ok) return this.completeNode(node, ex, cached.outputs, true);
-          this.services.logger.warn("Cache entry ignored: it does not match the node's outputs; running the node.", {
-            runId: this.id,
-            nodeId: node.id,
-            error: cached.failure.error,
-          });
+          if (!cached.ok) {
+            this.services.logger.warn("Cache entry ignored: it does not match the node's outputs; running the node.", {
+              runId: this.id,
+              nodeId: node.id,
+              error: cached.failure.error,
+            });
+          } else if (!makesMedia) {
+            return this.completeNode(node, ex, cached.outputs, true);
+          } else {
+            // Media of a cached result goes away with its run; use it only while it is there.
+            const usable = await this.usableOutputs(node, cached.outputs);
+            if (this.cancelKind) return this.cancelNode(node, ex);
+            if (usable) {
+              await this.reportResult(node, key, usable, true);
+              return this.completeNode(node, ex, usable, true);
+            }
+          }
         }
       }
     }
@@ -788,6 +838,7 @@ export class LocalRun implements Run {
             }
             if (this.cancelKind) return this.cancelNode(node, ex);
           }
+          if (makesMedia && cacheKey !== undefined && !outcome.usedState) await this.reportResult(node, cacheKey, out.outputs, false);
           return this.completeNode(node, ex, out.outputs, false);
         }
         fail = out.failure;
@@ -815,6 +866,75 @@ export class LocalRun implements Run {
       ex.state = "running";
       this.emitStarted(node, ex, attempt);
     }
+  }
+
+  /** Catalog nodes that cache and have an output holding media take part in carry-over. */
+  private makesMedia(node: PlannedNode): boolean {
+    const def = node.def;
+    if (!def || !def.cache || def.frontend) return false;
+    const plan = this.plan as Plan;
+    return node.ports.outputs.some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
+  }
+
+  private mediaIn(node: PlannedNode, outputs: Readonly<Record<string, unknown>>): string[] {
+    const plan = this.plan as Plan;
+    const getType = (id: string) => plan.scope.getType(id)?.decl;
+    return node.ports.outputs.flatMap((p) => findMedia(outputs[p.name], p.type, getType).map((m) => m.ref.mediaId));
+  }
+
+  /** Earlier outputs that still fit the ports and whose media all still exist; else `undefined`. */
+  private async usableOutputs(node: PlannedNode, outputs: Readonly<Record<string, unknown>>): Promise<Record<string, unknown> | undefined> {
+    const normalized = this.normalizeOutputs(node, { ...outputs });
+    if (!normalized.ok) return undefined;
+    try {
+      for (const id of this.mediaIn(node, normalized.outputs)) if (!(await this.services.media.entry(id))) return undefined;
+    } catch {
+      return undefined;
+    }
+    return normalized.outputs;
+  }
+
+  private async reportResult(node: PlannedNode, key: string, outputs: Record<string, unknown>, reused: boolean): Promise<void> {
+    const onResult = this.options.reuse?.onResult;
+    if (!onResult) return;
+    try {
+      await onResult({ nodeId: node.id, key, outputs, reused, media: this.mediaIn(node, outputs) });
+    } catch (err) {
+      this.services.logger.warn("Recording a node result for carry-over failed.", { runId: this.id, nodeId: node.id, error: serializeError(err) });
+    }
+  }
+
+  /** Media inputs must exist and fit their port's type (media.md §4). */
+  private async checkMediaInputs(node: PlannedNode, inputs: Record<string, unknown>): Promise<NodeFailure | undefined> {
+    const plan = this.plan as Plan;
+    const getType = (id: string) => plan.scope.getType(id)?.decl;
+    for (const port of node.ports.inputs) {
+      for (const found of findMedia(inputs[port.name], port.type, getType)) {
+        if (!found.type) continue;
+        const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
+        let entry;
+        try {
+          entry = await this.services.media.entry(found.ref);
+        } catch (err) {
+          return classify(err, node.id, this.services.fetchErrors);
+        }
+        if (!entry) {
+          return failure(
+            "media.not_found",
+            `Node ${node.title} got media "${found.ref.mediaId}" in ${where}, which no longer exists. Media made by a run goes away with the next run; run the nodes that make it again.`,
+            node.id,
+            { details: { mediaId: found.ref.mediaId, port: port.name } },
+          );
+        }
+        const problems = checkMediaEntry(entry, found.type, where);
+        if (problems.length > 0) {
+          return failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
+            details: { diagnostics: problems },
+          });
+        }
+      }
+    }
+    return undefined;
   }
 
   private cacheWarning(op: "read" | "write" | "key", node: PlannedNode, err: unknown): void {
@@ -1010,7 +1130,11 @@ export class LocalRun implements Run {
         warn: (message, data) => logger.warn(message, { ...data, ...tag }),
         error: (message, data) => logger.error(message, { ...data, ...tag }),
       },
-      media: this.services.media,
+      media: this.services.media.forNode({
+        owner: { runId: this.id, flowId: plan.flow.id, contextId: this.contextId },
+        fetch: boundFetch,
+        signal,
+      }),
       secrets: {
         get: async (name: string) => {
           const value = secrets.get(name);

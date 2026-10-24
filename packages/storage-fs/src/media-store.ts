@@ -7,11 +7,11 @@ import type { FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { MEDIA_URI_SCHEME, MediaError, canonicalJson, mediaIdFromUri, normalizeMime } from "@briarflow/core";
-import type { MediaRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
+import type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
 
 /** Options of {@link FsMediaStore}. */
 export interface FsMediaStoreOptions {
-  /** Directory holding `<id>.bin` (content) and `<id>.json` (the MediaRef). Created if missing. */
+  /** Directory holding `<id>.bin` (content) and `<id>.json` (the BlobRef). Created if missing. */
   dir: string;
   /** Reject bodies larger than this with `media.too_large`. Default: no limit. */
   maxBytes?: number;
@@ -53,7 +53,7 @@ export class FsMediaStore implements MediaStore {
     this.#durable = options.durable ?? true;
   }
 
-  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<MediaRef> {
+  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<BlobRef> {
     const mime = normalizeMime(info?.mime);
     const meta: Record<string, unknown> = { ...(info.meta ?? {}) };
     if (info.filename !== undefined) meta["filename"] = info.filename;
@@ -95,7 +95,7 @@ export class FsMediaStore implements MediaStore {
         await fh.close();
       }
       const hash = hasher.digest("hex");
-      const ref: MediaRef = { uri: "", mime, bytes, hash };
+      const ref: BlobRef = { uri: "", mime, bytes, hash };
       if (hasMeta) ref.meta = meta;
       const id = createHash("sha256")
         .update(canonicalJson({ hash, mime, meta: hasMeta ? meta : null }))
@@ -110,7 +110,7 @@ export class FsMediaStore implements MediaStore {
     }
   }
 
-  async get(ref: MediaRef | string): Promise<StoredMedia | undefined> {
+  async get(ref: BlobRef | string): Promise<StoredMedia | undefined> {
     const id = idOf(ref);
     if (id === undefined) return undefined;
     await this.#open();
@@ -127,7 +127,7 @@ export class FsMediaStore implements MediaStore {
     return { ref: stored, body };
   }
 
-  async delete(ref: MediaRef | string): Promise<boolean> {
+  async delete(ref: BlobRef | string): Promise<boolean> {
     const id = idOf(ref);
     if (id === undefined) return false;
     await this.#open();
@@ -157,7 +157,7 @@ export class FsMediaStore implements MediaStore {
     return join(this.dir, `${id}.json`);
   }
 
-  async #readRef(id: string): Promise<MediaRef | undefined> {
+  async #readRef(id: string): Promise<BlobRef | undefined> {
     let text: string;
     try {
       text = await readFile(this.#refPath(id), "utf8");
@@ -166,7 +166,7 @@ export class FsMediaStore implements MediaStore {
       throw err;
     }
     try {
-      return JSON.parse(text) as MediaRef;
+      return JSON.parse(text) as BlobRef;
     } catch (err) {
       throw new MediaError("media.corrupt", `Stored media ${MEDIA_URI_SCHEME}${id} cannot be read. Delete it and upload it again.`, {
         cause: err,
@@ -175,7 +175,7 @@ export class FsMediaStore implements MediaStore {
     }
   }
 
-  async #writeRefAtomic(id: string, ref: MediaRef): Promise<void> {
+  async #writeRefAtomic(id: string, ref: BlobRef): Promise<void> {
     const tmp = join(this.dir, `.ref-${randomBytes(8).toString("hex")}.tmp`);
     try {
       const fh = await open(tmp, "w");
@@ -200,7 +200,7 @@ export class FsMediaStore implements MediaStore {
 }
 
 
-function idOf(ref: MediaRef | string): string | undefined {
+function idOf(ref: BlobRef | string): string | undefined {
   const uri = typeof ref === "string" ? ref : typeof ref === "object" && ref !== null ? ref.uri : undefined;
   if (typeof uri !== "string") return undefined;
   if (typeof ref !== "string" && !uri.startsWith(MEDIA_URI_SCHEME)) return undefined;

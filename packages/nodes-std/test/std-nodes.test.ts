@@ -97,6 +97,7 @@ describe("stdPack", () => {
         "convert.floatToInt",
         "convert.toText",
         "debug.print",
+        "debug.image",
         "json.addField",
         "json.construct",
         "json.getField",
@@ -175,6 +176,7 @@ describeNodePack(stdPack, {
     "convert.asJsonArray": [{ inputs: { value: "[1,2]" }, outputs: { items: [1, 2] } }],
     "convert.floatToInt": [{ inputs: { value: 2.5 }, outputs: { value: 3 } }],
     "debug.print": [{ inputs: { text: "hello" }, outputs: {} }],
+    "debug.image": [{ inputs: { image: { mediaId: "med_1" }, label: "after resize" }, outputs: {} }],
     "json.construct": [{ inputs: { value: [1, { a: true }] }, outputs: { json: [1, { a: true }] } }],
     "json.getField": [{ inputs: { json: { user: { tags: ["a", "b"] } }, path: "user.tags[1]" }, outputs: { value: "b" } }],
     "json.setField": [{ inputs: { json: { a: 1 }, path: "b.c", value: 2 }, outputs: { json: { a: 1, b: { c: 2 } } } }],
@@ -204,12 +206,12 @@ describe("valueToText (toText rules)", () => {
     ["false", false, undefined, "false"],
     ["null", null, undefined, ""],
     ["enum member value", "gpt-4.1", ir.named("ty_mood"), "gpt-4.1"],
-    ["media → uri (typed)", { uri: "briar-media://m_1", mime: "image/png", bytes: 3 }, ir.image(), "briar-media://m_1"],
-    ["media → uri (untyped MediaRef shape)", { uri: "https://x/a.png", mime: "image/png" }, undefined, "https://x/a.png"],
-    ["optional media", { uri: "briar-media://m_2", mime: "image/png" }, ir.optional(ir.image()), "briar-media://m_2"],
+    ["media → its id (typed)", { mediaId: "med_1" }, ir.image(), "med_1"],
+    ["media → its id (untyped media shape)", { mediaId: "med_3" }, undefined, "med_3"],
+    ["optional media", { mediaId: "med_2" }, ir.optional(ir.image()), "med_2"],
     ["struct → canonical JSON", { b: 2, a: { d: [1, "x"], c: null } }, undefined, '{"a":{"c":null,"d":[1,"x"]},"b":2}'],
     ["list → JSON", [3, "a", { z: 1, y: 2 }], undefined, '[3,"a",{"y":2,"z":1}]'],
-    ["struct shaped like a MediaRef stays JSON when typed as a struct", { uri: "u", mime: "m" }, ir.named("ty_s"), '{"mime":"m","uri":"u"}'],
+    ["struct shaped like a media value stays JSON when typed as a struct", { mediaId: "u" }, ir.named("ty_s"), '{"mediaId":"u"}'],
   ])("%s", (_label, value, type, expected) => {
     expect(valueToText(value, type)).toBe(expected);
   });
@@ -241,7 +243,7 @@ describe("templates", () => {
   it("renderTemplate uses toText, field paths, variables and literal braces", () => {
     expect(renderTemplate("Hi {{name}} \\{{ok}} {x}", { name: "Aria" })).toBe("Hi Aria {{ok}} {x}");
     expect(renderTemplate("{{a}}|{{b}}|{{c}}|{{d}}", { a: 1, b: null, c: [1, 2], d: true })).toBe("1||[1,2]|true");
-    expect(renderTemplate("{{m}}", { m: { uri: "briar-media://m_9", mime: "image/png" } }, { m: ir.image() })).toBe("briar-media://m_9");
+    expect(renderTemplate("{{m}}", { m: { mediaId: "med_9" } }, { m: ir.image() })).toBe("med_9");
     expect(renderTemplate("{{u.name}} {{u.tags[1]}} {{u.tags}}", { u: { name: "Aria", tags: ["a", "b"] } })).toBe('Aria b ["a","b"]');
     expect(renderTemplate("{{$(city)}} {{$(user).age}}", {}, undefined, (n) => (n === "city" ? "Rome" : { age: 9 }))).toBe("Rome 9");
     const code = (fn: () => unknown) => {
@@ -294,10 +296,10 @@ describe("text.template", () => {
   it("renders values with toText, using bound media types", async () => {
     const r = await runNode(
       textTemplate,
-      { img: { uri: "briar-media://m_1", mime: "image/png" }, list: ["a"], nothing: null },
+      { img: { mediaId: "med_1" }, list: ["a"], nothing: null },
       { config: { template: "{{img}} {{list}} [{{nothing}}] \\{{x}}" }, typeBindings: { T1: ir.image() } },
     );
-    expect(r.outputs.text).toBe('briar-media://m_1 ["a"] [] {{x}}');
+    expect(r.outputs.text).toBe('med_1 ["a"] [] {{x}}');
   });
 
   it("a template without placeholders has no inputs", async () => {
@@ -364,8 +366,8 @@ describe("convert nodes", () => {
     expect((await runNode(convertToText, { value: 3.5 })).outputs).toEqual({ text: "3.5" });
     expect((await runNode(convertToText, { value: null })).outputs).toEqual({ text: "" });
     expect((await runNode(convertToText, { value: [1, { b: 2, a: 1 }] })).outputs).toEqual({ text: '[1,{"a":1,"b":2}]' });
-    const media = await runNode(convertToText, { value: { uri: "briar-media://m_1", mime: "image/png" } }, { typeBindings: { T: ir.image() } });
-    expect(media.outputs).toEqual({ text: "briar-media://m_1" });
+    const media = await runNode(convertToText, { value: { mediaId: "med_1" } }, { typeBindings: { T: ir.image() } });
+    expect(media.outputs).toEqual({ text: "med_1" });
   });
 
   it.each([

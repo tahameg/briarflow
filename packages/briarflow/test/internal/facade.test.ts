@@ -6,7 +6,7 @@ import { CommandError } from "@briarflow/authoring";
 import { createSequentialIdGenerator, type ContextStore, type LogData, type Logger, type MediaStore } from "@briarflow/core";
 import { mockHash, mockPack } from "@briarflow/nodes-mock";
 import { FsContextStore, FsMediaStore } from "@briarflow/storage-fs";
-import { SqliteContextStore } from "@briarflow/storage-sqlite";
+import { SqliteContextStore, SqliteLastRunStore, SqliteMediaRegistry } from "@briarflow/storage-sqlite";
 import { createBriar, envSecrets, MemoryContextStore, MemoryMediaStore, staticSecrets, type Briar, type BriarOptions } from "briarflow";
 
 function stepClock(start = Date.parse("2026-01-01T00:00:00Z"), stepMs = 1000): () => Date {
@@ -67,8 +67,16 @@ describe("quick start", () => {
   });
 
   it.each([
-    ["fs", async (dir: string) => ({ store: new FsContextStore({ dir: join(dir, "ctx"), durable: false }) as ContextStore, media: new FsMediaStore({ dir: join(dir, "media"), durable: false }) as MediaStore })],
-    ["sqlite", async (dir: string) => ({ store: new SqliteContextStore({ file: join(dir, "briar.db") }) as ContextStore, media: new MemoryMediaStore() as MediaStore })],
+    ["fs", async (dir: string) => ({ store: new FsContextStore({ dir: join(dir, "ctx"), durable: false }) as ContextStore, blobs: new FsMediaStore({ dir: join(dir, "media"), durable: false }) as MediaStore })],
+    [
+      "sqlite",
+      async (dir: string) => ({
+        store: new SqliteContextStore({ file: join(dir, "briar.db") }) as ContextStore,
+        media: new SqliteMediaRegistry({ file: join(dir, "briar.db") }),
+        lastRuns: new SqliteLastRunStore({ file: join(dir, "briar.db") }),
+        blobs: new MemoryMediaStore() as MediaStore,
+      }),
+    ],
   ])("runs against the %s store and survives a new facade instance", async (_kind, make) => {
     const dir = await mkdtemp(join(tmpdir(), "briar-facade-"));
     dirs.push(dir);

@@ -7,7 +7,7 @@ import { stdPack } from "@briarflow/nodes-std";
 import { buildFlowView, visualMediaKind } from "../../src/graph.js";
 
 const catalog = createCatalog([stdPack, imagePack]);
-const img = { uri: "briar-media://m_1", mime: "image/png" };
+const img = { mediaId: "med_1" };
 
 function doc() {
   const r = applyCommands(

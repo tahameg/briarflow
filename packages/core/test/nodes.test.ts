@@ -73,7 +73,7 @@ describe("defineNode defaults", () => {
       concurrency: 2,
       deprecated: "Use acme.v2",
       outputs: { image: t.image() },
-      run: () => ({ image: { uri: "briar-media://m_1", mime: "image/png" } }),
+      run: () => ({ image: { mediaId: "med_1" } }),
     });
     expect(explicit).toMatchObject({
       title: "Generate image",

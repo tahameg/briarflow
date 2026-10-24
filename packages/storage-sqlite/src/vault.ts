@@ -27,7 +27,7 @@ interface SecretRow {
   updated_at: string;
 }
 
-function open(file: string): Database.Database {
+export function open(file: string): Database.Database {
   const db = new Database(file);
   db.pragma("busy_timeout = 5000");
   if (file !== ":memory:" && file !== "") db.pragma("journal_mode = WAL");

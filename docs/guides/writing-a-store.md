@@ -70,17 +70,17 @@ shape of a document.
 interface MediaStore {
   readonly kind: string;
   put(data: Uint8Array | ReadableStream<Uint8Array>,
-      info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<MediaRef>;
-  get(ref: MediaRef | string): Promise<{ ref: MediaRef; body: ReadableStream<Uint8Array> } | undefined>;
-  delete(ref: MediaRef | string): Promise<boolean>;
-  resolveUrl?(ref: MediaRef): Promise<string | undefined>;
+      info: { mime: string; filename?: string; meta?: Record<string, unknown> }): Promise<BlobRef>;
+  get(ref: BlobRef | string): Promise<{ ref: BlobRef; body: ReadableStream<Uint8Array> } | undefined>;
+  delete(ref: BlobRef | string): Promise<boolean>;
+  resolveUrl?(ref: BlobRef): Promise<string | undefined>;
 }
 ```
 
 | Method | What it must do |
 |---|---|
 | `put` | Read the whole body. Return `{ uri: "briar-media://<id>", mime, bytes, hash, meta? }`: `mime` lowercased without parameters (`"Image/PNG; q=1"` → `"image/png"`), `bytes` the exact length, `hash` the sha-256 hex of the content, `meta` = `info.meta` plus `filename`. Empty bodies are fine. |
-| `get` | Accept a `MediaRef`, a `briar-media://` uri or a bare id. Anything else (e.g. `https://…`) → `undefined`; the store never fetches remote URLs. Each call returns a **new** stream. |
+| `get` | Accept a `BlobRef`, a `briar-media://` uri or a bare id. Anything else (e.g. `https://…`) → `undefined`; the store never fetches remote URLs. Each call returns a **new** stream. |
 | `delete` | Same inputs as `get`. `true` if it existed. |
 | `resolveUrl` | Optional. A URL a browser or a Python worker can GET without extra auth (public or signed). |
 
@@ -453,7 +453,7 @@ export interface Bucket {
 ```ts
 // src/bucket-media-store.ts
 import { MEDIA_URI_SCHEME, MediaError, canonicalJson, mediaIdFromUri, normalizeMime, sha256Hex } from "@briarflow/core";
-import type { MediaRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
+import type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "@briarflow/core";
 import type { Bucket } from "./bucket.js";
 
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -468,7 +468,7 @@ export class BucketMediaStore implements MediaStore {
     this.#maxBytes = options.maxBytes;
   }
 
-  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<MediaRef> {
+  async put(data: Uint8Array | ReadableStream<Uint8Array>, info: PutMediaInfo): Promise<BlobRef> {
     const mime = normalizeMime(info.mime); // "Image/PNG; q=1" → "image/png"; else media.invalid_mime
     const meta = { ...info.meta, ...(info.filename !== undefined ? { filename: info.filename } : {}) };
     canonicalJson(meta); // throws json.invalid for non-JSON meta
@@ -477,21 +477,21 @@ export class BucketMediaStore implements MediaStore {
       throw new MediaError("media.too_large", `Media is larger than the limit of ${this.#maxBytes} bytes.`, { details: { maxBytes: this.#maxBytes } });
     }
     const id = randomId();
-    const ref: MediaRef = { uri: MEDIA_URI_SCHEME + id, mime, bytes: bytes.byteLength, hash: await sha256Hex(bytes) };
+    const ref: BlobRef = { uri: MEDIA_URI_SCHEME + id, mime, bytes: bytes.byteLength, hash: await sha256Hex(bytes) };
     if (Object.keys(meta).length > 0) ref.meta = meta;
     await this.#bucket.put(`blobs/${id}`, bytes, mime);
     await this.#bucket.put(`refs/${id}.json`, new TextEncoder().encode(JSON.stringify(ref)), "application/json"); // the ref "commits" the item
     return structuredClone(ref);
   }
 
-  async get(ref: MediaRef | string): Promise<StoredMedia | undefined> {
+  async get(ref: BlobRef | string): Promise<StoredMedia | undefined> {
     const id = idOf(ref);
     const stored = id === undefined ? undefined : await this.#readRef(id);
     const body = stored && (await this.#bucket.get(`blobs/${id}`));
     return stored && body ? { ref: stored, body } : undefined;
   }
 
-  async delete(ref: MediaRef | string): Promise<boolean> {
+  async delete(ref: BlobRef | string): Promise<boolean> {
     const id = idOf(ref);
     if (id === undefined) return false;
     const existed = await this.#bucket.delete(`refs/${id}.json`);
@@ -499,17 +499,17 @@ export class BucketMediaStore implements MediaStore {
     return existed;
   }
 
-  async resolveUrl(ref: MediaRef): Promise<string | undefined> {
+  async resolveUrl(ref: BlobRef): Promise<string | undefined> {
     const id = idOf(ref);
     if (id === undefined || !this.#bucket.signedGetUrl) return undefined;
     return this.#bucket.signedGetUrl(`blobs/${id}`, 15 * 60);
   }
 
-  async #readRef(id: string): Promise<MediaRef | undefined> {
+  async #readRef(id: string): Promise<BlobRef | undefined> {
     const stream = await this.#bucket.get(`refs/${id}.json`);
     if (!stream) return undefined;
     try {
-      return JSON.parse(new TextDecoder().decode(await readAll(stream))) as MediaRef;
+      return JSON.parse(new TextDecoder().decode(await readAll(stream))) as BlobRef;
     } catch (err) {
       throw new MediaError("media.corrupt", `Stored media ${MEDIA_URI_SCHEME}${id} cannot be read. Delete it and upload it again.`, { cause: err, details: { uri: MEDIA_URI_SCHEME + id } });
     }
@@ -517,7 +517,7 @@ export class BucketMediaStore implements MediaStore {
 }
 
 /** Accepts a ref, a briar-media:// uri or a bare id; anything else → undefined. */
-function idOf(ref: MediaRef | string): string | undefined {
+function idOf(ref: BlobRef | string): string | undefined {
   const uri = typeof ref === "string" ? ref : ref?.uri;
   if (typeof uri !== "string" || (typeof ref !== "string" && !uri.startsWith(MEDIA_URI_SCHEME))) return undefined;
   return mediaIdFromUri(uri);
@@ -568,9 +568,11 @@ Points worth knowing:
   out; the REST API then serves `/media/:id`.
 - **No reference counting in v1.** Deleting media that a document still references leaves a
   dangling ref.
-- **Reading media in nodes** is not the store's job: nodes call core's
-  `readMedia(ref, { media: ctx.media, fetch: ctx.fetch, signal: ctx.signal })`, which uses
-  your `get` for `briar-media://` refs and `fetch` for `https://` ones.
+- **Reading media in nodes** is not the store's job: nodes call `ctx.media.read(ref)`. A media
+  value is the id of a media registry entry (docs/specs/media.md); the loader reads entries
+  whose source is `stored` through your `get`, and links through `fetch`.
+- **A `MediaStore` holds blobs, not media values.** Uploads go into it and get a registry entry
+  pointing at the blob; what nodes make lives in the registry itself (transient).
 
 ## 9. Prove it with the conformance suites
 

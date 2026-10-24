@@ -8,6 +8,9 @@ import {
   createCatalog,
   createContextDocument,
   createIdGenerator,
+  createMedia,
+  createMemoryLastRuns,
+  createMemoryMediaRegistry,
   createMemorySettings,
   createMemoryVault,
   createTypeScope,
@@ -25,7 +28,11 @@ import {
   type FlowDocument,
   type FlowSignatureSchema,
   type IdGenerator,
+  type LastRun,
+  type LastRunStore,
   type Logger,
+  type Media,
+  type MediaRegistry,
   type MediaStore,
   type NodeCatalog,
   type NodeDescriptor,
@@ -39,10 +46,10 @@ import {
   type TypeDecl,
 } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
-import { checkRunRequest, createEngine, type Engine, type EngineOptions } from "@briarflow/runtime";
+import { checkRunRequest, createEngine, type Engine, type EngineOptions, type RunReuse } from "@briarflow/runtime";
 import { createContextHandle, type ContextHandle, type FlowHandle, type HandleHost } from "./handles.js";
 import { MemoryContextStore } from "./memory-context-store.js";
-import { MemoryMediaStore } from "./memory-media-store.js";
+import { LastRunKeeper } from "./last-runs.js";
 import { FacadeRun, RunRegistry, type BriarRun, type RunListFilter, type RunRetention } from "./runs.js";
 import { noSecrets } from "./secrets.js";
 
@@ -50,8 +57,14 @@ import { noSecrets } from "./secrets.js";
 export interface BriarOptions {
   /** Where contexts live. Default: a new `MemoryContextStore`. */
   store?: ContextStore;
-  /** Where media lives. Default: a new `MemoryMediaStore`. */
-  media?: MediaStore;
+  /** The media registry (media.md §2). Default: a registry in memory. */
+  media?: MediaRegistry;
+  /** Where uploaded files are kept (`stored` media). Default: none (uploads go in the registry). */
+  blobs?: MediaStore;
+  /** Media bytes kept in memory across runs. Default 256 MB. */
+  mediaMemoryBytes?: number;
+  /** The last run of each flow (media.md §5). Default: in memory. */
+  lastRuns?: LastRunStore;
   /** Secrets for nodes. Default: none (every lookup is `undefined`). */
   secrets?: SecretResolver;
   /** The secret vault (`ctx.secrets.read`, `briar.vault`). Default: a vault in memory. */
@@ -123,8 +136,10 @@ export interface SettingsInfo {
 
 /** Options of {@link Briar.run}. */
 export interface BriarRunOptions {
-  /** Default `true`. */
+  /** Default `true`. `false` neither reads nor writes the cache and carries nothing over. */
   useCache?: boolean;
+  /** Run every node again, even nodes whose result could be carried over or cached. */
+  force?: boolean;
   /** Aborting it cancels the run. */
   signal?: AbortSignal;
   /** Whole-run timeout. */
@@ -152,7 +167,8 @@ export interface BriarRunOptions {
  */
 export interface Briar {
   readonly store: ContextStore;
-  readonly media: MediaStore;
+  /** Media registry and loader. */
+  readonly media: Media;
   readonly catalog: NodeCatalog;
   readonly engine: Engine;
   readonly contexts: {
@@ -190,6 +206,8 @@ export interface Briar {
     get(runId: string): BriarRun | undefined;
     /** Newest first. */
     list(filter?: RunListFilter): BriarRun[];
+    /** The last run of a flow (kept until the next run of the flow). Throws `flow.not_found`. */
+    last(flowId: string): Promise<LastRun | undefined>;
   };
   /** The secret vault. Values go in and never come out (except to nodes, through the engine). */
   readonly vault: SecretVault;
@@ -242,12 +260,14 @@ function invalidBody(problems: { path: string; problem: string }[]): BriarError 
  * ```ts
  * import { createBriar, envSecrets } from "briarflow";
  * import { FsMediaStore } from "@briarflow/storage-fs";
- * import { SqliteContextStore } from "@briarflow/storage-sqlite";
+ * import { SqliteContextStore, SqliteLastRunStore, SqliteMediaRegistry } from "@briarflow/storage-sqlite";
  * import { mockPack } from "@briarflow/nodes-mock";
  *
  * const briar = createBriar({
  *   store: new SqliteContextStore({ file: "./data/briar.db" }),
- *   media: new FsMediaStore({ dir: "./data/media" }),
+ *   media: new SqliteMediaRegistry({ file: "./data/briar.db" }),
+ *   blobs: new FsMediaStore({ dir: "./data/media" }),
+ *   lastRuns: new SqliteLastRunStore({ file: "./data/briar.db" }),
  *   secrets: envSecrets(),
  *   packs: [mockPack],
  * });
@@ -255,7 +275,13 @@ function invalidBody(problems: { path: string; problem: string }[]): BriarError 
  */
 export function createBriar(options: BriarOptions = {}): Briar {
   const store = options.store ?? new MemoryContextStore();
-  const media = options.media ?? new MemoryMediaStore();
+  const engineFetch = options.engine?.fetch;
+  const media = createMedia({
+    registry: options.media ?? createMemoryMediaRegistry({ ...(options.clock ? { clock: options.clock } : {}) }),
+    ...(options.blobs ? { blobs: options.blobs } : {}),
+    ...(engineFetch ? { fetch: engineFetch } : {}),
+    ...(options.mediaMemoryBytes === undefined ? {} : { memoryBytes: options.mediaMemoryBytes }),
+  });
   const secrets = options.secrets ?? noSecrets;
   const vault = options.vault ?? createMemoryVault({ clock: options.clock ?? (() => new Date()) });
   const settingsStore = options.settings ?? createMemorySettings();
@@ -268,6 +294,7 @@ export function createBriar(options: BriarOptions = {}): Briar {
   const engine = createEngine({ ...(options.engine ?? {}), catalog, media, secrets, vault, settings: settingsStore, logger, clock, idGenerator });
   const declaredSettings = (): SettingInfo[] => catalog.packs.flatMap((p) => p.settings.map((s) => ({ ...s, pack: p.name, packTitle: p.title })));
   const registry = new RunRegistry(options.runRetention ?? {}, clock);
+  const lastRuns = new LastRunKeeper(options.lastRuns ?? createMemoryLastRuns(), media, logger, clock);
   const attempts = options.globalWriteAttempts ?? 5;
   let closed = false;
   let closing: Promise<void> | undefined;
@@ -304,17 +331,28 @@ export function createBriar(options: BriarOptions = {}): Briar {
       const check = checkRunRequest(doc, flowId, catalog, inputs ?? {});
       if (!check.ok) throw new BriarError(check.error.code, check.error.message, { details: check.error.details });
     }
+    const runId = runOptions.runId ?? idGenerator("run");
+    let reuse: RunReuse | undefined;
+    try {
+      reuse = await lastRuns.begin({ runId, contextId: doc.id, flowId, revision: doc.revision, inputs: inputs ?? {} });
+    } catch (err) {
+      logger.warn("Recording the run as the flow's last run failed; nothing is carried over.", { runId, error: err instanceof Error ? err.message : String(err) });
+    }
     const engineRun = engine.run({
       context: doc,
       flowId,
       inputs: inputs ?? {},
+      runId,
+      ...(reuse ? { reuse } : {}),
       ...(runOptions.signal ? { signal: runOptions.signal } : {}),
       ...(runOptions.useCache !== undefined ? { useCache: runOptions.useCache } : {}),
+      ...(runOptions.force ? { force: true } : {}),
       ...(runOptions.timeoutMs !== undefined ? { timeoutMs: runOptions.timeoutMs } : {}),
-      ...(runOptions.runId !== undefined ? { runId: runOptions.runId } : {}),
     });
     const globalIds = new Map(doc.globals.map((g) => [g.name, g.id] as const));
-    const facadeRun = new FacadeRun(engineRun, flowId, doc.id, globalIds, { store, catalog, logger, clock, idGenerator, attempts });
+    // The run's result resolves once the flow's last run is saved, so the next run can carry it over.
+    const recorded = reuse ? engineRun.result.then((result) => lastRuns.finish(runId, result, engineRun.events())) : Promise.resolve();
+    const facadeRun = new FacadeRun(engineRun, flowId, doc.id, globalIds, { store, catalog, logger, clock, idGenerator, attempts }, recorded);
     registry.add(facadeRun);
     return facadeRun;
   };
@@ -450,6 +488,12 @@ export function createBriar(options: BriarOptions = {}): Briar {
     runs: {
       get: (runId) => registry.get(runId),
       list: (filter) => registry.list(filter),
+      async last(flowId) {
+        ensureOpen();
+        const contextId = await store.locateFlow(flowId);
+        if (contextId === undefined) throw flowNotFound(flowId);
+        return lastRuns.store.get(contextId, flowId);
+      },
     },
     vault,
     settings: {
@@ -480,6 +524,7 @@ export function createBriar(options: BriarOptions = {}): Briar {
         const active = registry.active();
         for (const r of active) r.cancel("Briarflow is shutting down.");
         await Promise.all(active.map((r) => r.result));
+        await lastRuns.settle();
         const errors: unknown[] = [];
         const tryClose = async (target: unknown): Promise<void> => {
           if (!isClosable(target)) return;
@@ -491,6 +536,7 @@ export function createBriar(options: BriarOptions = {}): Briar {
         };
         for (const pack of userPacks as readonly (NodePack | ClosablePack)[]) await tryClose(pack);
         await tryClose(media);
+        await tryClose(lastRuns.store);
         await tryClose(store);
         await tryClose(vault);
         await tryClose(settingsStore);

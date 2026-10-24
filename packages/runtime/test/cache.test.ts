@@ -230,23 +230,22 @@ describe("engine cache", () => {
     for (const w of warnings) expect(w.data).toMatchObject({ nodeId: "n_c" });
   });
 
-  it("MediaRefs in inputs are keyed by hash (or uri without hash), not by their other fields", async () => {
+  it("media values in inputs are keyed by media id", async () => {
     const spy = spyCache();
-    const { engine } = makeEngine({ cache: spy.cache });
+    const { engine, media } = makeEngine({ cache: spy.cache });
     const d = doc({
       inputs: [{ name: "img", type: ir.image() }],
       outputs: [{ name: "out", type: ir.text() }],
       nodes: [n("n_t", "convert.toText")],
       edges: [e("n_in.img", "n_t.value"), e("n_t.text", "n_out.out")],
     });
-    const hash = "a".repeat(64);
     const run = (img: object) => engine.run({ context: d, flowId: FLOW_ID, inputs: { img } }).result;
-    await run({ uri: "briar-media://m_1", mime: "image/png", hash });
-    await run({ uri: "briar-media://m_2", mime: "image/jpeg", hash, meta: { width: 3 } });
+    const a = await media.put(new Uint8Array([1]), { mime: "image/png" });
+    const b = await media.put(new Uint8Array([1]), { mime: "image/png" });
+    await run({ mediaId: a.id });
+    await run({ mediaId: a.id });
     expect(spy.gets[0]).toBe(spy.gets[1]);
-    await run({ uri: "briar-media://m_3", mime: "image/png" });
-    await run({ uri: "briar-media://m_3", mime: "image/jpeg", bytes: 10 });
-    expect(spy.gets[2]).toBe(spy.gets[3]);
+    await run({ mediaId: b.id });
     expect(spy.gets[2]).not.toBe(spy.gets[0]);
   });
 });

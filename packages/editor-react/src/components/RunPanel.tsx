@@ -5,10 +5,10 @@
  */
 import { useEffect, useMemo } from "react";
 import { createCatalog, scopeForFlow } from "@briarflow/core";
-import type { Diagnostic, FieldDecl, SerializedError, TypeScope } from "@briarflow/core";
+import type { Diagnostic, FieldDecl, MediaRef, SerializedError, TypeScope } from "@briarflow/core";
 import { isRunFinished } from "@briarflow/editor";
 import type { EditorStore, RunState } from "@briarflow/editor";
-import { useEditorState, useEditorStore, useFlowId, useLocalToasts, useMedia } from "../context.js";
+import { useEditorState, useEditorStore, useFlowId, useLocalToasts, useMedia, useMediaEntry } from "../context.js";
 import { isMediaRef, mediaHref, previewValue } from "../values.js";
 import { Badge, Button, EmptyState, SectionHead, StatusDot } from "./ui.js";
 import type { DotState, Tone } from "./ui.js";
@@ -99,7 +99,7 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems, onRunStarted, sho
   const scope = useMemo(() => (doc && flow ? scopeForFlow(doc, flow.id, catalog ?? NO_PACKS) : undefined), [doc, flow, catalog]);
   const { push } = useLocalToasts();
   const inputs = useEditorState((s) => (flowId ? s.runInputs[flowId] : undefined)) ?? NO_INPUTS;
-  const useCache = useEditorState((s) => s.useCache);
+  const force = useEditorState((s) => s.force);
   const errorCount = useFlowErrorCount(flowId);
 
   const running = run !== undefined && !isRunFinished(run);
@@ -141,9 +141,9 @@ export function RunPanel({ flowId: flowIdProp, onOpenProblems, onRunStarted, sho
         {flow.inputs.map((f) => (
           <InputRow key={f.name} field={f} scope={scope} value={inputs[f.name]} onChange={(v) => store.setRunInput(flow.id, f.name, v)} />
         ))}
-        <label className="bf-check">
-          <input type="checkbox" className="bf-check__box" checked={useCache} onChange={(e) => store.setUseCache(e.target.checked)} />
-          <span>Use cache</span>
+        <label className="bf-check" title="Nodes that make media normally reuse the last run's result when their inputs did not change. Force run makes everything again.">
+          <input type="checkbox" className="bf-check__box" checked={force} onChange={(e) => store.setForce(e.target.checked)} />
+          <span>Force run (make everything again)</span>
         </label>
         <div className="bf-run__actions">
           <Button type="submit" variant="primary" disabled={running} title={runBlockedHint(errorCount) ?? "Run (Ctrl/Cmd+Enter)"}>
@@ -260,26 +260,29 @@ function Outputs({ result, outputs }: { result: NonNullable<RunState["result"]>;
   );
 }
 
+function OutputMedia({ value, mediaUrl }: { value: MediaRef; mediaUrl: ((id: string) => string) | undefined }) {
+  const entry = useMediaEntry(value);
+  const href = mediaHref(value, mediaUrl);
+  if (href && (!entry || entry.mime.startsWith("image/"))) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className="bf-run__image">
+        <img src={href} alt={entry?.meta?.filename ?? "output image"} />
+      </a>
+    );
+  }
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className="bf-code">
+      {entry?.meta?.filename ?? entry?.mime ?? value.mediaId}
+    </a>
+  ) : (
+    <span className="bf-code">{value.mediaId}</span>
+  );
+}
+
 function OutputValue({ value, mediaUrl }: { value: unknown; mediaUrl: ((id: string) => string) | undefined }) {
   if (value === undefined) return <span className="bf-muted">—</span>;
   if (typeof value === "string") return <pre className="bf-pre">{value}</pre>;
-  if (isMediaRef(value)) {
-    const href = mediaHref(value, mediaUrl);
-    if (href && value.mime.startsWith("image/")) {
-      return (
-        <a href={href} target="_blank" rel="noreferrer" className="bf-run__image">
-          <img src={href} alt={value.meta?.filename ?? "output image"} />
-        </a>
-      );
-    }
-    return href ? (
-      <a href={href} target="_blank" rel="noreferrer" className="bf-code">
-        {value.meta?.filename ?? value.mime}
-      </a>
-    ) : (
-      <span className="bf-code">{value.uri}</span>
-    );
-  }
+  if (isMediaRef(value)) return <OutputMedia value={value} mediaUrl={mediaUrl} />;
   if (Array.isArray(value) && value.some(isMediaRef)) {
     return (
       <div className="bf-run__gallery">

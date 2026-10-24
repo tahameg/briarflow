@@ -89,6 +89,8 @@ export interface EditorState {
   readonly runInputs: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   /** Whether runs started without `useCache` use the cache. Default true. */
   readonly useCache: boolean;
+  /** Whether runs started without `force` run every node again (nothing carried over). Default false. */
+  readonly force: boolean;
   /** What runs report (prints, errors, outputs, run start / end), oldest first, capped. */
   readonly console: readonly ConsoleLine[];
   readonly notices: readonly EditorNotice[];
@@ -139,6 +141,8 @@ export interface StartRunOptions {
   inputs?: Record<string, unknown>;
   /** Default: `state.useCache`. */
   useCache?: boolean;
+  /** Default: `state.force`. */
+  force?: boolean;
 }
 
 /** Listener of {@link EditorStore.subscribe}. Called synchronously after every state change. */
@@ -185,6 +189,7 @@ export interface EditorStore {
   /** Sets (or with `undefined` clears) a run input of a flow in `state.runInputs`. */
   setRunInput(flowId: string, name: string, value: unknown): void;
   setUseCache(useCache: boolean): void;
+  setForce(force: boolean): void;
   /** Empties the console. */
   clearConsole(): void;
   dismissNotice(id: number): void;
