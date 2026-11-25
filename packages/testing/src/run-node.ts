@@ -312,7 +312,9 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
       logs.push({ level, message, data: full });
       options.logger?.[level](message, full);
     };
+  const typesOf = (kind: "global" | "variable") => new Map<string, TypeRef>((kind === "global" ? doc.globals : flow.variables).map((x) => [x.name, x.type]));
   const reader = (kind: "global" | "variable", map: Map<string, unknown>) => ({
+    typeOf: (name: string): TypeRef | undefined => typesOf(kind).get(name),
     get(name: string): unknown {
       usedState = true;
       if (!map.has(name)) {

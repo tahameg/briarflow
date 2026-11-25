@@ -30,6 +30,7 @@ import {
   type SecretVault,
   type SerializedError,
   type SettingsStore,
+  type TypeRef,
 } from "@briarflow/core";
 import { computeCacheKey, replaceMedia, type RunCache } from "./cache.js";
 import { EventLog } from "./events.js";
@@ -1123,6 +1124,10 @@ export class LocalRun implements Run {
         { details: { name } },
       );
     };
+    const typeOf = (kind: "flow" | "global", name: string): TypeRef | undefined => {
+      for (const slot of plan.variables.values()) if (slot.kind === kind && slot.name === name) return slot.type;
+      return undefined;
+    };
     const baseFetch = this.services.fetch;
     const fetchErrors = this.services.fetchErrors;
     const boundFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1168,8 +1173,8 @@ export class LocalRun implements Run {
         read: (ref: string) => access.readSecret(ref),
       },
       settings: { get: (name: string) => access.readSetting(name) },
-      globals: { get: (name: string) => lookup("global", name) },
-      variables: { get: (name: string) => lookup("flow", name) },
+      globals: { get: (name: string) => lookup("global", name), typeOf: (name: string) => typeOf("global", name) },
+      variables: { get: (name: string) => lookup("flow", name), typeOf: (name: string) => typeOf("flow", name) },
       fetch: boundFetch,
       resolveType: (id: string) => plan.scope.getType(id)?.decl,
     };

@@ -30,7 +30,7 @@ export const convertToText = defineNode({
   description: "Turns any value into text and never fails. A JSON string becomes its text, lists, structs and other JSON become compact JSON, media becomes its URI.",
   inputs: { value: t.var("T") },
   outputs: { text: t.string() },
-  run: ({ inputs, node }) => ({ text: valueToText(inputs.value, node.typeBindings?.["T"]) }),
+  run: ({ inputs, node, ctx }) => ({ text: valueToText(inputs.value, node.typeBindings?.["T"], (id) => ctx.resolveType(id)) }),
 });
 
 const INT_PATTERN = /^[+-]?\d+$/;

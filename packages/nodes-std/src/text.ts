@@ -46,13 +46,17 @@ export const textTemplate = defineNode({
         if (bound) types[name] = bound;
       });
     }
-    return { text: renderTemplate(config.template, inputs, types, (name) => {
+    const isVariable = (name: string) => {
       try {
-        return ctx.variables.get(name);
+        ctx.variables.get(name);
+        return true;
       } catch {
-        return ctx.globals.get(name);
+        return false;
       }
-    }) };
+    };
+    const read = (name: string) => (isVariable(name) ? ctx.variables.get(name) : ctx.globals.get(name));
+    const variableType = (name: string) => (isVariable(name) ? ctx.variables.typeOf?.(name) : ctx.globals.typeOf?.(name));
+    return { text: renderTemplate(config.template, inputs, types, read, { resolve: (id) => ctx.resolveType(id), variableType }) };
   },
 });
 

@@ -1,7 +1,7 @@
 /**
  * toText rules and template parsing (docs/specs/node-api.md §9).
  */
-import { BUILTIN, canonicalJson, isMediaRef, isValidFieldName, NodeError, type PortError, type TypeRef } from "@briarflow/core";
+import { BUILTIN, canonicalJson, isMediaRef, isValidFieldName, NodeError, rootOf, type DeclResolver, type PortError, type TypeRef } from "@briarflow/core";
 import { getAt, parsePath, type PathSegment } from "./json-path.js";
 
 /**
@@ -9,7 +9,7 @@ import { getAt, parsePath, type PathSegment } from "./json-path.js";
  * `String()`, bools `"true"`/`"false"`, enum → member value, `null` → `""`, binary → its media
  * id, Text → its value, Json → its text, struct/list → canonical JSON (sorted keys, no spaces).
  * Pass the value's type when known so a struct that happens to look like another is not
- * mistaken for it.
+ * mistaken for it, and `resolve` so structs that extend Text or Json print like them.
  *
  * @example
  * ```ts
@@ -17,15 +17,16 @@ import { getAt, parsePath, type PathSegment } from "./json-path.js";
  * valueToText(null);             // ""
  * ```
  */
-export function valueToText(value: unknown, type?: TypeRef): string {
+export function valueToText(value: unknown, type?: TypeRef, resolve?: DeclResolver): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value !== "object") return String(value);
   const inner = type?.kind === "optional" ? type.of : type;
   if (inner?.kind === "primitive" && inner.name === "binary" && isMediaRef(value)) return value.mediaId;
-  if (inner?.kind === "named" && inner.id === BUILTIN.Text && typeof (value as { value?: unknown }).value === "string") return (value as { value: string }).value;
-  if (inner?.kind === "named" && inner.id === BUILTIN.Json && typeof (value as { text?: unknown }).text === "string") return (value as { text: string }).text;
+  const root = inner?.kind === "named" ? (resolve ? rootOf(inner.id, resolve) : inner.id) : undefined;
+  if (root === BUILTIN.Text && typeof (value as { value?: unknown }).value === "string") return (value as { value: string }).value;
+  if (root === BUILTIN.Json && typeof (value as { text?: unknown }).text === "string") return (value as { text: string }).text;
   // A media value (Image, … or a struct extending one) prints as its media id.
   if (inner?.kind === "named" && isMediaRef((value as { data?: unknown }).data)) return (value as { data: { mediaId: string } }).data.mediaId;
   if ((inner === undefined || inner.kind === "var") && isMediaRef(value)) return value.mediaId;
@@ -160,6 +161,7 @@ export function renderTemplate(
   variable: (name: string) => unknown = (name) => {
     throw new NodeError("variable.unknown", `Variable "${name}" is not available here.`);
   },
+  options: { resolve?: DeclResolver; variableType?: (name: string) => TypeRef | undefined } = {},
 ): string {
   const segments = parseTemplate(template);
   if (!Array.isArray(segments)) throw new NodeError("text.invalid_template", segments.error.message);
@@ -171,7 +173,8 @@ export function renderTemplate(
     }
     const { kind, name, path } = s.slot;
     if (path.length > 0) out += valueToText(getAt(kind === "variable" ? variable(name) : values[name], path));
-    else out += kind === "variable" ? valueToText(variable(name)) : valueToText(values[name], types?.[name]);
+    else if (kind === "variable") out += valueToText(variable(name), options.variableType?.(name), options.resolve);
+    else out += valueToText(values[name], types?.[name], options.resolve);
   }
   return out;
 }

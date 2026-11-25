@@ -608,6 +608,18 @@ describe("json nodes", () => {
     expect((await runNode(convertToText, { value: { text: "plain" } }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "plain" });
   });
 
+  it("structs that extend Text print as their text (As string, templates, variables)", async () => {
+    const short = { kind: "struct" as const, id: "ty_short", name: "ShortText", extends: "briar.Text", fields: [{ name: "maxLength", type: ir.optional(ir.int()), static: true as const, default: 20 }] };
+    const doc = context({
+      types: [short],
+      flows: [flow({ id: "flow_t", name: "T", variables: [{ id: "var_s", name: "title", type: ir.named("ty_short"), access: "private", default: { value: "Var" } }] })],
+    });
+    const T = ir.named("ty_short");
+    expect((await runNode(convertToText, { value: { value: "Hi" } }, { context: doc, flowId: "flow_t", typeBindings: { T } })).outputs).toEqual({ text: "Hi" });
+    const r = await runNode(textTemplate, { name: { value: "Ann" } }, { context: doc, flowId: "flow_t", config: { template: "{{name}} / {{$(title)}}" }, typeBindings: { T1: T } });
+    expect(r.outputs).toEqual({ text: "Ann / Var" });
+  });
+
   it("json inputs reject values that are not JSON", async () => {
     expect((await rejects(runNode(jsonGetField, { json: Number.NaN, path: "" }))).code).toBe("node.invalid_input");
     expect((await rejects(runNode(jsonGetField, { json: { a: 1 }, path: "" }))).code).toBe("node.invalid_input");
