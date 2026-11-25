@@ -327,7 +327,7 @@ export function buildFlowView(
       variable,
       unknownType: !builtin && typeDef === undefined,
       frontend: typeDef?.frontend === true,
-      exec: flow.execEdges === undefined ? { inputs: [], outputs: [] } : execPortsOf(node.type, def ?? typeDef),
+      exec: flow.execEdges === undefined ? { inputs: [], outputs: [] } : execPortsOf(node.type, def ?? typeDef, node.config ?? {}, (id) => scope.getType(id)?.decl),
       idle: live !== undefined && !live.has(node.id),
       execLinked: [
         ...new Set((flow.execEdges ?? []).flatMap((e) => [...(e.from.node === node.id ? [e.from.port] : []), ...(e.to.node === node.id ? [e.to.port] : [])])),

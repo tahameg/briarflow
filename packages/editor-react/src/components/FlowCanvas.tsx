@@ -433,9 +433,11 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
       id={execHandle(port)}
       className={`bf-handle bf-xsocket${linked.has(port) ? " bf-xsocket--plugged" : ""}${port === EXEC_FAILED ? " bf-xsocket--failed" : ""}`}
       aria-label={port === "in" ? "execution in" : `execution ${port}`}
-      title={port === "in" ? "Execution in" : port === EXEC_FAILED ? "Runs when this node fails" : "Runs next"}
+      title={port === "in" ? "Execution in" : port === EXEC_FAILED ? "Runs when this node fails" : port === "then" ? "Runs next" : `Runs on "${port}"`}
     />
   );
+  // Flow control nodes (Branch, Switch, loops) send the line down outputs of their own.
+  const controlOutputs = view.exec.outputs.filter((p) => p !== "then" && p !== EXEC_FAILED);
   return (
     <div className={classes} title={failure ?? (view.idle ? "Not on the execution line: this node does not run." : undefined)}>
       <div className="bf-node__plate">
@@ -470,6 +472,16 @@ function BriarNode({ id, data, selected }: NodeProps<BriarRFNode>) {
             <PilotLamp state={status?.state} />
           </span>
         </header>
+        {controlOutputs.length > 0 ? (
+          <div className="bf-node__xlines">
+            {controlOutputs.map((port) => (
+              <div className="bf-node__row bf-node__row--out bf-node__row--xline" key={`x:${port}`}>
+                <span className="bf-node__label">{port}</span>
+                {execSocket(port, "source")}
+              </div>
+            ))}
+          </div>
+        ) : null}
         {view.exec.outputs.includes(EXEC_FAILED) ? (
           <div className="bf-node__fail">
             <div className="bf-node__row bf-node__row--out bf-node__row--failline">
