@@ -4,10 +4,14 @@
 import {
   cfg,
   defineNode,
+  mediaKindOfBuiltin,
+  mediaValue,
   NodeError,
+  structLayout,
   t,
   type ExecContext,
-  type MediaRef,
+  type MediaKind,
+  type MediaValue,
   type TypeDecl,
   type TypeRef,
   type UnknownValue,
@@ -26,12 +30,12 @@ export const mockLlm = defineNode({
   color: "pink",
   description: "A fake language model for tests: answers deterministically from the prompt, system text and seed.",
   inputs: {
-    prompt: { type: t.text({ multiline: true }), widget: "textarea" },
-    system: { type: t.optional(t.text({ multiline: true })), default: null },
+    prompt: { type: t.string(), widget: "textarea" },
+    system: { type: t.optional(t.string()), default: null },
     seed: { type: t.int(), default: 0 },
     delayMs: { type: t.int({ min: 0 }), default: 0, description: "Simulated latency." },
   },
-  outputs: { text: t.text() },
+  outputs: { text: t.string() },
   async run({ inputs, ctx }) {
     const { prompt, system, seed, delayMs } = inputs;
     const half = Math.floor(delayMs / 2);
@@ -47,17 +51,19 @@ export const mockLlm = defineNode({
 
 type Filler = (type: TypeRef, path: string, field: string) => Promise<unknown>;
 
-async function mockMedia(kind: string, prompt: string, seed: number, path: string, ctx: ExecContext): Promise<MediaRef> {
+async function mockMedia(kind: MediaKind, prompt: string, seed: number, path: string, ctx: ExecContext): Promise<MediaValue> {
   const hex = await mockHash({ prompt, seed, path, media: kind });
-  if (kind === "model3d") return ctx.media.put(encoder.encode(mockGltf(hex)), { mime: "model/gltf+json", filename: "mock.gltf" });
-  if (kind === "audio") return ctx.media.put(silentWav(), { mime: "audio/wav", filename: "mock.wav" });
+  const put = async (bytes: Uint8Array, info: { mime: string; filename: string; meta?: { width: number; height: number } }) =>
+    mediaValue(kind, await ctx.media.put(bytes, info), { mime: info.mime, bytes: bytes.byteLength, meta: { filename: info.filename, ...info.meta } });
+  if (kind === "model3d") return put(encoder.encode(mockGltf(hex)), { mime: "model/gltf+json", filename: "mock.gltf" });
+  if (kind === "audio") return put(silentWav(), { mime: "audio/wav", filename: "mock.wav" });
   if (kind === "video") {
     throw new NodeError(
       "mock.unsupported_type",
       `mock.structured cannot invent video values (field ${path}). Make the field optional (it will be null) or use another type.`,
     );
   }
-  return ctx.media.put(encoder.encode(mockSvg(prompt, 64, 64, hex)), {
+  return put(encoder.encode(mockSvg(prompt, 64, 64, hex)), {
     mime: "image/svg+xml",
     filename: "mock.svg",
     meta: { width: 64, height: 64 },
@@ -72,7 +78,7 @@ function filler(prompt: string, seed: number, resolve: (id: string) => TypeDecl 
     switch (type.kind) {
       case "optional":
         // An optional video cannot be invented, so it is left empty (node-api.md §10).
-        if (type.of.kind === "primitive" && type.of.name === "video") return null;
+        if (type.of.kind === "named" && mediaKindOfBuiltin(type.of.id) === "video") return null;
         return fill(type.of, path, field);
       case "var":
         return null;
@@ -91,19 +97,26 @@ function filler(prompt: string, seed: number, resolve: (id: string) => TypeDecl 
           if (members.length === 0) throw new NodeError("mock.unknown_type", `Enum ${decl.name} has no members (at ${path}).`);
           return members[n % members.length]?.value ?? null;
         }
+        const layout = structLayout(decl, resolve);
+        const kind = mediaKindOfBuiltin(layout.root);
+        if (kind !== undefined) return mockMedia(kind, prompt, seed, path, ctx);
         const out: Record<string, unknown> = {};
-        for (const f of decl.fields) out[f.name] = await fill(f.type, `${path}.${f.name}`, f.name);
+        for (const f of layout.fields) out[f.name] = await fill(f.type, `${path}.${f.name}`, f.name);
+        if (layout.root === "briar.Text" && typeof out["value"] === "string") {
+          const min = layout.statics.get("minLength")?.value;
+          const max = layout.statics.get("maxLength")?.value;
+          let s = out["value"];
+          if (typeof min === "number") while (Array.from(s).length < min) s += hex;
+          if (typeof max === "number") s = firstChars(s, max);
+          out["value"] = s;
+        }
         return out;
       }
       case "primitive": {
-        const c = (type.constraints ?? {}) as { min?: number; max?: number; minLength?: number; maxLength?: number };
+        const c = (type.constraints ?? {}) as { min?: number; max?: number };
         switch (type.name) {
-          case "text": {
-            let s = `${field} ${hex.slice(0, 4)}`;
-            if (c.minLength !== undefined) while (Array.from(s).length < c.minLength) s += hex;
-            if (c.maxLength !== undefined) s = firstChars(s, c.maxLength);
-            return s;
-          }
+          case "string":
+            return `${field} ${hex.slice(0, 4)}`;
           case "int":
           case "float": {
             let lo = c.min ?? (c.max !== undefined ? Math.min(0, c.max - 99) : 0);
@@ -116,10 +129,10 @@ function filler(prompt: string, seed: number, resolve: (id: string) => TypeDecl 
             const steps = Math.floor((hi - lo) * 100);
             return steps <= 0 ? lo : Math.min(hi, lo + (n % (steps + 1)) / 100);
           }
-          case "boolean":
+          case "bool":
             return n % 2 === 0;
-          default:
-            return mockMedia(type.name, prompt, seed, path, ctx);
+          case "binary":
+            return (await mockMedia("file", prompt, seed, path, ctx)).data;
         }
       }
     }
@@ -137,7 +150,7 @@ export const mockStructured = defineNode({
   color: "pink",
   description: "A fake structured-output model: fills the chosen struct with deterministic values.",
   config: { typeId: cfg.typeId({ kind: "struct", title: "Struct" }) },
-  inputs: { prompt: { type: t.text({ multiline: true }), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
+  inputs: { prompt: { type: t.string(), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
   outputs: { value: t.var("S") },
   resolvePorts({ config, scope }) {
     const decl = scope.resolveType(config.typeId);
@@ -145,7 +158,7 @@ export const mockStructured = defineNode({
       return { error: { code: "config.unknown_ref", message: `Struct type "${config.typeId}" does not exist in this flow. Pick a struct type.` } };
     }
     return {
-      inputs: { prompt: { type: t.text({ multiline: true }), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
+      inputs: { prompt: { type: t.string(), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
       outputs: { value: t.fromRef({ kind: "named", id: decl.id }) },
     };
   },
@@ -172,7 +185,7 @@ export const mockImage = defineNode({
   color: "peach",
   description: "A fake image generator: draws a deterministic SVG with the prompt written on it.",
   inputs: {
-    prompt: { type: t.text({ multiline: true }), widget: "textarea" },
+    prompt: { type: t.string(), widget: "textarea" },
     width: { type: t.int({ min: 1, max: 4096 }), default: 512 },
     height: { type: t.int({ min: 1, max: 4096 }), default: 512 },
     seed: { type: t.int(), default: 0 },
@@ -184,8 +197,9 @@ export const mockImage = defineNode({
     ctx.progress(0.5, "Drawing");
     const svg = mockSvg(prompt, width, height, hex);
     ctx.signal.throwIfAborted();
-    const image = await ctx.media.put(encoder.encode(svg), { mime: "image/svg+xml", filename: "mock.svg", meta: { width, height } });
-    return { image };
+    const bytes = encoder.encode(svg);
+    const ref = await ctx.media.put(bytes, { mime: "image/svg+xml", filename: "mock.svg", meta: { width, height } });
+    return { image: mediaValue("image", ref, { mime: "image/svg+xml", bytes: bytes.byteLength, meta: { width, height, filename: "mock.svg" } }) };
   },
 });
 
@@ -198,13 +212,14 @@ export const mockModel3d = defineNode({
   icon: "box",
   color: "peach",
   description: "A fake 3D generator: a glTF cube colored from the prompt and seed.",
-  inputs: { prompt: { type: t.text({ multiline: true }), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
+  inputs: { prompt: { type: t.string(), widget: "textarea" }, seed: { type: t.int(), default: 0 } },
   outputs: { model: t.model3d() },
   async run({ inputs, ctx }) {
     const hex = await mockHash({ prompt: inputs.prompt, seed: inputs.seed });
     ctx.signal.throwIfAborted();
-    const model = await ctx.media.put(encoder.encode(mockGltf(hex)), { mime: "model/gltf+json", filename: "mock.gltf" });
-    return { model };
+    const bytes = encoder.encode(mockGltf(hex));
+    const ref = await ctx.media.put(bytes, { mime: "model/gltf+json", filename: "mock.gltf" });
+    return { model: mediaValue("model3d", ref, { mime: "model/gltf+json", bytes: bytes.byteLength, meta: { filename: "mock.gltf" } }) };
   },
 });
 
@@ -246,8 +261,8 @@ export const mockFlaky = defineNode({
   description: "Fails the first attempts with a retryable error, then succeeds. For retry tests.",
   cache: false,
   retry: 3,
-  inputs: { failures: { type: t.int({ min: 0 }), default: 1 }, value: { type: t.text(), default: "ok" } },
-  outputs: { value: t.text() },
+  inputs: { failures: { type: t.int({ min: 0 }), default: 1 }, value: { type: t.string(), default: "ok" } },
+  outputs: { value: t.string() },
   run({ inputs, ctx }) {
     if (ctx.attempt <= inputs.failures) {
       throw new NodeError("node.unavailable", `Mock outage on attempt ${ctx.attempt}: this node fails its first ${inputs.failures} attempts.`, {
@@ -268,8 +283,8 @@ export const mockFail = defineNode({
   icon: "x",
   color: "yellow",
   description: "Always fails with the given message. For failure tests.",
-  inputs: { message: { type: t.text(), default: "Mock failure" } },
-  outputs: { value: t.text() },
+  inputs: { message: { type: t.string(), default: "Mock failure" } },
+  outputs: { value: t.string() },
   run({ inputs }): { value: string } {
     throw new NodeError("mock.failed", inputs.message);
   },

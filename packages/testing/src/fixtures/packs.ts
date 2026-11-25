@@ -211,7 +211,7 @@ function createBriarTestPack(): NodePack {
     title: "Text template",
     category: "Text",
     config: { template: cfg.text({ multiline: true, title: "Template" }) },
-    outputs: { text: t.text() },
+    outputs: { text: t.string() },
     resolvePorts({ config }) {
       const names = templatePlaceholders(config.template);
       if (!Array.isArray(names)) return names;
@@ -219,7 +219,7 @@ function createBriarTestPack(): NodePack {
       names.forEach((name, i) => {
         inputs[name] = t.var(`T${i + 1}`);
       });
-      return { inputs, outputs: { text: t.text() } };
+      return { inputs, outputs: { text: t.string() } };
     },
     run: ({ config }) => ({ text: config.template }),
   });
@@ -228,8 +228,8 @@ function createBriarTestPack(): NodePack {
     type: "text.join",
     pure: true,
     title: "Join text",
-    inputs: { items: t.list(t.text()), separator: { type: t.text(), default: "" } },
-    outputs: { text: t.text() },
+    inputs: { items: t.list(t.string()), separator: { type: t.string(), default: "" } },
+    outputs: { text: t.string() },
     run: ({ inputs }) => ({ text: inputs.items.join(inputs.separator) }),
   });
 
@@ -247,7 +247,7 @@ function createBriarTestPack(): NodePack {
     pure: true,
     title: "To text",
     inputs: { value: t.var("T") },
-    outputs: { text: t.text() },
+    outputs: { text: t.string() },
     run: ({ inputs }) => ({ text: typeof inputs.value === "string" ? inputs.value : JSON.stringify(inputs.value) }),
   });
 
@@ -295,10 +295,10 @@ export const briarTestPack: () => NodePack = memo(createBriarTestPack);
 
 function createKitPack(): NodePack {
   const nodes = [
-    defineNode({ type: "kit.textSource", outputs: { text: t.text() }, run: () => ({ text: "a" }) }),
+    defineNode({ type: "kit.textSource", outputs: { text: t.string() }, run: () => ({ text: "a" }) }),
     defineNode({ type: "kit.intSource", outputs: { value: t.int() }, run: () => ({ value: 1 }) }),
     defineNode({ type: "kit.floatSource", outputs: { value: t.float() }, run: () => ({ value: 1.5 }) }),
-    defineNode({ type: "kit.textListSource", outputs: { list: t.list(t.text()) }, run: () => ({ list: ["a"] }) }),
+    defineNode({ type: "kit.textListSource", outputs: { list: t.list(t.string()) }, run: () => ({ list: ["a"] }) }),
     defineNode({ type: "kit.intListSource", outputs: { list: t.list(t.int()) }, run: () => ({ list: [1] }) }),
     defineNode({
       type: "kit.imageSource",
@@ -309,8 +309,8 @@ function createKitPack(): NodePack {
     defineNode({
       type: "kit.passText",
       pure: true,
-      inputs: { value: t.text() },
-      outputs: { value: t.text() },
+      inputs: { value: t.string() },
+      outputs: { value: t.string() },
       run: ({ inputs }) => ({ value: inputs.value }),
     }),
     defineNode({
@@ -327,10 +327,10 @@ function createKitPack(): NodePack {
       outputs: { out: t.var("T") },
       run: ({ inputs }) => ({ out: inputs.a }),
     }),
-    defineNode({ type: "kit.sinkText", inputs: { value: t.text() }, run: () => ({}) }),
+    defineNode({ type: "kit.sinkText", inputs: { value: t.string() }, run: () => ({}) }),
     defineNode({ type: "kit.sinkInt", inputs: { value: t.int() }, run: () => ({}) }),
-    defineNode({ type: "kit.sinkOptional", inputs: { value: t.optional(t.text()) }, run: () => ({}) }),
-    defineNode({ type: "kit.sinkDefault", inputs: { value: { type: t.text(), default: "x" } }, run: () => ({}) }),
+    defineNode({ type: "kit.sinkOptional", inputs: { value: t.optional(t.string()) }, run: () => ({}) }),
+    defineNode({ type: "kit.sinkDefault", inputs: { value: { type: t.string(), default: "x" } }, run: () => ({}) }),
     defineNode({ type: "kit.sinkConstrained", inputs: { value: t.int({ min: 0, max: 10 }) }, run: () => ({}) }),
     defineNode({
       type: "kit.configured",
@@ -341,7 +341,7 @@ function createKitPack(): NodePack {
         label: cfg.text({ optional: true }),
         flag: cfg.boolean({ default: false }),
       },
-      outputs: { text: t.text() },
+      outputs: { text: t.string() },
       run: ({ config }) => ({ text: `${config.mode}${config.count}` }),
     }),
     defineNode({
@@ -352,8 +352,8 @@ function createKitPack(): NodePack {
         options: {
           text: variant({
             config: { mode: cfg.choice(["a", "b"], { default: "a" }), label: cfg.text({ optional: true }) },
-            inputs: { value: t.text(), extra: { type: t.int(), default: 0 } },
-            outputs: { out: t.text() },
+            inputs: { value: t.string(), extra: { type: t.int(), default: 0 } },
+            outputs: { out: t.string() },
             run: ({ inputs, config }) => ({ out: `${config.mode}:${inputs.value}` }),
           }),
           number: variant({
@@ -395,10 +395,10 @@ function createWordsPack(): NodePack {
     title: "Shout",
     description: "Uppercases text and adds exclamation marks.",
     inputs: {
-      text: t.text(),
+      text: t.string(),
       marks: { type: t.int({ min: 0, max: 10 }), default: 1, description: "How many ! to add." },
     },
-    outputs: { text: t.text() },
+    outputs: { text: t.string() },
     run: ({ inputs }) => ({ text: inputs.text.toUpperCase() + "!".repeat(inputs.marks) }),
   });
 
@@ -406,7 +406,7 @@ function createWordsPack(): NodePack {
     type: "words.count",
     pure: true,
     title: "Count words",
-    inputs: { text: t.text({ multiline: true }) },
+    inputs: { text: t.string() },
     outputs: { stats: t.ref(Stats) },
     run({ inputs }) {
       const words = inputs.text.trim().split(/\s+/).filter(Boolean).length;
@@ -432,7 +432,7 @@ export const wordsPack: () => NodePack = memo(createWordsPack);
 // ---------------------------------------------------------------------------------------------
 
 function ping(type: string): AnyNodeDefinition {
-  return defineNode({ type, outputs: { text: t.text() }, run: () => ({ text: "pong" }) }) as unknown as AnyNodeDefinition;
+  return defineNode({ type, outputs: { text: t.string() }, run: () => ({ text: "pong" }) }) as unknown as AnyNodeDefinition;
 }
 
 /** Two different packs with the same name `dup` (`catalog.duplicate_pack`). */

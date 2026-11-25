@@ -3,6 +3,7 @@
  * problems; returns diagnostics in a deterministic order (structure, types, signature,
  * variables, nodes, edges, cycles, variable ordering; document order inside each group).
  */
+import { extendsProblems, type ExtendsProblem } from "../types/layout.js";
 import type { ContextDocument, FlowDocument, TypeDecl } from "../documents/model.js";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
@@ -221,7 +222,7 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
       err("edge.unknown_port", `${toLabel} has no input "${e.to.port}". Inputs: ${list}.`, { edgeId: e.id, nodeId: to.id, port: e.to.port });
     }
     if (portMissing || !fp || !tp || containsVar(fp.type) || containsVar(tp.type)) continue;
-    if (!isAssignable(fp.type, tp.type)) {
+    if (!isAssignable(fp.type, tp.type, (id) => scope.getType(id)?.decl)) {
       const hint = mismatchHint(fp.type, tp.type);
       err(
         "edge.type_mismatch",
@@ -261,7 +262,7 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
 function mismatchHint(from: TypeRef, to: TypeRef): string {
   const target = to.kind === "optional" ? to.of : to;
   if (from.kind === "list" && isAssignable(from.of, to)) return "Use list.get to pick one item.";
-  if (target.kind === "primitive" && target.name === "text") return "Use convert.toText to turn it into text.";
+  if (target.kind === "primitive" && target.name === "string") return "Use convert.toText to turn it into a string.";
   return "";
 }
 
@@ -436,8 +437,18 @@ function checkTypeDecls(
         details: { chain },
       });
     }
+    const resolve = (id: string) => scope.getType(id)?.decl;
+    for (const p of extendsProblems(t, resolve)) out.push(extendsDiagnostic(p, t, at, scope));
     for (const f of t.fields) {
       const fat = { ...at, field: f.name };
+      if (f.static && f.default === undefined && f.type.kind !== "optional") {
+        out.push({
+          severity: "error",
+          code: "type.static_without_value",
+          message: `Static field "${t.name}.${f.name}" has no value. Give it one, or make its type optional.`,
+          path: fat,
+        });
+      }
       const ok = checkTypeRef(f.type, `Field "${t.name}.${f.name}"`, scope, fat, out, localOwner);
       if (ok && !chain && f.default !== undefined) {
         const d = validateValue(f.default, f.type, scope, { path: `${t.name}.${f.name}`, at: fat });
@@ -454,4 +465,16 @@ function checkTypeDecls(
     }
   }
   return out;
+}
+
+function extendsDiagnostic(p: ExtendsProblem, t: TypeDecl, at: DiagnosticPath, scope: TypeScope): Diagnostic {
+  const target = p.target === undefined ? "" : (scope.getType(p.target)?.decl.name ?? p.target);
+  const message = {
+    "type.extends_unknown": `"${t.name}" extends type id ${p.target ?? ""}, which no longer exists. Pick another struct.`,
+    "type.extends_not_struct": `"${t.name}" extends "${target}", which is not a struct. Only structs can be extended.`,
+    "type.extends_cycle": `"${t.name}" extends itself through ${(p.chain ?? []).map((id) => scope.getType(id)?.decl.name ?? id).join(" → ")}.`,
+    "type.extends_instance_field": `"${t.name}.${p.field ?? ""}" is not static. A struct that extends another may only add or set static fields.`,
+    "type.extends_override": `"${t.name}.${p.field ?? ""}" sets an inherited static field with another type. Keep the type it has in the base.`,
+  }[p.code];
+  return { severity: "error", code: p.code, message, path: p.field === undefined ? at : { ...at, field: p.field } };
 }

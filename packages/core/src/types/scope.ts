@@ -4,9 +4,11 @@
 import { BriarError } from "../errors.js";
 import { findFlow } from "../documents/factories.js";
 import type { ContextDocument, TypeDecl } from "../documents/model.js";
+import { BUILTIN_TYPES } from "./builtins.js";
 
 /** Where a resolved declaration lives. */
-export type TypeOrigin = "local" | "global" | "pack";
+/** `builtin`: Text, Image, Json… (types.md §1.2), in every scope. */
+export type TypeOrigin = "local" | "global" | "builtin" | "pack";
 
 /** A declaration plus its origin. */
 export interface ScopedTypeDecl {
@@ -26,14 +28,15 @@ export type ResolveNameResult =
 export interface TypeScope {
   /** The flow whose local types are visible, if any. */
   readonly flowId: string | undefined;
-  /** Looks up a declaration by id (local → global → pack). */
+  /** Looks up a declaration by id (local → global → built-in → pack). */
   getType(id: string): ScopedTypeDecl | undefined;
   /**
-   * Resolves a name. No dot: local (exact case) → global → pack short name if exactly one
-   * pack exports it (else `type.ambiguous`). With a dot: only the pack type with that id.
+   * Resolves a name. No dot: local (exact case) → global → built-in → pack short name if
+   * exactly one pack exports it (else `type.ambiguous`). With a dot: only the pack or built-in
+   * type with that id.
    */
   resolveName(name: string): ResolveNameResult;
-  /** Every visible declaration, local first, then global, then pack (stable order). */
+  /** Every visible declaration: local, global, built-in, then pack (stable order). */
   all(): readonly ScopedTypeDecl[];
 }
 
@@ -63,6 +66,7 @@ export function createTypeScope(source: TypeScopeSource): TypeScope {
   const entries: ScopedTypeDecl[] = [
     ...(source.localTypes ?? []).map((decl) => ({ decl, origin: "local" as const })),
     ...(source.globalTypes ?? []).map((decl) => ({ decl, origin: "global" as const })),
+    ...BUILTIN_TYPES.map((decl) => ({ decl, origin: "builtin" as const })),
     ...(source.packTypes ?? []).map((decl) => ({ decl, origin: "pack" as const })),
   ];
   const byId = new Map<string, ScopedTypeDecl>();
@@ -73,10 +77,10 @@ export function createTypeScope(source: TypeScopeSource): TypeScope {
     getType: (id) => byId.get(id),
     resolveName(name) {
       if (name.includes(".")) {
-        const hit = entries.find((e) => e.origin === "pack" && e.decl.id === name);
-        return hit ? { ok: true, decl: hit.decl, origin: "pack" } : { ok: false, code: "type.unknown", candidates: [] };
+        const hit = entries.find((e) => (e.origin === "pack" || e.origin === "builtin") && e.decl.id === name);
+        return hit ? { ok: true, decl: hit.decl, origin: hit.origin } : { ok: false, code: "type.unknown", candidates: [] };
       }
-      for (const origin of ["local", "global"] as const) {
+      for (const origin of ["local", "global", "builtin"] as const) {
         const hit = entries.find((e) => e.origin === origin && e.decl.name === name);
         if (hit) return { ok: true, decl: hit.decl, origin };
       }

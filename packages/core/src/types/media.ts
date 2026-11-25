@@ -4,7 +4,7 @@
 import { MediaError } from "../errors.js";
 import type { Diagnostic } from "../validation/diagnostic.js";
 import type { MediaEntry } from "../interfaces/media-registry.js";
-import type { MediaPrimitiveName, MediaRef, PrimitiveTypeRef } from "./ir.js";
+import type { MediaKind, MediaRef } from "./ir.js";
 
 /** Format name → mime type (types.md §6). Unknown formats are treated as literal mimes. */
 export const MEDIA_FORMATS: Readonly<Record<string, string>> = {
@@ -62,10 +62,10 @@ export function isMediaRef(value: unknown): value is MediaRef {
  *
  * @example
  * ```ts
- * validateMediaRef({ mediaId: "med_1" }, "image", "inputs.photo"); // []
+ * validateMediaRef({ mediaId: "med_1" }, "inputs.photo.data"); // []
  * ```
  */
-export function validateMediaRef(value: unknown, primitive: MediaPrimitiveName, path: string): Diagnostic[] {
+export function validateMediaRef(value: unknown, path: string): Diagnostic[] {
   if (isMediaRef(value)) return [];
   const v = typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
   const reason =
@@ -80,37 +80,41 @@ export function validateMediaRef(value: unknown, primitive: MediaPrimitiveName, 
     {
       severity: "error",
       code: "media.invalid_ref",
-      message: `${path} is not a valid ${primitive}: ${reason}.`,
+      message: `${path} is not a valid binary value: ${reason}.`,
       path: { valuePath: path },
     },
   ];
 }
 
 /**
- * Checks a registry entry against the media type a port expects (types.md §6, §8): the mime
- * fits the primitive (`media.kind_mismatch`) and the constraints hold (`value.invalid`).
- * Constraints on size, dimensions or duration are skipped when the entry does not know them.
+ * Checks a registry entry against the media struct a port expects (types.md §6, §8): the mime
+ * fits the kind (`media.kind_mismatch`) and the struct's limits (its static fields: formats,
+ * maxBytes, minWidth…) hold (`value.invalid`). Limits on size, dimensions or duration are
+ * skipped when the entry does not know them.
  *
  * @example
  * ```ts
- * checkMediaEntry(entry, { kind: "primitive", name: "image", constraints: { maxWidth: 2048 } }, "inputs.photo");
+ * checkMediaEntry(entry, "image", new Map([["maxWidth", 2048]]), "inputs.photo");
  * ```
  */
-export function checkMediaEntry(entry: Pick<MediaEntry, "mime" | "bytes" | "meta">, type: PrimitiveTypeRef, path: string): Diagnostic[] {
+export function checkMediaEntry(
+  entry: Pick<MediaEntry, "mime" | "bytes" | "meta">,
+  kind: MediaKind,
+  limits: ReadonlyMap<string, unknown>,
+  path: string,
+): Diagnostic[] {
   const out: Diagnostic[] = [];
   const add = (code: string, message: string) => out.push({ severity: "error", code, message: `${path} ${message}.`, path: { valuePath: path } });
-  const kind = type.name as MediaPrimitiveName;
   if (!mimeMatchesKind(entry.mime, kind)) {
     add("media.kind_mismatch", `is ${entry.mime}, which is not a${kind === "image" || kind === "audio" ? "n" : ""} ${kind} (${KIND_HINT[kind]})`);
     return out;
   }
-  const c = (type.constraints ?? {}) as Record<string, unknown>;
-  const formats = c["formats"];
+  const formats = limits.get("formats");
   if (Array.isArray(formats) && formats.length > 0) {
     const mimes = formats.map((f) => formatToMime(String(f)));
     if (!mimes.includes(entry.mime)) add("value.invalid", `must be one of the formats ${formats.join(", ")} (got ${entry.mime})`);
   }
-  const maxBytes = c["maxBytes"];
+  const maxBytes = limits.get("maxBytes");
   if (typeof maxBytes === "number" && typeof entry.bytes === "number" && entry.bytes > maxBytes) add("value.invalid", `must be at most ${maxBytes} bytes`);
   const meta = entry.meta ?? {};
   const dims: [string, unknown, (n: number) => string, boolean][] = [
@@ -120,11 +124,11 @@ export function checkMediaEntry(entry: Pick<MediaEntry, "mime" | "bytes" | "meta
     ["maxHeight", meta.height, (n) => `must be at most ${n} px tall`, false],
   ];
   for (const [key, actual, msg, isMin] of dims) {
-    const bound = c[key];
+    const bound = limits.get(key);
     if (typeof bound !== "number" || typeof actual !== "number") continue;
     if (isMin ? actual < bound : actual > bound) add("value.invalid", msg(bound));
   }
-  const maxDuration = c["maxDurationSec"];
+  const maxDuration = limits.get("maxDuration");
   if (typeof maxDuration === "number" && typeof meta.durationSec === "number" && meta.durationSec > maxDuration) {
     add("value.invalid", `must be at most ${maxDuration} seconds long`);
   }
@@ -154,7 +158,7 @@ export function mediaMetaProblems(meta: unknown): string[] {
 /** Mime types: lowercase, no parameters (types.md §8). */
 export const MIME_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 
-const KIND_HINT: Record<MediaPrimitiveName, string> = {
+const KIND_HINT: Record<MediaKind, string> = {
   image: "expected image/*",
   video: "expected video/*",
   audio: "expected audio/*",
@@ -162,9 +166,9 @@ const KIND_HINT: Record<MediaPrimitiveName, string> = {
   file: "any mime",
 };
 
-/** Internal: does a mime fit a media primitive? */
-export function mimeMatchesKind(mime: string, primitive: MediaPrimitiveName): boolean {
-  switch (primitive) {
+/** Internal: does a mime fit a media kind? */
+export function mimeMatchesKind(mime: string, kind: MediaKind): boolean {
+  switch (kind) {
     case "image":
       return mime.startsWith("image/");
     case "video":

@@ -1,14 +1,13 @@
 /**
  * Members of a type (types.md §12): what `value.member` reads on a value of the type, for the
- * Get member / Set member nodes. Struct fields can be read and set; members of primitives
- * (media metadata, error fields, length of text and lists) are read-only.
+ * Get member / Set member nodes and split pins. Struct fields are members (instance fields can be
+ * set; static fields are read from the type); `string` and lists have a read-only `length`.
  */
-import type { TypeDecl } from "../documents/model.js";
-import type { MediaEntry } from "../interfaces/media-registry.js";
-import type { MediaRef, TypeRef } from "./ir.js";
-import { MEDIA_FORMATS, isMediaRef } from "./media.js";
+import type { FieldDecl, TypeDecl } from "../documents/model.js";
+import type { TypeRef } from "./ir.js";
+import { structLayout } from "./layout.js";
 
-/** Looks up a struct or enum by id (local → global → pack). */
+/** Looks up a struct or enum by id (local → global → built-in → pack). */
 export type TypeResolver = (id: string) => TypeDecl | undefined;
 
 /** One member of a type. */
@@ -33,71 +32,13 @@ export interface MemberPath {
   description?: string;
 }
 
-interface BuiltinMember extends TypeMember {
-  /** `entry` is the registry entry of a media value (media members only). */
-  read(value: unknown, entry: MediaEntry | undefined): unknown;
-}
-
-const text: TypeRef = { kind: "primitive", name: "text" };
 const int: TypeRef = { kind: "primitive", name: "int" };
-const float: TypeRef = { kind: "primitive", name: "float" };
 const opt = (of: TypeRef): TypeRef => (of.kind === "optional" ? of : { kind: "optional", of });
 
-const metaNumber = (key: string) => (_v: unknown, e: MediaEntry | undefined) => {
-  const n = e?.meta?.[key];
-  return typeof n === "number" ? n : null;
-};
+const LENGTH: TypeMember = { name: "length", title: "Length", type: int, writable: false, description: "Characters (code points) of a string, items of a list." };
 
-/** File extension of a media entry: from its file name, else from its mime type (`png`). */
-export function mediaExtension(entry: Pick<MediaEntry, "mime" | "meta">): string {
-  const name = entry.meta?.filename;
-  const dot = typeof name === "string" ? name.lastIndexOf(".") : -1;
-  if (typeof name === "string" && dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toLowerCase();
-  for (const [format, mime] of Object.entries(MEDIA_FORMATS)) if (mime === entry.mime) return format;
-  return (entry.mime.split("/")[1] ?? "").replace(/^x-/, "").split("+")[0] ?? "";
-}
-
-function member(name: string, title: string, type: TypeRef, read: BuiltinMember["read"], description?: string): BuiltinMember {
-  return { name, title, type, writable: false, read, ...(description === undefined ? {} : { description }) };
-}
-
-const MEDIA_COMMON: readonly BuiltinMember[] = [
-  member("id", "Media id", text, (v) => (isMediaRef(v) ? v.mediaId : null), "The id of the media's registry entry."),
-  member("mime", "Mime type", text, (_v, e) => e?.mime ?? null),
-  member("extension", "Extension", text, (_v, e) => (e ? mediaExtension(e) : null), "From the file name, else from the mime type (png, jpeg, mp4, …)."),
-  member("name", "File name", opt(text), (_v, e) => (typeof e?.meta?.filename === "string" ? e.meta.filename : null)),
-  member("size", "Size (bytes)", opt(int), (_v, e) => e?.bytes ?? null),
-  member("url", "Web address", opt(text), (_v, e) => (e?.source.kind === "link" ? e.source.url : null), "For media linked from the web; none for media Briarflow keeps."),
-];
-const WIDTH = member("width", "Width", opt(int), metaNumber("width"), "In pixels; none when unknown.");
-const HEIGHT = member("height", "Height", opt(int), metaNumber("height"), "In pixels; none when unknown.");
-const DURATION = member("duration", "Duration (s)", opt(float), metaNumber("durationSec"));
-const FPS = member("fps", "Frames per second", opt(float), metaNumber("fps"));
-const errorField = (key: "code" | "message" | "node" | "nodeId") => (v: unknown) => {
-  const x = typeof v === "object" && v !== null ? (v as Record<string, unknown>)[key] : undefined;
-  return typeof x === "string" ? x : null;
-};
-const LENGTH = member("length", "Length", int, (v: unknown) => (typeof v === "string" ? [...v].length : Array.isArray(v) ? v.length : null));
-
-const PRIMITIVE_MEMBERS: Readonly<Record<string, readonly BuiltinMember[]>> = {
-  image: [...MEDIA_COMMON, WIDTH, HEIGHT],
-  video: [...MEDIA_COMMON, WIDTH, HEIGHT, DURATION, FPS],
-  audio: [...MEDIA_COMMON, DURATION],
-  model3d: MEDIA_COMMON,
-  file: MEDIA_COMMON,
-  text: [LENGTH],
-  error: [
-    member("code", "Code", text, errorField("code"), "Stable code, e.g. node.timeout."),
-    member("message", "Message", text, errorField("message")),
-    member("node", "Node", opt(text), errorField("node"), "Title of the node that failed."),
-    member("nodeId", "Node id", opt(text), errorField("nodeId")),
-  ],
-};
-
-function builtinMembers(type: TypeRef): readonly BuiltinMember[] {
-  if (type.kind === "primitive") return PRIMITIVE_MEMBERS[type.name] ?? [];
-  if (type.kind === "list") return [LENGTH];
-  return [];
+function fieldMember(f: FieldDecl, writable: boolean): TypeMember {
+  return { name: f.name, title: f.name, type: f.type, writable, ...(f.description === undefined ? {} : { description: f.description }) };
 }
 
 /**
@@ -106,8 +47,8 @@ function builtinMembers(type: TypeRef): readonly BuiltinMember[] {
  *
  * @example
  * ```ts
- * typeMembers({ kind: "primitive", name: "image" }, resolve).map((m) => m.name);
- * // → ["id", "mime", "extension", "name", "size", "url", "width", "height"]
+ * typeMembers({ kind: "named", id: "briar.Image" }, resolve).map((m) => m.name);
+ * // → ["data", "mime", "name", "size", "width", "height", "formats", "maxBytes", …]
  * ```
  */
 export function typeMembers(type: TypeRef, resolve: TypeResolver): TypeMember[] {
@@ -115,9 +56,11 @@ export function typeMembers(type: TypeRef, resolve: TypeResolver): TypeMember[] 
   if (type.kind === "named") {
     const decl = resolve(type.id);
     if (decl?.kind !== "struct") return [];
-    return decl.fields.map((f) => ({ name: f.name, title: f.name, type: f.type, writable: true, ...(f.description === undefined ? {} : { description: f.description }) }));
+    const layout = structLayout(decl, resolve);
+    return [...layout.fields.map((f) => fieldMember(f, true)), ...[...layout.statics.values()].map((s) => fieldMember(s.field, false))];
   }
-  return builtinMembers(type).map(({ read: _read, ...m }) => m);
+  if (type.kind === "list" || (type.kind === "primitive" && type.name === "string")) return [LENGTH];
+  return [];
 }
 
 /**
@@ -168,7 +111,7 @@ export function memberPaths(type: TypeRef, resolve: TypeResolver, depth = 3): Me
       const inner = m.type.kind === "optional" ? m.type.of : m.type;
       if (path.path.length >= depth || (inner.kind === "named" && seen.has(inner.id))) continue;
       // Length of text and lists says nothing more; do not list `length.…`.
-      if (inner.kind === "primitive" && (inner.name === "int" || inner.name === "float" || inner.name === "text")) continue;
+      if (inner.kind === "primitive") continue;
       walk(m.type, path, inner.kind === "named" ? new Set([...seen, inner.id]) : seen);
     }
   };
@@ -177,16 +120,10 @@ export function memberPaths(type: TypeRef, resolve: TypeResolver, depth = 3): Me
 }
 
 /**
- * Reads `path` from `value` of `type`. A missing step (none / absent field) gives `null`. Media
- * members are read from the media's registry entry, found with `entryOf`.
+ * Reads `path` from `value` of `type`. A missing step (none / absent field) gives `null`; a
+ * static field gives the type's value.
  */
-export async function readMember(
-  value: unknown,
-  type: TypeRef,
-  path: readonly string[],
-  resolve: TypeResolver,
-  entryOf?: (ref: MediaRef) => Promise<MediaEntry | undefined>,
-): Promise<unknown> {
+export function readMember(value: unknown, type: TypeRef, path: readonly string[], resolve: TypeResolver): unknown {
   let current: unknown = value;
   let t = type;
   for (const name of path) {
@@ -194,23 +131,27 @@ export async function readMember(
     if (t.kind === "optional") t = t.of;
     if (t.kind === "named") {
       const decl = resolve(t.id);
-      const field = decl?.kind === "struct" ? decl.fields.find((f) => f.name === name) : undefined;
+      if (decl?.kind !== "struct") return null;
+      const layout = structLayout(decl, resolve);
+      const s = layout.statics.get(name);
+      if (s) {
+        current = s.value;
+        t = s.field.type;
+        continue;
+      }
+      const field = layout.fields.find((f) => f.name === name);
       if (!field) return null;
       const obj = typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
       current = name in obj ? obj[name] : (field.default ?? null);
       t = field.type;
       continue;
     }
-    const m = builtinMembers(t).find((x) => x.name === name);
-    if (!m) return null;
-    const entry = t.kind === "primitive" && MEDIA_MEMBER_KINDS.has(t.name) && isMediaRef(current) && entryOf ? await entryOf(current) : undefined;
-    current = m.read(current, entry);
-    t = m.type;
+    if (name !== "length") return null;
+    current = typeof current === "string" ? [...current].length : Array.isArray(current) ? current.length : null;
+    t = int;
   }
   return current ?? null;
 }
-
-const MEDIA_MEMBER_KINDS = new Set(["image", "video", "audio", "model3d", "file"]);
 
 /**
  * A copy of struct `value` with the member at `path` replaced (nested structs are copied
@@ -221,7 +162,7 @@ export function writeMember(value: unknown, type: TypeRef, path: readonly string
   if (name === undefined) return next;
   if (type.kind !== "named") return value;
   const decl = resolve(type.id);
-  const field = decl?.kind === "struct" ? decl.fields.find((f) => f.name === name) : undefined;
+  const field = decl?.kind === "struct" ? structLayout(decl, resolve).fields.find((f) => f.name === name) : undefined;
   if (!field) return value;
   const obj = typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const inner = name in obj ? obj[name] : (field.default ?? null);

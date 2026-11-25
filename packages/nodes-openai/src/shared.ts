@@ -19,14 +19,14 @@ export const OPENAI_TEXT_MODELS: readonly string[] = ["gpt-5", "gpt-5-mini", "gp
 /** Known image models. */
 export const OPENAI_IMAGE_MODELS: readonly string[] = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2", "gpt-image-1.5", "gpt-image-1-mini"];
 
-const keyType = () => t.optional(t.secret({ kind: "apiKey" }));
+const keyType = () => t.optional(t.apiKey());
 
 /** Pack settings (Settings → OpenAI). A node uses the key for its job (text / images), else the default key. */
 export const openaiSettings = {
   defaultKey: { type: keyType(), title: "Default API key", description: "Used by every OpenAI node unless a key below is set." },
   textKey: { type: keyType(), title: "Key for text", description: "Used by OpenAI text nodes. Empty: the default key." },
   imageKey: { type: keyType(), title: "Key for images", description: "Used by OpenAI image nodes. Empty: the default key." },
-  baseUrl: { type: t.text(), title: "API base URL", default: OPENAI_BASE_URL, description: "Change it for a proxy or an OpenAI-compatible server." },
+  baseUrl: { type: t.string(), title: "API base URL", default: OPENAI_BASE_URL, description: "Change it for a proxy or an OpenAI-compatible server." },
 };
 
 /** Settings of every OpenAI node. */

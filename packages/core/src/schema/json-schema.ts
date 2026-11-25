@@ -5,6 +5,8 @@ import type { ContextDocument, FieldDecl, TypeDecl } from "../documents/model.js
 import { TypeDefinitionError } from "../errors.js";
 import type { TypeRef } from "../types/ir.js";
 import { formatToMime } from "../types/media.js";
+import { BUILTIN, mediaKindOfBuiltin } from "../types/builtins.js";
+import { structLayout, type StaticField } from "../types/layout.js";
 import type { PackTypeSource, TypeOrigin, TypeScope } from "../types/scope.js";
 import { scopeForFlow } from "../types/scope.js";
 
@@ -29,7 +31,7 @@ const SCHEMA_URI = "https://json-schema.org/draft/2020-12/schema";
  *
  * @example
  * ```ts
- * toJsonSchema({ kind: "list", of: { kind: "primitive", name: "text" } }, scope);
+ * toJsonSchema({ kind: "list", of: { kind: "primitive", name: "string" } }, scope);
  * // { $schema: "https://json-schema.org/draft/2020-12/schema", type: "array", items: { type: "string" } }
  * ```
  */
@@ -103,7 +105,7 @@ class SchemaCompiler {
         continue;
       }
       // The widest-scope one keeps the plain name; narrower ones get Name__id.
-      const rank = (id: string) => ({ pack: 0, global: 1, local: 2 })[reached.get(id)?.origin ?? "local"];
+      const rank = (id: string) => ({ builtin: 0, pack: 0, global: 1, local: 2 })[reached.get(id)?.origin ?? "local"];
       const sorted = [...ids].sort((a, b) => rank(a) - rank(b));
       sorted.forEach((id, i) => this.keys.set(id, i === 0 ? key : `${key}__${id}`));
     }
@@ -137,13 +139,8 @@ class SchemaCompiler {
       case "primitive": {
         const c = (type.constraints ?? {}) as Record<string, unknown>;
         switch (type.name) {
-          case "text": {
-            const s: JsonSchema = { type: "string" };
-            if (c["minLength"] !== undefined) s["minLength"] = c["minLength"];
-            if (c["maxLength"] !== undefined) s["maxLength"] = c["maxLength"];
-            if (c["pattern"] !== undefined && !this.strict) s["pattern"] = `^(?:${String(c["pattern"])})$`;
-            return s;
-          }
+          case "string":
+            return { type: "string" };
           case "int":
           case "float": {
             const s: JsonSchema = { type: type.name === "int" ? "integer" : "number" };
@@ -151,27 +148,12 @@ class SchemaCompiler {
             if (c["max"] !== undefined) s["maximum"] = c["max"];
             return s;
           }
-          case "boolean":
+          case "bool":
             return { type: "boolean" };
-          case "json":
-            return {};
-          case "secret":
-            return { type: "string", minLength: 1 };
-          case "error":
-            return {
-              type: "object",
-              required: ["code", "message"],
-              properties: { code: { type: "string" }, message: { type: "string" }, nodeId: { type: "string" }, node: { type: "string" }, details: {} },
-            };
-          default: {
+          case "binary":
+            // A registry id; mime, size and the media limits are checked when a node reads it.
             this.media = true;
-            // The value is a registry id; mime, size and formats are checked when a node reads it.
-            const ref: JsonSchema = { $ref: "#/$defs/MediaRef" };
-            const formats = c["formats"];
-            if (this.strict) return ref;
-            if (!Array.isArray(formats) || formats.length === 0) return { ...ref, "x-briar-media": type.name };
-            return { ...ref, "x-briar-media": type.name, "x-briar-formats": [...new Set(formats.map((f) => formatToMime(String(f))))] };
-          }
+            return { $ref: "#/$defs/MediaRef" };
         }
       }
     }
@@ -200,8 +182,17 @@ class SchemaCompiler {
         for (const m of decl.members) if (m.label !== undefined) labels[m.value] = m.label;
         if (Object.keys(labels).length > 0) def["x-briar-labels"] = labels;
       } else {
-        def = { ...this.object(decl.fields), title: decl.name };
+        // Values hold instance fields only; static fields belong to the type (types.md §9).
+        const layout = structLayout(decl, (x) => this.scope.getType(x)?.decl);
+        def = { ...this.object(layout.fields), title: decl.name };
         if (decl.description !== undefined) def["description"] = decl.description;
+        if (layout.root === BUILTIN.Text) textLimits(def, layout.statics, this.strict);
+        const kind = mediaKindOfBuiltin(layout.root);
+        if (kind !== undefined && !this.strict) {
+          def["x-briar-media"] = kind;
+          const formats = layout.statics.get("formats")?.value;
+          if (Array.isArray(formats) && formats.length > 0) def["x-briar-formats"] = [...new Set(formats.map((f) => formatToMime(String(f))))];
+        }
       }
       this.defs.set(key, def);
     }
@@ -232,4 +223,16 @@ class SchemaCompiler {
       additionalProperties: false,
     };
   }
+}
+
+/** Text's limits (its static fields) on the schema of its `value`. */
+function textLimits(def: JsonSchema, statics: ReadonlyMap<string, StaticField>, strict: boolean): void {
+  const value = (def["properties"] as Record<string, JsonSchema> | undefined)?.["value"];
+  if (!value) return;
+  const min = statics.get("minLength")?.value;
+  const max = statics.get("maxLength")?.value;
+  const pattern = statics.get("pattern")?.value;
+  if (typeof min === "number" && min > 0) value["minLength"] = min;
+  if (typeof max === "number") value["maxLength"] = max;
+  if (typeof pattern === "string" && !strict) value["pattern"] = `^(?:${pattern})$`;
 }

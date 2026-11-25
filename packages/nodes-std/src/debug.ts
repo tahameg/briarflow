@@ -17,8 +17,8 @@ export const debugPrint = defineNode({
   description: "Prints the text to the studio console. Turn on Browser console to also see it in the browser's devtools. Runs in the studio, not on the server.",
   frontend: true,
   inputs: {
-    text: { type: t.text({ multiline: true }), widget: "textarea" },
-    browserConsole: { type: t.boolean(), default: false, title: "Browser console", description: "Also write the text to the browser's devtools console." },
+    text: { type: t.string(), widget: "textarea" },
+    browserConsole: { type: t.bool(), default: false, title: "Browser console", description: "Also write the text to the browser's devtools console." },
   },
   run: () => ({}),
 });
@@ -36,7 +36,7 @@ export const debugImage = defineNode({
   frontend: true,
   inputs: {
     image: { type: t.image(), description: "The image to look at." },
-    label: { type: t.optional(t.text()), default: null, description: "Written next to the image in the console." },
+    label: { type: t.optional(t.string()), default: null, description: "Written next to the image in the console." },
   },
   run: () => ({}),
 });

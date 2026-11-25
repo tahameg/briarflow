@@ -1,7 +1,7 @@
 /**
  * Pack types: `defineStruct` / `defineEnum` (docs/specs/node-api.md §7).
  */
-import type { EnumMember, FieldDecl } from "../documents/model.js";
+import type { EnumMember, FieldDecl, StructDecl } from "../documents/model.js";
 import { PackDefinitionError } from "../errors.js";
 import { isValidEnumValue, isValidFieldName, RESERVED_FIELD_NAMES, RESERVED_TYPE_NAMES, TYPE_NAME_PATTERN } from "../util/names.js";
 import { checkValue } from "../values/validate.js";
@@ -13,7 +13,7 @@ import { containsVar } from "./walk.js";
 /** A struct field in `defineStruct`: a spec, or a spec with metadata. */
 export type FieldInput<V = UnknownValue> =
   | TypeSpec<V>
-  | { type: TypeSpec<V>; description?: string; default?: V };
+  | { type: TypeSpec<V>; description?: string; default?: V; static?: boolean };
 
 /** Map of field name → {@link FieldInput}. */
 export type FieldInputMap = Record<string, FieldInput>;
@@ -30,6 +30,15 @@ export type StructValueOf<F> = { -readonly [K in keyof F]: FieldValue<F[K]> };
 /** Options of `defineStruct` / `defineEnum`. */
 export interface DefineTypeOptions {
   description?: string;
+}
+
+/** Options of `defineStruct`. */
+export interface DefineStructOptions extends DefineTypeOptions {
+  /**
+   * The struct it extends (types.md §1.3): a `defineStruct` result, a pack type's name or id,
+   * or a built-in id (`BUILTIN.Text`). Its own fields must then all be static.
+   */
+  extends?: StructType | string;
 }
 
 /** An enum member input: a value, or a value with a label. */
@@ -57,7 +66,7 @@ export type EnumValueOf<M extends readonly EnumMemberInput[]> =
 export function defineStruct<const F extends FieldInputMap>(
   name: string,
   fields: F,
-  options?: DefineTypeOptions,
+  options?: DefineStructOptions,
 ): StructType<StructValueOf<F>> {
   checkTypeName("defineStruct", name);
   if (typeof fields !== "object" || fields === null || Array.isArray(fields)) {
@@ -82,7 +91,11 @@ export function defineStruct<const F extends FieldInputMap>(
     if (containsVar(spec.ref)) throw new PackDefinitionError(`${where} uses a generic type; generics are only allowed in node ports.`);
     const decl: FieldDecl = { name: fieldName, type: spec.ref };
     if (!isTypeSpec(input)) {
-      const meta = input as { description?: unknown; default?: unknown };
+      const meta = input as { description?: unknown; default?: unknown; static?: unknown };
+      if (meta.static !== undefined) {
+        if (typeof meta.static !== "boolean") throw new PackDefinitionError(`${where}: static must be true or false.`);
+        if (meta.static) decl.static = true;
+      }
       if (meta.description !== undefined) {
         if (typeof meta.description !== "string") throw new PackDefinitionError(`${where}: description must be a string.`);
         decl.description = meta.description;
@@ -99,7 +112,20 @@ export function defineStruct<const F extends FieldInputMap>(
     }
     decls.push(decl);
   }
-  const decl = { kind: "struct" as const, id: name, name, fields: decls, ...describeOption("defineStruct", name, options) };
+  const base = options?.extends;
+  const extendsId = base === undefined ? undefined : typeof base === "string" ? base : base.decl.id;
+  if (extendsId !== undefined) {
+    const own = decls.find((d) => !d.static);
+    if (own) throw new PackDefinitionError(`defineStruct "${name}": field "${own.name}" must be static, because the struct extends ${extendsId}.`);
+  }
+  const decl: StructDecl = {
+    kind: "struct" as const,
+    id: name,
+    name,
+    fields: decls,
+    ...describeOption("defineStruct", name, options),
+    ...(extendsId === undefined ? {} : { extends: extendsId }),
+  };
   return { kind: "structType", decl };
 }
 

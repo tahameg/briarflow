@@ -6,6 +6,7 @@ import { CONTEXT_FORMAT, CONTEXT_FORMAT_VERSION } from "../documents/model.js";
 import { FormatError, isBriarError } from "../errors.js";
 import { cloneJson, isPlainObject, stringifySorted } from "../util/json.js";
 import { typeRefShapeProblem } from "../types/walk.js";
+import { migrateV1ToV2 } from "./migrate-v2.js";
 
 /**
  * Deterministic JSON of a context: object keys sorted (UTF-16 order) at every level, arrays in
@@ -26,9 +27,9 @@ type Migration = (doc: Record<string, unknown>) => Record<string, unknown>;
 
 /**
  * Internal migration registry: `MIGRATIONS.get(n)` upgrades a document from version `n` to
- * `n + 1`. Version 1 is the first format, so the registry is empty for now.
+ * `n + 1`.
  */
-export const MIGRATIONS: ReadonlyMap<number, Migration> = new Map<number, Migration>();
+export const MIGRATIONS: ReadonlyMap<number, Migration> = new Map<number, Migration>([[1, migrateV1ToV2]]);
 
 /**
  * Parses (when given a string) and structurally validates a context, running format
@@ -143,12 +144,15 @@ function fields(spec: Record<string, [Check, boolean]>): Check {
 const req = (c: Check): [Check, boolean] => [c, true];
 const opt = (c: Check): [Check, boolean] => [c, false];
 
-const fieldDecl = fields({ name: req(str), type: req(typeRef), description: opt(str), default: opt(any) });
+const bool: Check = (v, p) => {
+  if (typeof v !== "boolean") throw invalid("expected true or false", p);
+};
+const fieldDecl = fields({ name: req(str), type: req(typeRef), description: opt(str), default: opt(any), static: opt(bool) });
 const typeDecl: Check = (v, p) => {
   obj(v, p);
   const kind = (v as Record<string, unknown>)["kind"];
   if (kind === "struct") {
-    fields({ kind: req(str), id: req(str), name: req(str), description: opt(str), fields: req(arrayOf(fieldDecl)) })(v, p);
+    fields({ kind: req(str), id: req(str), name: req(str), description: opt(str), extends: opt(str), fields: req(arrayOf(fieldDecl)) })(v, p);
   } else if (kind === "enum") {
     const member = fields({ value: req(str), label: opt(str) });
     fields({ kind: req(str), id: req(str), name: req(str), description: opt(str), members: req(arrayOf(member)) })(v, p);

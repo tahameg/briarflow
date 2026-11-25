@@ -161,7 +161,7 @@ function configFields(def: AnyNodeDefinition): ConfigDescriptor[] {
 function ports(map: PortMap, isInput: boolean): PortDescriptor[] {
   return Object.entries(map).map(([name, port]) => {
     const p = portParts(port);
-    const d: PortDescriptor = { name, type: cloneJson(p?.spec.ref ?? { kind: "primitive", name: "text" }), title: p?.title ?? titleFromName(name) };
+    const d: PortDescriptor = { name, type: cloneJson(p?.spec.ref ?? { kind: "primitive", name: "string" }), title: p?.title ?? titleFromName(name) };
     if (p?.description !== undefined) d.description = p.description;
     if (p?.default !== undefined) d.default = cloneJson(p.default);
     if (isInput) d.widget = p?.widget ?? null;

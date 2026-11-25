@@ -1,6 +1,7 @@
 /**
  * Node packs (docs/specs/node-api.md §7).
  */
+import { isBuiltinId } from "../types/builtins.js";
 import type { TypeDecl } from "../documents/model.js";
 import { PackDefinitionError } from "../errors.js";
 import type { EnumType, StructType, TypeSpec } from "../types/builder.js";
@@ -114,6 +115,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
   }
   const ownIds = new Set(byName.values());
   const qualify = (id: string, where: string, allowForeign: boolean): string => {
+    if (isBuiltinId(id)) return id;
     if (!id.includes(".")) {
       const q = byName.get(id);
       if (q !== undefined) return q;
@@ -124,7 +126,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
       if (!ownIds.has(id)) fail(`${where} refers to "${id}", which is not a type of this pack.`);
       return id;
     }
-    if (!allowForeign) fail(`${where} refers to "${id}" from another pack. Pack types may only use primitives and types of the same pack.`);
+    if (!allowForeign) fail(`${where} refers to "${id}" from another pack. Pack types may only use primitives, built-in types and types of the same pack.`);
     return id;
   };
   const qualifyRef = (ref: TypeRef, where: string, allowForeign: boolean) => mapNamedIds(ref, (id) => qualify(id, where, allowForeign));
@@ -136,6 +138,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
       ...t.decl,
       id,
       fields: t.decl.fields.map((f) => ({ ...f, type: qualifyRef(f.type, `type ${t.decl.name}, field "${f.name}"`, false) })),
+      ...(t.decl.extends === undefined ? {} : { extends: qualify(t.decl.extends, `type ${t.decl.name} (extends)`, false) }),
     };
   });
   const scope = createTypeScope({ packTypes: types });

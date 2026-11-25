@@ -2,6 +2,7 @@
  * Internal: one local run (docs/specs/runtime.md §2–§8, variables.md §6–§8).
  */
 import {
+  jsonText,
   checkMediaEntry,
   emptyValue,
   ERROR_OUTPUT,
@@ -539,7 +540,7 @@ export class LocalRun implements Run {
     } else if (handler !== undefined) {
       // Handled: the failed line runs, and can read why from the node's error output.
       const error: ErrorValue = { code: f.error.code, message: f.error.message, nodeId: node.id, node: node.title };
-      if (f.error.details !== undefined) error.details = f.error.details;
+      if (f.error.details !== undefined) error.details = jsonText(f.error.details);
       ex.outputs = { [ERROR_OUTPUT]: error };
       for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
       this.activate(handler);
@@ -910,7 +911,6 @@ export class LocalRun implements Run {
     const getType = (id: string) => plan.scope.getType(id)?.decl;
     for (const port of node.ports.inputs) {
       for (const found of findMedia(inputs[port.name], port.type, getType)) {
-        if (!found.type) continue;
         const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
         let entry;
         try {
@@ -926,7 +926,8 @@ export class LocalRun implements Run {
             { details: { mediaId: found.ref.mediaId, port: port.name } },
           );
         }
-        const problems = checkMediaEntry(entry, found.type, where);
+        if (!found.media) continue;
+        const problems = checkMediaEntry(entry, found.media.kind, found.media.limits, where);
         if (problems.length > 0) {
           return failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
             details: { diagnostics: problems },
@@ -1088,7 +1089,7 @@ export class LocalRun implements Run {
       settings: this.services.catalog.packOf(node.node.type)?.settings ?? [],
       store: this.services.settings,
       vault: this.services.vault,
-      allowed: inputSecretRefs(node.ports.inputs, inputs),
+      allowed: inputSecretRefs(node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
     });
     const logger = this.services.logger;
     const tag = { runId: this.id, nodeId: node.id };

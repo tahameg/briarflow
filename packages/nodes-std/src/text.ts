@@ -22,7 +22,7 @@ export const textTemplate = defineNode({
   description:
     "Builds text from a template. {{name}} adds an input for any value, {{name.field}} a JSON input, {{$(variable)}} reads a variable. Write \\{{ for literal braces.",
   config: { template: cfg.text({ multiline: true, title: "Template" }) },
-  outputs: { text: t.text() },
+  outputs: { text: t.string() },
   resolvePorts({ config, scope }) {
     const needs = templatePlaceholders(config.template);
     if ("error" in needs) return needs;
@@ -35,7 +35,7 @@ export const textTemplate = defineNode({
     needs.inputs.forEach(({ name, json }, i) => {
       inputs[name] = json ? t.json() : t.var(`T${i + 1}`);
     });
-    return { inputs, outputs: { text: t.text() } };
+    return { inputs, outputs: { text: t.string() } };
   },
   run: ({ inputs, config, node, ctx }) => {
     const types: Record<string, TypeRef> = {};
@@ -65,7 +65,7 @@ export const textJoin = defineNode({
   icon: "text",
   color: "mint",
   description: "Joins a list of text into one text, with an optional separator between items.",
-  inputs: { items: t.list(t.text()), separator: { type: t.text(), default: "" } },
-  outputs: { text: t.text() },
+  inputs: { items: t.list(t.string()), separator: { type: t.string(), default: "" } },
+  outputs: { text: t.string() },
   run: ({ inputs }) => ({ text: inputs.items.join(inputs.separator) }),
 });

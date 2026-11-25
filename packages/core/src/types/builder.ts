@@ -5,24 +5,22 @@
  */
 import type { EnumDecl, StructDecl } from "../documents/model.js";
 import { TypeDefinitionError } from "../errors.js";
-import type { JsonValue } from "../util/json.js";
 import { TYPE_VAR_NAME_PATTERN } from "../util/names.js";
 import { constraintMessage, constraintProblems } from "./constraints.js";
 import { parseType } from "./shorthand.js";
 import { containsVar } from "./walk.js";
-import type {
-  ErrorValue,
-  ImageConstraints,
-  MediaConstraints,
-  MediaRef,
-  NumberConstraints,
-  PrimitiveName,
-  SecretConstraints,
-  SecretRef,
-  TextConstraints,
-  TimedMediaConstraints,
-  TypeRef,
-} from "./ir.js";
+import type { MediaRef, NumberConstraints, PrimitiveName, TypeRef } from "./ir.js";
+import {
+  BUILTIN,
+  type AudioValue,
+  type ErrorValue,
+  type ImageValue,
+  type JsonText,
+  type MediaValue,
+  type SecretValue,
+  type TextValue,
+  type VideoValue,
+} from "./builtins.js";
 
 /** Phantom key carrying the static value type. Never present at run time. */
 declare const valueTypeKey: unique symbol;
@@ -116,36 +114,41 @@ function withoutUndefined(options: object | undefined): Record<string, unknown> 
 
 function primitive<V>(name: PrimitiveName, constraints: object | undefined): TypeSpec<V> {
   const c = withoutUndefined(constraints);
-  if (Array.isArray(c["formats"])) c["formats"] = [...(c["formats"] as string[])];
   const ref = (Object.keys(c).length > 0 ? { kind: "primitive", name, constraints: c } : { kind: "primitive", name }) as TypeRef;
   return checked<V>(ref, `t.${name}()`);
 }
 
 /** The `t` builder. See {@link t}. */
 export interface TypeBuilder {
-  /** `text`. @example `t.text({ maxLength: 40, multiline: true })` */
-  text(constraints?: TextConstraints): TypeSpec<string>;
+  /** `string`: text without limits. */
+  string(): TypeSpec<string>;
   /** `int` (safe integer). @example `t.int({ min: 0, max: 120 })` */
   int(constraints?: NumberConstraints): TypeSpec<number>;
   /** `float` (finite number). */
   float(constraints?: NumberConstraints): TypeSpec<number>;
-  /** `boolean`. */
-  boolean(): TypeSpec<boolean>;
-  /** `json`: any JSON value, opaque until cast. @example `t.json()` */
-  json(): TypeSpec<JsonValue>;
-  /** `secret`: the name of a vault secret; read it with `ctx.secrets.read`. @example `t.secret({ kind: "apiKey" })` */
-  secret(constraints?: SecretConstraints): TypeSpec<SecretRef>;
-  /** `image` media. @example `t.image({ formats: ["png", "jpeg"] })` */
-  image(constraints?: ImageConstraints): TypeSpec<MediaRef>;
-  /** `video` media. */
-  video(constraints?: TimedMediaConstraints): TypeSpec<MediaRef>;
-  /** `audio` media. */
-  audio(constraints?: TimedMediaConstraints): TypeSpec<MediaRef>;
-  /** `model3d` media. */
-  model3d(constraints?: MediaConstraints): TypeSpec<MediaRef>;
-  /** `file` media (any mime). */
-  file(constraints?: MediaConstraints): TypeSpec<MediaRef>;
-  /** Why a node failed (`{ code, message, nodeId?, node?, details? }`). */
+  /** `bool`. */
+  bool(): TypeSpec<boolean>;
+  /** `binary`: bytes, held as the id of a media registry entry. */
+  binary(): TypeSpec<MediaRef>;
+  /** The built-in struct `Text` (`{ value }`): text with limits, for what people type. */
+  text(): TypeSpec<TextValue>;
+  /** The built-in struct `Image`. */
+  image(): TypeSpec<ImageValue>;
+  /** The built-in struct `Video`. */
+  video(): TypeSpec<VideoValue>;
+  /** The built-in struct `Audio`. */
+  audio(): TypeSpec<AudioValue>;
+  /** The built-in struct `Model3D`. */
+  model3d(): TypeSpec<MediaValue>;
+  /** The built-in struct `File` (any mime). */
+  file(): TypeSpec<MediaValue>;
+  /** The built-in struct `Json` (`{ text }`): a JSON document. */
+  json(): TypeSpec<JsonText>;
+  /** The built-in struct `Secret` (`{ name }`): a vault secret; read it with `ctx.secrets.read`. */
+  secret(): TypeSpec<SecretValue>;
+  /** The built-in struct `ApiKey`: a Secret of kind apiKey. */
+  apiKey(): TypeSpec<SecretValue>;
+  /** The built-in struct `Error`: why a node failed. */
   error(): TypeSpec<ErrorValue>;
   /** `list<item>`. Values are readonly arrays. @example `t.list(t.image(), { maxItems: 4 })` */
   list<V>(item: TypeSpec<V>, options?: ListOptions): TypeSpec<readonly V[]>;
@@ -162,7 +165,7 @@ export interface TypeBuilder {
   ref(nameOrId: string): TypeSpec<UnknownValue>;
   /**
    * Generic placeholder (`$T`). Node definitions only. Statically {@link UnknownValue}.
-   * `oneOf` limits the types it accepts: `t.var("T", { oneOf: [t.text(), t.json()] })`.
+   * `oneOf` limits the types it accepts: `t.var("T", { oneOf: [t.string(), t.json()] })`.
    */
   var(name: string, options?: { oneOf?: readonly TypeSpec<unknown>[] }): TypeSpec<UnknownValue>;
   /** Shorthand → spec: `t.parse("list<Character?>")`. Names stay unresolved until `definePack`. */
@@ -171,6 +174,8 @@ export interface TypeBuilder {
   fromRef(ref: TypeRef): TypeSpec<UnknownValue>;
 }
 
+const builtin = <V>(id: string): TypeSpec<V> => spec<V>({ kind: "named", id });
+
 /**
  * The type builder used in node definitions, pack types and tests.
  *
@@ -178,25 +183,28 @@ export interface TypeBuilder {
  * ```ts
  * import { t } from "@briarflow/core";
  * const ports = {
- *   prompt: t.text({ multiline: true, maxLength: 4000 }),
- *   images: t.list(t.image({ formats: ["png"] }), { maxItems: 4 }),
+ *   prompt: t.string(),
+ *   images: t.list(t.image(), { maxItems: 4 }),
  *   seed: t.optional(t.int({ min: 0 })),
  * };
  * ```
  */
 export const t: TypeBuilder = {
-  text: (constraints) => primitive<string>("text", constraints),
+  string: () => primitive<string>("string", undefined),
   int: (constraints) => primitive<number>("int", constraints),
   float: (constraints) => primitive<number>("float", constraints),
-  boolean: () => primitive<boolean>("boolean", undefined),
-  json: () => primitive<JsonValue>("json", undefined),
-  secret: (constraints) => primitive<SecretRef>("secret", constraints),
-  image: (constraints) => primitive<MediaRef>("image", constraints),
-  video: (constraints) => primitive<MediaRef>("video", constraints),
-  audio: (constraints) => primitive<MediaRef>("audio", constraints),
-  model3d: (constraints) => primitive<MediaRef>("model3d", constraints),
-  file: (constraints) => primitive<MediaRef>("file", constraints),
-  error: () => primitive<ErrorValue>("error", undefined),
+  bool: () => primitive<boolean>("bool", undefined),
+  binary: () => primitive<MediaRef>("binary", undefined),
+  text: () => builtin<TextValue>(BUILTIN.Text),
+  image: () => builtin<ImageValue>(BUILTIN.Image),
+  video: () => builtin<VideoValue>(BUILTIN.Video),
+  audio: () => builtin<AudioValue>(BUILTIN.Audio),
+  model3d: () => builtin<MediaValue>(BUILTIN.Model3D),
+  file: () => builtin<MediaValue>(BUILTIN.File),
+  json: () => builtin<JsonText>(BUILTIN.Json),
+  secret: () => builtin<SecretValue>(BUILTIN.Secret),
+  apiKey: () => builtin<SecretValue>(BUILTIN.ApiKey),
+  error: () => builtin<ErrorValue>(BUILTIN.Error),
   list<V>(item: TypeSpec<V>, options: ListOptions = {}): TypeSpec<readonly V[]> {
     return checked<readonly V[]>({ kind: "list", of: item.ref, ...withoutUndefined(options) }, "t.list()");
   },

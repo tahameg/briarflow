@@ -1,7 +1,6 @@
 /**
  * Internal: validation of constraint definitions (types.md §6, `type.invalid_constraint`).
  */
-import { SECRET_KINDS } from "./ir.js";
 import type { TypeRef } from "./ir.js";
 import type { Diagnostic, DiagnosticPath } from "../validation/diagnostic.js";
 
@@ -16,19 +15,11 @@ export interface ConstraintProblem {
 }
 
 const ALLOWED: Record<string, readonly string[]> = {
-  text: ["minLength", "maxLength", "pattern", "multiline"],
   int: ["min", "max"],
   float: ["min", "max"],
-  boolean: [],
-  secret: ["kind"],
-  image: ["formats", "maxBytes", "minWidth", "maxWidth", "minHeight", "maxHeight"],
-  video: ["formats", "maxBytes", "maxDurationSec"],
-  audio: ["formats", "maxBytes", "maxDurationSec"],
-  model3d: ["formats", "maxBytes"],
-  file: ["formats", "maxBytes"],
 };
 
-/** Compiles a text `pattern` (anchored, `u` flag). Returns `undefined` when it does not compile. */
+/** Compiles a Text `pattern` (anchored, `u` flag). Returns `undefined` when it does not compile. */
 export function compilePattern(pattern: string): RegExp | undefined {
   try {
     return new RegExp(`^(?:${pattern})$`, "u");
@@ -37,7 +28,11 @@ export function compilePattern(pattern: string): RegExp | undefined {
   }
 }
 
-/** Problems of the constraints directly on `type` (not recursive). */
+/**
+ * Problems of the constraints directly on `type` (not recursive). Only `int` / `float` (min,
+ * max) and lists (minItems, maxItems) take constraints; what used to be text and media
+ * constraints are static fields of the built-in structs.
+ */
 export function constraintProblems(type: TypeRef): ConstraintProblem[] {
   const out: ConstraintProblem[] = [];
   if (type.kind === "list") {
@@ -54,69 +49,19 @@ export function constraintProblems(type: TypeRef): ConstraintProblem[] {
     if (c[key] === undefined) continue;
     if (!allowed.includes(key)) out.push({ constraint: key, on, reason: `${on} has no constraint "${key}"` });
   }
-  switch (on) {
-    case "text": {
-      checkCount(out, on, "minLength", c["minLength"]);
-      checkCount(out, on, "maxLength", c["maxLength"]);
-      checkOrder(out, on, "minLength", "maxLength", c["minLength"], c["maxLength"]);
-      const p = c["pattern"];
-      if (p !== undefined) {
-        if (typeof p !== "string") out.push({ constraint: "pattern", on, reason: "it must be a string" });
-        else if (compilePattern(p) === undefined) {
-          out.push({ constraint: "pattern", on, reason: `the regular expression ${p} does not compile` });
-        }
-      }
-      const m = c["multiline"];
-      if (m !== undefined && typeof m !== "boolean") out.push({ constraint: "multiline", on, reason: "it must be true or false" });
-      break;
+  if (on === "int") {
+    for (const k of ["min", "max"]) {
+      const v = c[k];
+      if (v !== undefined && !Number.isSafeInteger(v)) out.push({ constraint: k, on, reason: "it must be a whole number" });
     }
-    case "int":
-      for (const k of ["min", "max"]) {
-        const v = c[k];
-        if (v !== undefined && !Number.isSafeInteger(v)) out.push({ constraint: k, on, reason: "it must be a whole number" });
-      }
-      checkOrder(out, on, "min", "max", c["min"], c["max"]);
-      break;
-    case "float":
-      for (const k of ["min", "max"]) {
-        const v = c[k];
-        if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) {
-          out.push({ constraint: k, on, reason: "it must be a finite number" });
-        }
-      }
-      checkOrder(out, on, "min", "max", c["min"], c["max"]);
-      break;
-    case "boolean":
-    case "json":
-      break;
-    case "secret": {
-      const k = c["kind"];
-      if (k !== undefined && !(SECRET_KINDS as readonly unknown[]).includes(k)) {
-        out.push({ constraint: "kind", on, reason: `it must be one of ${SECRET_KINDS.join(", ")}` });
-      }
-      break;
+    checkOrder(out, on, "min", "max", c["min"], c["max"]);
+  }
+  if (on === "float") {
+    for (const k of ["min", "max"]) {
+      const v = c[k];
+      if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) out.push({ constraint: k, on, reason: "it must be a finite number" });
     }
-    default: {
-      const f = c["formats"];
-      if (f !== undefined) {
-        if (!Array.isArray(f) || f.some((x) => typeof x !== "string" || x.trim() === "")) {
-          out.push({ constraint: "formats", on, reason: "it must be a list of format names or mime types" });
-        }
-      }
-      checkCount(out, on, "maxBytes", c["maxBytes"]);
-      if (on === "image") {
-        for (const k of ["minWidth", "maxWidth", "minHeight", "maxHeight"]) checkCount(out, on, k, c[k]);
-        checkOrder(out, on, "minWidth", "maxWidth", c["minWidth"], c["maxWidth"]);
-        checkOrder(out, on, "minHeight", "maxHeight", c["minHeight"], c["maxHeight"]);
-      }
-      if (on === "video" || on === "audio") {
-        const d = c["maxDurationSec"];
-        if (d !== undefined && (typeof d !== "number" || !Number.isFinite(d) || d < 0)) {
-          out.push({ constraint: "maxDurationSec", on, reason: "it must be a number >= 0" });
-        }
-      }
-      break;
-    }
+    checkOrder(out, on, "min", "max", c["min"], c["max"]);
   }
   return out;
 }

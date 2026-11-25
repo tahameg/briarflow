@@ -133,7 +133,13 @@ class Parser {
       }
       if (w === "list") return this.parseList();
       if ((PRIMITIVE_NAMES as readonly string[]).includes(w)) return { kind: "primitive", name: w as PrimitiveName };
-      this.fail(`"${w}" is not a type (primitives are ${PRIMITIVE_NAMES.join(", ")}; named types start with an uppercase letter)`, start);
+      const hint = OLD_NAMES[w];
+      this.fail(
+        hint !== undefined
+          ? `"${w}" is not a type any more: use ${hint}`
+          : `"${w}" is not a type (primitives are ${PRIMITIVE_NAMES.join(", ")}; named types start with an uppercase letter)`,
+        start,
+      );
     }
     if (/[A-Z]/.test(ch)) {
       const name = this.word(/[A-Za-z0-9_]/);
@@ -268,3 +274,17 @@ function formatNamed(id: string, scope: TypeScope | undefined): string {
   if (entry.origin === "pack") return id;
   return `#${id}`;
 }
+
+/** Type names of format 1 and what replaced them (types.md §2). */
+const OLD_NAMES: Readonly<Record<string, string>> = {
+  text: "string (or the struct Text for text with limits)",
+  boolean: "bool",
+  json: "Json",
+  secret: "Secret",
+  error: "Error",
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
+  model3d: "Model3D",
+  file: "File",
+};

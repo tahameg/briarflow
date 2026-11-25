@@ -1,14 +1,15 @@
 /**
  * toText rules and template parsing (docs/specs/node-api.md §9).
  */
-import { canonicalJson, isMediaRef, isValidFieldName, MEDIA_PRIMITIVE_NAMES, NodeError, type PortError, type TypeRef } from "@briarflow/core";
+import { BUILTIN, canonicalJson, isMediaRef, isValidFieldName, NodeError, type PortError, type TypeRef } from "@briarflow/core";
 import { getAt, parsePath, type PathSegment } from "./json-path.js";
 
 /**
- * Renders a value as text (node-api.md §9 toText rules): text as is, numbers via `String()`,
- * booleans `"true"`/`"false"`, enum → member value, `null` → `""`, media → its media id,
- * struct/list → canonical JSON (sorted keys, no spaces). Pass the value's type when known so
- * a struct that happens to look like a media value is not mistaken for one.
+ * Renders a value as text (node-api.md §9 toText rules): strings as they are, numbers via
+ * `String()`, bools `"true"`/`"false"`, enum → member value, `null` → `""`, binary → its media
+ * id, Text → its value, Json → its text, struct/list → canonical JSON (sorted keys, no spaces).
+ * Pass the value's type when known so a struct that happens to look like another is not
+ * mistaken for it.
  *
  * @example
  * ```ts
@@ -22,7 +23,9 @@ export function valueToText(value: unknown, type?: TypeRef): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value !== "object") return String(value);
   const inner = type?.kind === "optional" ? type.of : type;
-  if (inner?.kind === "primitive" && (MEDIA_PRIMITIVE_NAMES as readonly string[]).includes(inner.name) && isMediaRef(value)) return value.mediaId;
+  if (inner?.kind === "primitive" && inner.name === "binary" && isMediaRef(value)) return value.mediaId;
+  if (inner?.kind === "named" && inner.id === BUILTIN.Text && typeof (value as { value?: unknown }).value === "string") return (value as { value: string }).value;
+  if (inner?.kind === "named" && inner.id === BUILTIN.Json && typeof (value as { text?: unknown }).text === "string") return (value as { text: string }).text;
   if ((inner === undefined || inner.kind === "var") && isMediaRef(value)) return value.mediaId;
   return canonicalJson(value);
 }

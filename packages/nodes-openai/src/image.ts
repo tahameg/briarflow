@@ -1,7 +1,7 @@
 /**
  * `openai.image`: prompt → image, through the Images API. The bytes go to the media store.
  */
-import { cfg, defineNode, NodeError, t, variant, type ExecContext } from "@briarflow/core";
+import { cfg, defineNode, NodeError, t, variant, type ExecContext, mediaValue } from "@briarflow/core";
 import { callOpenAI } from "./http.js";
 import { connection, nodeSettings, type OpenAIPackOptions } from "./shared.js";
 
@@ -38,7 +38,7 @@ export function flexibleSizeProblem(size: string): string | undefined {
   return undefined;
 }
 
-const prompt = { prompt: { type: t.text({ multiline: true }), widget: "textarea" } } as const;
+const prompt = { prompt: { type: t.string(), widget: "textarea" } } as const;
 
 const LEGACY_SIZES = ["auto", "1024x1024", "1536x1024", "1024x1536"] as const;
 const FLEXIBLE_SIZES = [...LEGACY_SIZES, "2048x2048", "2048x1152", "1152x2048", "2560x1440", "3840x2160", "custom"] as const;
@@ -109,13 +109,11 @@ export function openaiImage(options: OpenAIPackOptions) {
     ctx.progress(0.9, "Storing image");
     const mime = MIME[config.format] ?? "image/png";
     const [w, h] = (size !== "auto" ? size : (res.size ?? "")).split("x").map(Number);
-    const image = await ctx.media.put(bytes, {
-      mime,
-      filename: `openai.${mime.slice(6)}`,
-      ...(w && h ? { meta: { width: w, height: h } } : {}),
-    });
+    const filename = `openai.${mime.slice(6)}`;
+    const meta = w && h ? { width: w, height: h } : {};
+    const ref = await ctx.media.put(bytes, { mime, filename, ...(w && h ? { meta } : {}) });
     ctx.progress(1);
-    return { image };
+    return { image: mediaValue("image", ref, { mime, bytes: bytes.byteLength, meta: { ...meta, filename } }) };
   };
   const flexible = (model: string, title: string, description: string, quality: readonly [string, ...string[]]) =>
     variant({

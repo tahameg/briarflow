@@ -45,8 +45,8 @@ export const modelConfig = {
 
 /** Common inputs: prompt, optional system text, output budget. */
 export const promptInputs = {
-  prompt: { type: t.text({ multiline: true }), widget: "textarea" },
-  system: { type: t.optional(t.text({ multiline: true })), default: null, widget: "textarea" },
+  prompt: { type: t.string(), widget: "textarea" },
+  system: { type: t.optional(t.string()), default: null, widget: "textarea" },
   maxTokens: { type: t.int({ min: 1, max: 128_000 }), default: 16_000, description: "Upper bound on output tokens." },
 } as const;
 

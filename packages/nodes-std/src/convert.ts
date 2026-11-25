@@ -6,11 +6,11 @@
  * - As JSON takes text and does not parse it (fields are parsed when read).
  * - As int, As float and As JSON array take text or json and fail when it does not read.
  */
-import { defineEnum, defineNode, NodeError, t, type JsonValue } from "@briarflow/core";
+import { defineEnum, defineNode, jsonText, NodeError, t } from "@briarflow/core";
 import { jsonToText, openJson } from "./json-path.js";
 import { valueToText } from "./text-utils.js";
 
-const TEXT_OR_JSON = { oneOf: [t.text(), t.json()] };
+const TEXT_OR_JSON = { oneOf: [t.string(), t.json()] };
 
 /** Pack enum `briar.RoundingMode`. */
 export const RoundingMode = defineEnum("RoundingMode", ["round", "floor", "ceil", "trunc"], {
@@ -28,7 +28,7 @@ export const convertToText = defineNode({
   color: "peach",
   description: "Turns any value into text and never fails. A JSON string becomes its text, lists, structs and other JSON become compact JSON, media becomes its URI.",
   inputs: { value: t.var("T") },
-  outputs: { text: t.text() },
+  outputs: { text: t.string() },
   run: ({ inputs, node }) => ({ text: valueToText(inputs.value, node.typeBindings?.["T"]) }),
 });
 
@@ -102,7 +102,7 @@ export const convertAsBoolean = defineNode({
   color: "peach",
   description: 'Turns any value into true or false and never fails. False: no value (null), 0, and text such as "", "false", "0", "no", "off". Everything else is true.',
   inputs: { value: t.var("T") },
-  outputs: { value: t.boolean() },
+  outputs: { value: t.bool() },
   run: ({ inputs }) => ({ value: truthOf(inputs.value) }),
 });
 
@@ -116,9 +116,9 @@ export const convertAsJson = defineNode({
   icon: "braces",
   color: "peach",
   description: 'Treats text as JSON, e.g. {"name": "Aria"}. It does not check the text: Get field reads it and fails when it is not valid JSON.',
-  inputs: { text: t.text() },
+  inputs: { text: t.string() },
   outputs: { json: t.json() },
-  run: ({ inputs }) => ({ json: inputs.text }),
+  run: ({ inputs }) => ({ json: { text: inputs.text } }),
 });
 
 /** `convert.asJsonArray`: text or json holding an array → list of json. */
@@ -140,7 +140,7 @@ export const convertAsJsonArray = defineNode({
         details: { wanted: "array" },
       });
     }
-    return { items: value as readonly JsonValue[] };
+    return { items: value.map((v) => jsonText(v)) };
   },
 });
 
