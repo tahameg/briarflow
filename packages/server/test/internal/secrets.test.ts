@@ -10,7 +10,7 @@ const keyed = definePack({
   version: "1.0.0",
   title: "Keyed",
   settings: {
-    apiKey: { type: t.optional(t.secret({ kind: "apiKey" })), title: "API key", description: "Key for every call." },
+    apiKey: { type: t.optional(t.apiKey()), title: "API key", description: "Key for every call." },
     retries: { type: t.int({ min: 0 }), default: 2 },
   },
   nodes: [defineNode({ type: "keyed.ping", outputs: { ok: t.bool() }, run: () => ({ ok: true }) })],

@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
+import type { TypeRef, TypeScope } from "@briarflow/core";
 import { builtinView, formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
 import { mediaValue, type MediaKind, type MediaRef } from "@briarflow/core";
 import { useMediaEntry } from "../context.js";

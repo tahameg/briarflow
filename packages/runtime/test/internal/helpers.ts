@@ -84,7 +84,7 @@ export function flow(spec: FlowSpec): FlowDocument {
 export function context(flows: FlowDocument[], extra: { types?: TypeDecl[]; globals?: GlobalVariable[] } = {}): ContextDocument {
   return {
     format: "briarflow.context",
-    formatVersion: 1,
+    formatVersion: 2,
     id: "ctx_t",
     name: "Test",
     revision: 3,

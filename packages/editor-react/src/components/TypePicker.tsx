@@ -31,7 +31,7 @@ export interface TypePickerProps {
 
 interface MenuItem {
   key: string;
-  group: "Primitives" | "Structs" | "Enums" | "Custom";
+  group: "Primitives" | "Built-in" | "Structs" | "Enums" | "Custom";
   label: string;
   /** Base type picked by this item. */
   base: TypeRef | undefined;

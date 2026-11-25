@@ -67,7 +67,7 @@ describe("phase 3 exit: Character → template → mock LLM → mock image → o
     expect(portrait).toMatchObject({ mime: "image/svg+xml", width: 256, height: 128 });
     expect(await media.entry(portrait)).toMatchObject({ mime: "image/svg+xml", meta: { width: 256, height: 128 } });
     expect(portrait.data.mediaId).toMatch(/^med_\d+$/);
-    const svg = await media.text(portrait);
+    const svg = await media.text(portrait.data);
     expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="128"');
     expect(svg).toContain(description.slice(0, 60).replace(/,/g, ","));
     expect(result.variables).toEqual({});

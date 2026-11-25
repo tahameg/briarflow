@@ -10,6 +10,7 @@ import {
   createCatalog,
   defineEnum,
   defineNode,
+  mediaValue,
   definePack,
   defineStruct,
   t,
@@ -73,7 +74,7 @@ describe("defineNode defaults", () => {
       concurrency: 2,
       deprecated: "Use acme.v2",
       outputs: { image: t.image() },
-      run: () => ({ image: { mediaId: "med_1" } }),
+      run: () => ({ image: mediaValue("image", { mediaId: "med_1" }, { mime: "image/png" }) }),
     });
     expect(explicit).toMatchObject({
       title: "Generate image",

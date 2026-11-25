@@ -14,6 +14,7 @@ import {
   variant,
   type AnyNodeDefinition,
   type ConfigOf,
+  type ImageValue,
   type InputsOf,
   type MediaRef,
   type NodeDefinition,
@@ -24,13 +25,16 @@ import {
   type ValueOf,
 } from "@briarflow/core";
 
+const IMG: ImageValue = { data: { mediaId: "x" }, mime: "image/png", name: null, size: null, width: null, height: null };
+
 export function typeInferenceChecks(): void {
   // --- t builder -------------------------------------------------------------------------
   expectTypeOf(t.string()).toEqualTypeOf<TypeSpec<string>>();
   expectTypeOf(t.int({ min: 0 })).toEqualTypeOf<TypeSpec<number>>();
   expectTypeOf(t.bool()).toEqualTypeOf<TypeSpec<boolean>>();
-  expectTypeOf(t.image({ formats: ["png"] })).toEqualTypeOf<TypeSpec<MediaRef>>();
-  expectTypeOf(t.list(t.image())).toEqualTypeOf<TypeSpec<readonly MediaRef[]>>();
+  expectTypeOf(t.image()).toEqualTypeOf<TypeSpec<ImageValue>>();
+  expectTypeOf(t.binary()).toEqualTypeOf<TypeSpec<MediaRef>>();
+  expectTypeOf(t.list(t.image())).toEqualTypeOf<TypeSpec<readonly ImageValue[]>>();
   expectTypeOf(t.optional(t.int())).toEqualTypeOf<TypeSpec<number | null>>();
   expectTypeOf(t.list(t.optional(t.string()))).toEqualTypeOf<TypeSpec<readonly (string | null)[]>>();
   expectTypeOf(t.ref("openai.ChatMessage")).toEqualTypeOf<TypeSpec<UnknownValue>>();
@@ -64,12 +68,12 @@ export function typeInferenceChecks(): void {
     run({ inputs, ctx }) {
       expectTypeOf(inputs.a).toEqualTypeOf<string>();
       expectTypeOf(inputs.b).toEqualTypeOf<number | null>();
-      expectTypeOf(inputs.c).toEqualTypeOf<readonly MediaRef[]>();
+      expectTypeOf(inputs.c).toEqualTypeOf<readonly ImageValue[]>();
       expectTypeOf(ctx.signal).toEqualTypeOf<AbortSignal>();
       return { out: "ok" };
     },
   });
-  expectTypeOf<InputsOf<typeof def>>().toEqualTypeOf<{ readonly a: string; readonly b: number | null; readonly c: readonly MediaRef[] }>();
+  expectTypeOf<InputsOf<typeof def>>().toEqualTypeOf<{ readonly a: string; readonly b: number | null; readonly c: readonly ImageValue[] }>();
   expectTypeOf<OutputsOf<typeof def>>().toEqualTypeOf<{ readonly out: string }>();
   expectTypeOf(def).toMatchTypeOf<AnyNodeDefinition>();
 
@@ -180,7 +184,7 @@ export function typeInferenceChecks(): void {
           outputs: { image: t.image() },
           run({ inputs }) {
             expectTypeOf(inputs.prompt).toEqualTypeOf<string>();
-            return { image: { mediaId: "x" } };
+            return { image: IMG };
           },
         }),
         best: variant({
@@ -190,7 +194,7 @@ export function typeInferenceChecks(): void {
           run({ inputs, config }) {
             expectTypeOf(inputs.negative).toEqualTypeOf<string | null>();
             expectTypeOf(config.steps).toEqualTypeOf<number>();
-            return { image: { mediaId: "x" }, seed: 1 };
+            return { image: IMG, seed: 1 };
           },
         }),
         wrong: variant({

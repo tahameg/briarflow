@@ -18,7 +18,7 @@ const asInt = defineNode({
   outputs: { value: t.int() },
   run: () => ({ value: 0 }),
 });
-const asJson = defineNode({ type: "convert.asJson", title: "As JSON", pure: true, conversion: true, inputs: { text: t.string() }, outputs: { json: t.json() }, run: () => ({ json: null }) });
+const asJson = defineNode({ type: "convert.asJson", title: "As JSON", pure: true, conversion: true, inputs: { text: t.string() }, outputs: { json: t.json() }, run: () => ({ json: { text: "null" } }) });
 const floatToInt = defineNode({
   type: "convert.floatToInt",
   title: "Float to int",
