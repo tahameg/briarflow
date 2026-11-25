@@ -421,15 +421,16 @@ export function planConnection(view: FlowView, catalog: NodeCatalog | undefined,
   const inp = view.byId.get(to.node)?.inputs.find((p) => p.name === to.port);
   if (!out || !inp) return undefined;
   if (containsVar(out.type)) return { kind: "direct" };
+  const resolve = (id: string) => view.scope.getType(id)?.decl;
   const convert = (target: TypeRef): ConnectionPlan | undefined => {
-    const c = catalog ? findConversions(catalog, out.type, target)[0] : undefined;
+    const c = catalog ? findConversions(catalog, out.type, target, resolve)[0] : undefined;
     return c ? { kind: "convert", conversion: c } : undefined;
   };
   if (containsVar(inp.declaredType)) {
-    const r = bindTypeVars([{ port: inp.name, direction: "input", pattern: inp.declaredType, other: out.type }]);
+    const r = bindTypeVars([{ port: inp.name, direction: "input", pattern: inp.declaredType, other: out.type }], resolve);
     if (r.ok) {
       const bound = substituteTypeVars(inp.declaredType, r.bindings);
-      if (containsVar(bound) || isAssignable(out.type, bound)) return { kind: "direct" };
+      if (containsVar(bound) || isAssignable(out.type, bound, resolve)) return { kind: "direct" };
     }
     const options = inp.declaredType.kind === "var" ? (inp.declaredType.oneOf ?? []) : [];
     for (const o of options) {
@@ -438,7 +439,7 @@ export function planConnection(view: FlowView, catalog: NodeCatalog | undefined,
     }
     return undefined;
   }
-  if (isAssignable(out.type, inp.type)) return { kind: "direct" };
+  if (isAssignable(out.type, inp.type, resolve)) return { kind: "direct" };
   return convert(inp.type);
 }
 

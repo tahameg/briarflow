@@ -7,6 +7,7 @@ import { isAssignable, stripConstraints, typeEquals } from "../types/assignabili
 import { bindTypeVars, collectOneOf, substituteTypeVars } from "../types/generics.js";
 import type { GenericConnection } from "../types/generics.js";
 import type { TypeRef } from "../types/ir.js";
+import type { DeclResolver } from "../types/layout.js";
 import { containsVar } from "../types/walk.js";
 import type { NodeCatalog } from "./catalog.js";
 import { portParts } from "./define.js";
@@ -29,11 +30,11 @@ export interface ConversionMatch {
  *
  * @example
  * ```ts
- * findConversions(catalog, { kind: "primitive", name: "json" }, { kind: "primitive", name: "text" });
+ * findConversions(catalog, { kind: "primitive", name: "int" }, { kind: "primitive", name: "string" });
  * // [{ type: "convert.toText", title: "As string", input: "value", output: "text" }]
  * ```
  */
-export function findConversions(catalog: NodeCatalog, from: TypeRef, to: TypeRef): ConversionMatch[] {
+export function findConversions(catalog: NodeCatalog, from: TypeRef, to: TypeRef, resolve?: DeclResolver): ConversionMatch[] {
   if (containsVar(from) || containsVar(to)) return [];
   const found: { match: ConversionMatch; rank: number }[] = [];
   for (const pack of catalog.packs) {
@@ -49,13 +50,13 @@ export function findConversions(catalog: NodeCatalog, from: TypeRef, to: TypeRef
       if (containsVar(inType) || containsVar(outType)) {
         const conns: GenericConnection[] = [{ port: input[0], direction: "input", pattern: inType, other: from }];
         if (containsVar(outType)) conns.push({ port: output[0], direction: "output", pattern: outType, other: to });
-        const r = bindTypeVars(conns);
+        const r = bindTypeVars(conns, resolve);
         if (!r.ok) continue;
         inBound = substituteTypeVars(inType, r.bindings);
         outBound = substituteTypeVars(outType, r.bindings);
         if (containsVar(inBound) || containsVar(outBound)) continue;
       }
-      if (!isAssignable(from, inBound) || !isAssignable(outBound, to)) continue;
+      if (!isAssignable(from, inBound, resolve) || !isAssignable(outBound, to, resolve)) continue;
       const rank = !containsVar(inType)
         ? typeEquals(stripConstraints(from), stripConstraints(inType)) ? 0 : 1
         : collectOneOf(inType).size > 0 ? 2 : 3;

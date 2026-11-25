@@ -86,7 +86,7 @@ export function resolveFlowPorts(doc: ContextDocument, flowId: string, catalog: 
     if (nodes.has(node.id)) continue; // duplicate ids are reported by validateFlow
     nodes.set(node.id, resolveNode(node, doc, flow, scope, catalog));
   }
-  bindGenerics(flow, nodes, catalog);
+  bindGenerics(flow, nodes, scope);
   return { flowId, nodes };
 }
 
@@ -216,8 +216,7 @@ function portScope(doc: ContextDocument, flow: FlowDocument, scope: TypeScope): 
   };
 }
 
-function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, catalog: NodeCatalog): void {
-  void catalog;
+function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, scope: TypeScope): void {
   const generic = [...nodes.values()].filter((n) => [...n.inputs, ...n.outputs].some((p) => containsVar(p.declaredType)));
   if (generic.length === 0) return;
   const bindings = new Map<string, TypeBindings>();
@@ -249,7 +248,7 @@ function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, cata
           }
         }
       }
-      const r = bindTypeVarsAll(conns);
+      const r = bindTypeVarsAll(conns, (id) => scope.getType(id)?.decl);
       if (!jsonEquals(r.bindings, bindings.get(n.nodeId) ?? {})) changed = true;
       bindings.set(n.nodeId, r.bindings);
       nextConflicts.set(n.nodeId, r.conflicts);

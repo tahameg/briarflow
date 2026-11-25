@@ -3,7 +3,7 @@
  * that a dragged output can feed, or that can feed a dragged input. Ports are resolved the
  * same way the canvas resolves them, so dynamic, variable and variant nodes work too.
  */
-import { bindTypeVars, containsVar, isAssignable, resolveFlowPorts, substituteTypeVars } from "@briarflow/core";
+import { bindTypeVars, containsVar, isAssignable, resolveFlowPorts, scopeForFlow, substituteTypeVars } from "@briarflow/core";
 import type { ContextDocument, NodeCatalog, TypeRef } from "@briarflow/core";
 
 /** A node the user could add: its type and the config it would be added with. */
@@ -75,11 +75,13 @@ export function matchConnectTargets(
   } catch {
     return [];
   }
-  const fits = (port: TypeRef) => (from === "out" ? isAssignable(type, port) : isAssignable(port, type));
+  const scope = scopeForFlow(doc, flowId, catalog);
+  const resolve = (id: string) => scope.getType(id)?.decl;
+  const fits = (port: TypeRef) => (from === "out" ? isAssignable(type, port, resolve) : isAssignable(port, type, resolve));
   // A generic port fits when binding its type variables to the dragged type makes it fit
   // (`$T` takes anything, `list<$T>` only lists).
   const fitsGeneric = (name: string, port: TypeRef) => {
-    const r = bindTypeVars([{ port: name, direction: from === "out" ? "input" : "output", pattern: port, other: type }]);
+    const r = bindTypeVars([{ port: name, direction: from === "out" ? "input" : "output", pattern: port, other: type }], resolve);
     if (!r.ok) return false;
     const bound = substituteTypeVars(port, r.bindings);
     return !containsVar(bound) && fits(bound);

@@ -11,7 +11,9 @@ import {
   stripConstraints,
   substituteTypeVars,
   typeEquals,
+  type DeclResolver,
   type GenericConnection,
+  type StructDecl,
   type TypeRef,
 } from "@briarflow/core";
 import { ir } from "@briarflow/testing";
@@ -161,6 +163,46 @@ describe("joinTypes / meetTypes (types.md §5.2)", () => {
     expect(meetTypes(ir.list(int), ir.list(float))).toEqual(ir.list(int));
     expect(meetTypes(text, int)).toBeUndefined();
     expect(meetTypes(X, Y)).toBeUndefined();
+  });
+});
+
+describe("extends in join, meet and bindings (types.md §4, §5.2)", () => {
+  const sub = (id: string, base: string): StructDecl => ({ kind: "struct", id, name: id, extends: base, fields: [] });
+  const decls = new Map<string, StructDecl>([
+    ["ty_short", sub("ty_short", "briar.Text")],
+    ["ty_long", sub("ty_long", "briar.Text")],
+    ["ty_tiny", sub("ty_tiny", "ty_short")],
+  ]);
+  const resolve: DeclResolver = (id) => decls.get(id);
+  const Text = ir.named("briar.Text");
+  const Short = ir.named("ty_short");
+  const Long = ir.named("ty_long");
+  const Tiny = ir.named("ty_tiny");
+
+  it("join goes up to the nearest common base; meet down to the extending one", () => {
+    expect(joinTypes(Short, Text, resolve)).toEqual(Text);
+    expect(joinTypes(Short, Long, resolve)).toEqual(Text);
+    expect(joinTypes(Tiny, Short, resolve)).toEqual(Short);
+    expect(joinTypes(ir.list(Tiny), ir.list(Long), resolve)).toEqual(ir.list(Text));
+    expect(meetTypes(Short, Text, resolve)).toEqual(Short);
+    expect(meetTypes(Text, Tiny, resolve)).toEqual(Tiny);
+    expect(meetTypes(Short, Long, resolve)).toBeUndefined();
+    // without a resolver structs are only equal or not
+    expect(joinTypes(Short, Text)).toBeUndefined();
+  });
+
+  it("binds T from structs that extend one another", () => {
+    const T = ir.var("T");
+    const conns: GenericConnection[] = [
+      { port: "a", direction: "input", pattern: T, other: Short },
+      { port: "b", direction: "input", pattern: T, other: Long },
+      { port: "out", direction: "output", pattern: T, other: Text },
+    ];
+    expect(bindTypeVars(conns, resolve)).toEqual({ ok: true, bindings: { T: Text } });
+    expect(bindTypeVars([{ port: "out", direction: "output", pattern: ir.optional(T), other: ir.optional(Text) }, { port: "a", direction: "input", pattern: T, other: Short }], resolve)).toEqual({
+      ok: true,
+      bindings: { T: Short },
+    });
   });
 });
 

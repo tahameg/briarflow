@@ -92,7 +92,7 @@ export const convertAsFloat = defineNode({
 });
 
 /**
- * Truth of any value, the one rule Briarflow uses (types.md §4.1, {@link isTruthy}): false, 0,
+ * Truth of any value, the one rule Briarflow uses (types.md §7.1, {@link isTruthy}): false, 0,
  * "", an empty list, an empty Text, null and no value are false; the rest is true. A Json value
  * is read first (`{ text: "0" }` is false).
  */
