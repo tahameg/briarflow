@@ -6,6 +6,7 @@ import {
   checkMediaEntry,
   emptyValue,
   ERROR_OUTPUT,
+  completeMediaValues,
   findMedia,
   typeHasMedia,
   EXEC_FAILED,
@@ -17,6 +18,7 @@ import {
   type ExecContext,
   type Logger,
   type Media,
+  type MediaEntry,
   type NodeCatalog,
   type RetryPolicy,
   type Run,
@@ -771,9 +773,10 @@ export class LocalRun implements Run {
       }
     }
 
-    const mediaProblem = await this.checkMediaInputs(node, inputs.values);
+    const mediaCheck = await this.checkMediaInputs(node, inputs.values);
     if (this.cancelKind) return this.cancelNode(node, ex);
-    if (mediaProblem) return this.failNode(node, ex, mediaProblem);
+    if ("failure" in mediaCheck) return this.failNode(node, ex, mediaCheck.failure);
+    const values = mediaCheck.values;
 
     const secretValues = new Map<string, string>();
     for (const name of def.secrets) {
@@ -825,7 +828,7 @@ export class LocalRun implements Run {
     }
 
     for (let attempt = 1; ; ) {
-      const outcome = await this.attempt(node, ex, inputs.values, attempt, secretValues);
+      const outcome = await this.attempt(node, ex, values, attempt, secretValues);
       if (this.cancelKind) return this.cancelNode(node, ex);
       let fail: NodeFailure;
       if (outcome.kind === "ok") {
@@ -905,10 +908,14 @@ export class LocalRun implements Run {
     }
   }
 
-  /** Media inputs must exist and fit their port's type (media.md §4). */
-  private async checkMediaInputs(node: PlannedNode, inputs: Record<string, unknown>): Promise<NodeFailure | undefined> {
+  /**
+   * Media inputs must exist and fit their port's type (media.md §4). Gives the inputs with media
+   * struct facts filled from their entries (an empty mime, unknown size or dimensions).
+   */
+  private async checkMediaInputs(node: PlannedNode, inputs: Record<string, unknown>): Promise<{ failure: NodeFailure } | { values: Record<string, unknown> }> {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
+    const entries = new Map<string, MediaEntry>();
     for (const port of node.ports.inputs) {
       for (const found of findMedia(inputs[port.name], port.type, getType)) {
         const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
@@ -916,26 +923,36 @@ export class LocalRun implements Run {
         try {
           entry = await this.services.media.entry(found.ref);
         } catch (err) {
-          return classify(err, node.id, this.services.fetchErrors);
+          return { failure: classify(err, node.id, this.services.fetchErrors) };
         }
         if (!entry) {
-          return failure(
+          return {
+            failure: failure(
             "media.not_found",
             `Node ${node.title} got media "${found.ref.mediaId}" in ${where}, which no longer exists. Media made by a run goes away with the next run; run the nodes that make it again.`,
             node.id,
             { details: { mediaId: found.ref.mediaId, port: port.name } },
-          );
+            ),
+          };
         }
+        entries.set(entry.id, entry);
         if (!found.media) continue;
         const problems = checkMediaEntry(entry, found.media.kind, found.media.limits, where);
         if (problems.length > 0) {
-          return failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
-            details: { diagnostics: problems },
-          });
+          return {
+            failure: failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
+              details: { diagnostics: problems },
+            }),
+          };
         }
       }
     }
-    return undefined;
+    if (entries.size === 0) return { values: inputs };
+    const values: Record<string, unknown> = { ...inputs };
+    for (const port of node.ports.inputs) {
+      if (port.name in values) values[port.name] = completeMediaValues(values[port.name], port.type, getType, (id) => entries.get(id));
+    }
+    return { values };
   }
 
   private cacheWarning(op: "read" | "write" | "key", node: PlannedNode, err: unknown): void {

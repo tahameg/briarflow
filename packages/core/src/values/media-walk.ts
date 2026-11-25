@@ -104,3 +104,82 @@ function walk(
     }
   }
 }
+
+/**
+ * Fills the facts of media struct values from their registry entries (media.md §1): an empty
+ * `mime`, and `name`, `size`, `width`, `height`, `duration`, `fps` that are `null`. The entry is
+ * authoritative; a value that already has a fact keeps it. Returns `value` itself when nothing
+ * changed. `entryOf` gives the entry of a media id (already looked up).
+ *
+ * @example
+ * ```ts
+ * completeMediaValues({ data: { mediaId: "med_1" }, mime: "" }, imageType, getType, (id) => entries.get(id));
+ * // { data: { mediaId: "med_1" }, mime: "image/png", … }
+ * ```
+ */
+export function completeMediaValues(
+  value: unknown,
+  type: TypeRef,
+  getType: (id: string) => TypeDecl | undefined,
+  entryOf: (mediaId: string) => MediaEntryFacts | undefined,
+  depth = 0,
+): unknown {
+  if (value === null || typeof value !== "object" || depth > 64) return value;
+  switch (type.kind) {
+    case "optional":
+      return completeMediaValues(value, type.of, getType, entryOf, depth + 1);
+    case "list": {
+      if (!Array.isArray(value)) return value;
+      let changed = false;
+      const out = value.map((item) => {
+        const next = completeMediaValues(item, type.of, getType, entryOf, depth + 1);
+        if (next !== item) changed = true;
+        return next;
+      });
+      return changed ? out : value;
+    }
+    case "named": {
+      const decl = getType(type.id);
+      if (decl?.kind !== "struct" || Array.isArray(value)) return value;
+      const layout = structLayout(decl, getType);
+      const rec = value as Record<string, unknown>;
+      let out: Record<string, unknown> | undefined;
+      const set = (k: string, v: unknown) => {
+        out ??= { ...rec };
+        out[k] = v;
+      };
+      if (mediaKindOfBuiltin(layout.root) !== undefined && isMediaRef(rec["data"])) {
+        const entry = entryOf(rec["data"].mediaId);
+        if (entry) {
+          const names = new Set(layout.fields.map((f) => f.name));
+          const meta = entry.meta ?? {};
+          const fill = (k: string, v: unknown) => {
+            if (names.has(k) && (rec[k] === null || rec[k] === undefined) && v !== undefined) set(k, v);
+          };
+          if (rec["mime"] === "" || rec["mime"] === undefined) set("mime", entry.mime);
+          fill("name", meta["filename"]);
+          fill("size", entry.bytes);
+          fill("width", meta["width"]);
+          fill("height", meta["height"]);
+          fill("duration", meta["durationSec"]);
+          fill("fps", meta["fps"]);
+        }
+      }
+      for (const f of layout.fields) {
+        if (f.name === "data" || !(f.name in rec)) continue;
+        const next = completeMediaValues(rec[f.name], f.type, getType, entryOf, depth + 1);
+        if (next !== rec[f.name]) set(f.name, next);
+      }
+      return out ?? value;
+    }
+    default:
+      return value;
+  }
+}
+
+/** What {@link completeMediaValues} reads from a registry entry. */
+export interface MediaEntryFacts {
+  mime: string;
+  bytes?: number;
+  meta?: Readonly<Record<string, unknown>>;
+}

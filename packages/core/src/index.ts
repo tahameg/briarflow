@@ -149,8 +149,8 @@ export {
 // Values and JSON Schema
 export { emptyValue } from "./values/empty.js";
 export { normalizeValue, validateValue } from "./values/validate.js";
-export { findMedia, typeHasMedia } from "./values/media-walk.js";
-export type { FoundMedia } from "./values/media-walk.js";
+export { completeMediaValues, findMedia, typeHasMedia } from "./values/media-walk.js";
+export type { FoundMedia, MediaEntryFacts } from "./values/media-walk.js";
 export type { NormalizeResult, ValueCheckOptions } from "./values/validate.js";
 export { flowSignatureSchema, toJsonSchema } from "./schema/json-schema.js";
 export type { FlowSignatureSchema, JsonSchema, JsonSchemaOptions } from "./schema/json-schema.js";
