@@ -24,8 +24,8 @@ export type FieldValue<F> =
   : F extends { type: TypeSpec<infer V> } ? V
   : never;
 
-/** Normalized struct value (every field present) of a field map. */
-export type StructValueOf<F> = { -readonly [K in keyof F]: FieldValue<F[K]> };
+/** Normalized struct value (every instance field present) of a field map; static fields belong to the type. */
+export type StructValueOf<F> = { -readonly [K in keyof F as F[K] extends { static: true } ? never : K]: FieldValue<F[K]> };
 
 /** Options of `defineStruct` / `defineEnum`. */
 export interface DefineTypeOptions {
@@ -35,10 +35,11 @@ export interface DefineTypeOptions {
 /** Options of `defineStruct`. */
 export interface DefineStructOptions extends DefineTypeOptions {
   /**
-   * The struct it extends (types.md §1.3): a `defineStruct` result, a pack type's name or id,
-   * or a built-in id (`BUILTIN.Text`). Its own fields must then all be static.
+   * The struct it extends (types.md §1.3): a `defineStruct` result, a built-in's spec
+   * (`t.text()`, `t.image()`), a pack type's name or id, or a built-in id (`BUILTIN.Text`). Its
+   * own fields must then all be static, and its values are the base's values.
    */
-  extends?: StructType | string;
+  extends?: StructType | TypeSpec<unknown> | string;
 }
 
 /** An enum member input: a value, or a value with a label. */
@@ -57,17 +58,22 @@ export type EnumValueOf<M extends readonly EnumMemberInput[]> =
  * ```ts
  * const ChatMessage = defineStruct("ChatMessage", {
  *   role: t.ref(Role),
- *   content: t.text(),
- *   name: { type: t.optional(t.text()), description: "Optional speaker name" },
+ *   content: t.string(),
+ *   name: { type: t.optional(t.string()), description: "Optional speaker name" },
  * });
  * type Msg = ValueOf<typeof ChatMessage>; // { role: …; content: string; name: string | null }
+ *
+ * const Title = defineStruct("Title", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
+ * type T = ValueOf<typeof Title>; // TextValue: { value: string }
  * ```
  */
-export function defineStruct<const F extends FieldInputMap>(
+export function defineStruct<const F extends FieldInputMap, B>(
   name: string,
   fields: F,
-  options?: DefineStructOptions,
-): StructType<StructValueOf<F>> {
+  options: DefineStructOptions & { extends: StructType<B> | TypeSpec<B> },
+): StructType<B>;
+export function defineStruct<const F extends FieldInputMap>(name: string, fields: F, options?: DefineStructOptions): StructType<StructValueOf<F>>;
+export function defineStruct(name: string, fields: FieldInputMap, options?: DefineStructOptions): StructType<UnknownValue> {
   checkTypeName("defineStruct", name);
   if (typeof fields !== "object" || fields === null || Array.isArray(fields)) {
     throw new PackDefinitionError(`defineStruct "${name}": fields must be an object of field name → type.`);
@@ -113,7 +119,7 @@ export function defineStruct<const F extends FieldInputMap>(
     decls.push(decl);
   }
   const base = options?.extends;
-  const extendsId = base === undefined ? undefined : typeof base === "string" ? base : base.decl.id;
+  const extendsId = base === undefined ? undefined : typeof base === "string" ? base : "decl" in base ? base.decl.id : namedIdOf(name, base);
   if (extendsId !== undefined) {
     const own = decls.find((d) => !d.static);
     if (own) throw new PackDefinitionError(`defineStruct "${name}": field "${own.name}" must be static, because the struct extends ${extendsId}.`);
@@ -130,6 +136,11 @@ export function defineStruct<const F extends FieldInputMap>(
 }
 
 const EMPTY_SCOPE = createTypeScope({});
+
+function namedIdOf(name: string, spec: TypeSpec<unknown>): string {
+  if (spec.ref.kind !== "named") throw new PackDefinitionError(`defineStruct "${name}": extends needs a struct (e.g. t.text(), t.image() or a defineStruct result).`);
+  return spec.ref.id;
+}
 
 function checkTypeName(fn: string, name: unknown): asserts name is string {
   if (typeof name !== "string" || name.length > 64 || !TYPE_NAME_PATTERN.test(name)) {

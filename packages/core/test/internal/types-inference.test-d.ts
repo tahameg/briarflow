@@ -15,6 +15,7 @@ import {
   type AnyNodeDefinition,
   type ConfigOf,
   type ImageValue,
+  type TextValue,
   type InputsOf,
   type MediaRef,
   type NodeDefinition,
@@ -58,6 +59,13 @@ export function typeInferenceChecks(): void {
     content: string;
     name: string | null;
   }>();
+  // Static fields belong to the type; a struct that extends another has the base's values.
+  const Pet = defineStruct("Pet", { name: t.string(), legs: { type: t.int(), static: true, default: 4 } });
+  expectTypeOf<ValueOf<typeof Pet>>().toEqualTypeOf<{ name: string }>();
+  const Title = defineStruct("Title", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
+  expectTypeOf<ValueOf<typeof Title>>().toEqualTypeOf<TextValue>();
+  const Bird = defineStruct("Bird", { legs: { type: t.int(), static: true, default: 2 } }, { extends: Pet });
+  expectTypeOf<ValueOf<typeof Bird>>().toEqualTypeOf<{ name: string }>();
   expectTypeOf(t.ref(ChatMessage)).toEqualTypeOf<TypeSpec<{ role: "system" | "user" | "assistant"; content: string; name: string | null }>>();
 
   // --- defineNode: inputs, outputs, return checks (node-api.md §3) -------------------------
