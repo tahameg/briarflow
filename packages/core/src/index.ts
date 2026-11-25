@@ -184,6 +184,8 @@ export type {
 } from "./documents/model.js";
 export { createContextDocument, createFlowDocument, findFlow, findNode } from "./documents/factories.js";
 export { ERROR_OUTPUT, EXEC_FAILED, EXEC_IN, EXEC_THEN, execPortsOf, isExecNode } from "./nodes/exec-ports.js";
+export { controlOutputs, LOOP_BODY, LOOP_COMPLETED } from "./nodes/control.js";
+export type { ExecOutputList, LoopControl, NodeControl, RouteArgs, RouteControl } from "./nodes/control.js";
 export type { ExecPorts } from "./nodes/exec-ports.js";
 export { analyzeExec, autoExecEdges } from "./validation/exec.js";
 export type { ExecAnalysis } from "./validation/exec.js";
@@ -207,7 +209,7 @@ export type {
   ConfigMap,
   ConfigValues,
 } from "./nodes/config.js";
-export { defineNode, variant, variantDefinition } from "./nodes/define.js";
+export { defineLoop, defineNode, variant, variantDefinition } from "./nodes/define.js";
 export type {
   AnyNodeDefinition,
   CheckOutputKeys,

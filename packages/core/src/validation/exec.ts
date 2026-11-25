@@ -6,7 +6,8 @@ import type { ContextDocument, ExecEdge, FlowDocument } from "../documents/model
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
 import type { NodeCatalog } from "../nodes/catalog.js";
-import { EXEC_IN, EXEC_THEN, execPortsOf } from "../nodes/exec-ports.js";
+import { ERROR_OUTPUT, EXEC_IN, EXEC_THEN, execPortsOf } from "../nodes/exec-ports.js";
+import { scopeForFlow } from "../types/scope.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { buildAdjacency, findCycles, reachability } from "./graph.js";
 import { nodeLabel } from "./labels.js";
@@ -18,8 +19,10 @@ export interface ExecAnalysis {
   onLine: ReadonlySet<string>;
   /** `onLine` plus the pure nodes they read from: everything that may run. */
   live: ReadonlySet<string>;
-  /** For each node on the line, the line nodes that always run before it can (its line ancestors). */
+  /** For each node on the line, the line nodes that always run before it (its dominators on the line). */
   before: ReadonlyMap<string, ReadonlySet<string>>;
+  /** For each loop node on the line, the line nodes of its body (execution.md §7). */
+  loopBodies: ReadonlyMap<string, ReadonlySet<string>>;
   diagnostics: Diagnostic[];
 }
 
@@ -103,9 +106,16 @@ export function analyzeExec(doc: ContextDocument, flow: FlowDocument, catalog: N
     const n = byId.get(id);
     return n ? nodeLabel(n, catalog.get(n.type)) : id;
   };
+  let scope: ReturnType<typeof scopeForFlow> | undefined;
+  try {
+    scope = scopeForFlow(doc, flow.id, catalog);
+  } catch {
+    scope = undefined;
+  }
+  const resolveType = (id: string) => scope?.getType(id)?.decl;
   const ports = (id: string) => {
     const n = byId.get(id);
-    return n ? execPortsOf(n.type, catalog.get(n.type)) : { inputs: [], outputs: [] };
+    return n ? execPortsOf(n.type, catalog.get(n.type), n.config ?? {}, resolveType) : { inputs: [], outputs: [] };
   };
 
   // The lines themselves.
@@ -153,9 +163,28 @@ export function analyzeExec(doc: ContextDocument, flow: FlowDocument, catalog: N
   const output = flow.nodes.find((n) => n.type === FLOW_OUTPUT_NODE_TYPE);
   const reach = reachability(adj);
   const onLine = new Set<string>(input ? [input.id, ...(reach.get(input.id) ?? [])] : []);
-  const before = new Map<string, Set<string>>();
-  for (const id of onLine) before.set(id, new Set());
-  for (const a of onLine) for (const b of reach.get(a) ?? []) if (a !== b) before.get(b)?.add(a);
+  const before = dominators(onLine, valid, input?.id);
+
+  // Loops: a body is what the body line reaches; it must not leak into the rest of the line.
+  const loopBodies = new Map<string, Set<string>>();
+  for (const id of onLine) {
+    const control = catalog.get(byId.get(id)?.type ?? "")?.control;
+    if (control?.kind !== "loop") continue;
+    const bodyStart = valid.find((e) => e.from.node === id && e.from.port === control.body)?.to.node;
+    const body = new Set<string>(bodyStart === undefined ? [] : [bodyStart, ...(reach.get(bodyStart) ?? [])]);
+    loopBodies.set(id, body);
+    const afterStart = valid.find((e) => e.from.node === id && e.from.port === control.completed)?.to.node;
+    const after = new Set<string>(afterStart === undefined ? [] : [afterStart, ...(reach.get(afterStart) ?? [])]);
+    const leak = [...body].find((b) => b === id || after.has(b) || b === output?.id || valid.some((e) => e.to.node === b && e.from.node !== id && !body.has(e.from.node)));
+    if (leak !== undefined) {
+      err(
+        "exec.loop_escape",
+        `The body of ${label(id)} is not closed: ${label(leak)} ${leak === output?.id ? "is Output" : "is also reached from outside the body"}. A body runs once per iteration and ends where its line ends; take the line after the loop from "${control.completed}".`,
+        { nodeId: id },
+        { node: leak },
+      );
+    }
+  }
 
   // Live: on the line plus the pure nodes they read from. A value from a line node must be ready.
   const sources = new Map<string, { node: string; port: string; edgeId: string; toPort: string }[]>();
@@ -180,7 +209,18 @@ export function analyzeExec(doc: ContextDocument, flow: FlowDocument, catalog: N
           stack.push(s.node);
           continue;
         }
-        if (s.node === consumer || before.get(consumer)?.has(s.node)) continue;
+        if (s.node === consumer || before.get(consumer)?.has(s.node)) {
+          const body = loopBodies.get(s.node);
+          if (body && !body.has(consumer) && s.port !== ERROR_OUTPUT) {
+            err(
+              "exec.loop_value_outside",
+              `${label(consumer)} uses ${label(s.node)}.${s.port}, which only has a value inside the body of ${label(s.node)}. Move ${label(consumer)} into the body.`,
+              { nodeId: consumer, edgeId: s.edgeId, port: s.toPort },
+              { source: s.node },
+            );
+          }
+          continue;
+        }
         err(
           "exec.value_unavailable",
           onLine.has(s.node)
@@ -196,5 +236,48 @@ export function analyzeExec(doc: ContextDocument, flow: FlowDocument, catalog: N
   if (output && !onLine.has(output.id) && flow.outputs.length > 0) {
     err("exec.output_unreachable", `The execution line never reaches Output, so runs of "${flow.name}" end without outputs. Connect the line to Output.`, { nodeId: output.id }, undefined, "warning");
   }
-  return { onLine, live, before, diagnostics };
+  return { onLine, live, before, loopBodies, diagnostics };
+}
+
+/**
+ * Dominators on the execution line: for each node reached from `start`, the nodes every path
+ * from `start` passes through (itself included). With branches, a node after a Branch is not
+ * dominated by either side; after a loop, nothing of the body dominates.
+ */
+function dominators(onLine: ReadonlySet<string>, edges: readonly ExecEdge[], start: string | undefined): Map<string, Set<string>> {
+  const preds = new Map<string, string[]>([...onLine].map((id) => [id, []]));
+  const succs = new Map<string, string[]>([...onLine].map((id) => [id, []]));
+  for (const e of edges) {
+    if (!onLine.has(e.from.node) || !onLine.has(e.to.node)) continue;
+    preds.get(e.to.node)?.push(e.from.node);
+    succs.get(e.from.node)?.push(e.to.node);
+  }
+  const out = new Map<string, Set<string>>();
+  if (start === undefined) return out;
+  const left = new Map([...onLine].map((id) => [id, new Set(preds.get(id))]));
+  const ready = [start];
+  while (ready.length > 0) {
+    const id = ready.shift() as string;
+    if (out.has(id)) continue;
+    const ps = preds.get(id) ?? [];
+    let dom: Set<string> | undefined;
+    for (const p of ps) {
+      const pd = out.get(p);
+      if (!pd) continue;
+      dom = dom === undefined ? new Set(pd) : new Set([...dom].filter((x) => pd.has(x)));
+    }
+    const mine = dom ?? new Set<string>();
+    mine.add(id);
+    out.set(id, mine);
+    for (const n of succs.get(id) ?? []) {
+      const l = left.get(n);
+      l?.delete(id);
+      if (l && l.size === 0) ready.push(n);
+    }
+  }
+  // Nodes in a line loop (already an error) only dominate themselves.
+  for (const id of onLine) if (!out.has(id)) out.set(id, new Set([id]));
+  // `before` excludes the node itself.
+  for (const [id, set] of out) set.delete(id);
+  return out;
 }

@@ -76,6 +76,11 @@ export interface ExecPlan {
   outputId: string;
   /** Node id → execution output (`then`, `failed`) → next node id. */
   next: Map<string, Map<string, string>>;
+  /**
+   * Loop node id → the nodes that run again on each iteration (execution.md §7): the line nodes
+   * of its body, the pure nodes that read the loop or its body, and the pure nodes the body reads.
+   */
+  loops: Map<string, Set<string>>;
 }
 
 export interface Plan {
@@ -301,7 +306,36 @@ export function prepare(doc: ContextDocument, flowId: string, catalog: NodeCatal
     }
     const inputId = [...nodes.values()].find((n) => n.kind === "input")?.id ?? "";
     const outputId = flow.nodes.find((n) => n.type === FLOW_OUTPUT_NODE_TYPE)?.id ?? "";
-    plan.exec = { inputId, outputId, next };
+    const loops = new Map<string, Set<string>>();
+    for (const [loopId, body] of lines.loopBodies) {
+      if (!nodes.has(loopId)) continue;
+      const reset = new Set<string>([...body].filter((id) => nodes.has(id)));
+      // Pure nodes reading the loop's outputs or a body node, directly or through other pure nodes.
+      const stack = [loopId, ...reset];
+      while (stack.length > 0) {
+        const id = stack.pop() as string;
+        for (const d of nodes.get(id)?.dependents ?? []) {
+          const dep = nodes.get(d);
+          if (!dep?.pure || reset.has(d)) continue;
+          reset.add(d);
+          stack.push(d);
+        }
+      }
+      // Pure nodes the body reads run again too: a variable GET must see this iteration's writes.
+      const back = [...reset];
+      const seen = new Set(back);
+      while (back.length > 0) {
+        const id = back.pop() as string;
+        for (const d of nodes.get(id)?.deps ?? []) {
+          if (!nodes.get(d)?.pure || seen.has(d)) continue;
+          seen.add(d);
+          reset.add(d);
+          back.push(d);
+        }
+      }
+      loops.set(loopId, reset);
+    }
+    plan.exec = { inputId, outputId, next, loops };
   }
   return { ok: true, plan };
 }

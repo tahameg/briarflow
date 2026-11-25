@@ -11,6 +11,7 @@ import {
   typeHasMedia,
   EXEC_FAILED,
   EXEC_THEN,
+  execPortsOf,
   NodeError,
   serializeError,
   type ErrorValue,
@@ -105,10 +106,20 @@ interface NodeExec {
   holdsSlot: boolean;
   progress: ProgressState;
   startedAtMs: number;
+  /** A route node's pick, or a loop's `completed`: the execution output the line follows. */
+  route?: string;
+}
+
+/** A loop node whose body is running (execution.md §7). */
+interface LoopFrame {
+  node: PlannedNode;
+  ex: NodeExec;
+  iterations: readonly Record<string, unknown>[];
+  index: number;
 }
 
 type Outcome =
-  | { kind: "ok"; value: unknown; usedState: boolean }
+  | { kind: "ok"; value: unknown; usedState: boolean; route?: string; iterations?: readonly unknown[] }
   | { kind: "error"; failure: NodeFailure }
   | { kind: "timeout" }
   | { kind: "cancelled" };
@@ -153,6 +164,8 @@ export class LocalRun implements Run {
   private readonly active = new Set<string>();
   private firstFailure: { node: PlannedNode; error: SerializedError } | undefined;
   private readonly readyQueue: string[] = [];
+  /** Loops whose body runs now, innermost last. */
+  private readonly loopStack: LoopFrame[] = [];
   private draining = false;
   /** Writer node id → value it wrote. */
   private readonly written = new Map<string, unknown>();
@@ -279,6 +292,11 @@ export class LocalRun implements Run {
         ex.slot = undefined;
         ex.state = "skipped";
         this.emit({ type: "node.skipped", nodeId: node.id, reason: "cancelled" });
+      }
+      // Loops waiting for their body end cancelled.
+      while (this.loopStack.length > 0) {
+        const frame = this.loopStack.pop() as LoopFrame;
+        this.cancelNode(frame.node, frame.ex);
       }
     }
     this.checkDone();
@@ -515,8 +533,9 @@ export class LocalRun implements Run {
     const lines = (this.plan as Plan).exec;
     if (!this.cancelKind && lines) {
       for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
-      const next = node.pure ? undefined : lines.next.get(node.id)?.get(EXEC_THEN);
+      const next = node.pure ? undefined : lines.next.get(node.id)?.get(ex.route ?? EXEC_THEN);
       if (next !== undefined) this.activate(next);
+      else if (!node.pure && this.loopStack.length > 0) this.loopNext();
     } else if (!this.cancelKind) {
       const plan = this.plan as Plan;
       const ready: string[] = [];
@@ -552,9 +571,91 @@ export class LocalRun implements Run {
     } else {
       if (!this.firstFailure) this.firstFailure = { node, error: f.error };
       this.skipDownstream(node);
+      this.abortLoops(f);
     }
     this.releaseSlot(node, ex);
     this.checkDone();
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Flow control (execution.md §7)
+  // ------------------------------------------------------------------------------------------
+
+  /** A route node's pick must be one of its execution outputs. */
+  private routeProblem(node: PlannedNode, route: string | undefined): NodeFailure | undefined {
+    if (node.def?.control?.kind !== "route") return undefined;
+    const plan = this.plan as Plan;
+    const outputs = execPortsOf(node.node.type, node.def, node.config, (id) => plan.scope.getType(id)?.decl).outputs;
+    if (typeof route === "string" && outputs.includes(route) && route !== EXEC_FAILED) return undefined;
+    return failure("node.invalid_route", `Node ${node.title} picked the execution output ${JSON.stringify(route)}, which it does not have (${outputs.join(", ")}).`, node.id, {
+      details: { route: route ?? null, outputs },
+    });
+  }
+
+  /** The loop node was reached and gave its iterations: run the body once per iteration. */
+  private startLoop(node: PlannedNode, ex: NodeExec, iterations: readonly Record<string, unknown>[]): void {
+    // The body needs slots of its own; the loop waits without one.
+    this.releaseSlot(node, ex);
+    this.loopStack.push({ node, ex, iterations, index: -1 });
+    this.loopNext();
+  }
+
+  /** The body line ended (or the loop just started): the next iteration, or the end of the loop. */
+  private loopNext(): void {
+    const plan = this.plan as Plan;
+    const control = (frame: LoopFrame) => frame.node.def?.control;
+    // Iterations whose body has no line end at once; loop instead of recursing.
+    for (;;) {
+      const frame = this.loopStack[this.loopStack.length - 1];
+      if (!frame || this.cancelKind || this.isFinished) return;
+      const loop = control(frame);
+      if (loop?.kind !== "loop") return;
+      frame.index += 1;
+      if (frame.index >= frame.iterations.length) {
+        this.loopStack.pop();
+        frame.ex.route = loop.completed;
+        this.completeNode(frame.node, frame.ex, frame.ex.outputs ?? {}, false);
+        return;
+      }
+      for (const id of plan.exec?.loops.get(frame.node.id) ?? []) {
+        this.active.delete(id);
+        this.exec.set(id, {
+          state: "pending",
+          outputs: undefined,
+          slot: undefined,
+          holdsSlot: false,
+          progress: { open: false, timer: undefined, pending: undefined },
+          startedAtMs: 0,
+        });
+      }
+      frame.ex.outputs = frame.iterations[frame.index] as Record<string, unknown>;
+      const n = frame.iterations.length;
+      this.emitProgress(frame.node.id, frame.index / n, `Iteration ${frame.index + 1} of ${n}`);
+      const body = plan.exec?.next.get(frame.node.id)?.get(loop.body);
+      if (body !== undefined) {
+        this.activate(body);
+        return;
+      }
+    }
+  }
+
+  /** An unhandled failure stops every running loop: each ends failed, innermost first. */
+  private abortLoops(f: NodeFailure): void {
+    while (this.loopStack.length > 0) {
+      const frame = this.loopStack.pop() as LoopFrame;
+      if (TERMINAL.has(frame.ex.state)) continue;
+      frame.ex.state = "failed";
+      this.endProgress(frame.ex);
+      this.emit({
+        type: "node.failed",
+        nodeId: frame.node.id,
+        error: {
+          code: "loop.body_failed",
+          message: `The body of ${frame.node.title} failed in iteration ${frame.index + 1}: ${f.error.message}`,
+          details: { iteration: frame.index, cause: f.error.code },
+        },
+      });
+    }
   }
 
   private cancelNode(node: PlannedNode, ex: NodeExec): void {
@@ -797,7 +898,7 @@ export class LocalRun implements Run {
     }
 
     let cacheKey: string | undefined;
-    if (def.cache && this.options.useCache) {
+    if (def.cache && !def.control && this.options.useCache) {
       cacheKey = reuseKey ?? (await this.cacheKey(node, inputs.values));
       if (cacheKey !== undefined && !this.options.force) {
         const key = cacheKey;
@@ -832,9 +933,26 @@ export class LocalRun implements Run {
       const outcome = await this.attempt(node, ex, values, attempt, secretValues);
       if (this.cancelKind) return this.cancelNode(node, ex);
       let fail: NodeFailure;
-      if (outcome.kind === "ok") {
+      if (outcome.kind === "ok" && outcome.iterations !== undefined) {
+        const list: Record<string, unknown>[] = [];
+        let bad: NodeFailure | undefined;
+        for (const [i, raw] of outcome.iterations.entries()) {
+          const out = this.normalizeOutputs(node, raw);
+          if (!out.ok) {
+            bad = failure(out.failure.error.code, `Iteration ${i + 1}: ${out.failure.error.message}`, node.id);
+            break;
+          }
+          list.push(out.outputs);
+        }
+        if (!bad) return this.startLoop(node, ex, list);
+        fail = bad;
+      } else if (outcome.kind === "ok") {
         const out = this.normalizeOutputs(node, outcome.value);
-        if (out.ok) {
+        const routeProblem = this.routeProblem(node, outcome.route);
+        if (out.ok && routeProblem) {
+          fail = routeProblem;
+        } else if (out.ok) {
+          if (outcome.route !== undefined) ex.route = outcome.route;
           if (cacheKey !== undefined && !outcome.usedState) {
             try {
               await this.services.cache.set(cacheKey, out.outputs);
@@ -845,8 +963,9 @@ export class LocalRun implements Run {
           }
           if (makesMedia && cacheKey !== undefined && !outcome.usedState) await this.reportResult(node, cacheKey, out.outputs, false);
           return this.completeNode(node, ex, out.outputs, false);
+        } else {
+          fail = out.failure;
         }
-        fail = out.failure;
       } else if (outcome.kind === "timeout") {
         fail = failure("node.timeout", `Node ${node.title} did not finish within ${def.timeoutMs} ms (attempt ${attempt}).`, node.id, {
           retryable: true,
@@ -876,7 +995,7 @@ export class LocalRun implements Run {
   /** Catalog nodes that cache and have an output holding media take part in carry-over. */
   private makesMedia(node: PlannedNode): boolean {
     const def = node.def;
-    if (!def || !def.cache || def.frontend) return false;
+    if (!def || !def.cache || def.frontend || def.control) return false;
     const plan = this.plan as Plan;
     return node.ports.outputs.some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
   }
@@ -1077,14 +1196,27 @@ export class LocalRun implements Run {
           settle({ kind: "timeout" });
         }, def.timeoutMs);
       }
-      let work: Promise<unknown>;
+      const args = { inputs: inputs as never, config: node.config as never, node: node.node, ctx };
+      const control = def.control;
+      let work: Promise<Outcome & { kind: "ok" }>;
       try {
-        work = Promise.resolve(def.run({ inputs: inputs as never, config: node.config as never, node: node.node, ctx }));
+        if (control?.kind === "loop") {
+          work = Promise.resolve(control.iterations(args)).then((list) => {
+            if (!Array.isArray(list)) throw new NodeError("node.invalid_output", `Node ${node.title} did not give a list of iterations.`);
+            return { kind: "ok", value: {}, usedState, iterations: list };
+          });
+        } else {
+          work = Promise.resolve(def.run(args)).then((value) => {
+            if (control?.kind !== "route") return { kind: "ok", value, usedState };
+            const outputs = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+            return { kind: "ok", value, usedState, route: control.route({ ...args, outputs }) };
+          });
+        }
       } catch (err) {
         work = Promise.reject(err);
       }
       work.then(
-        (value) => settle({ kind: "ok", value, usedState }),
+        (outcome) => settle({ ...outcome, usedState }),
         (err: unknown) => settle({ kind: "error", failure: classify(err, node.id, this.services.fetchErrors) }),
       );
     });
