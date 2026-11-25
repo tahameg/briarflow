@@ -32,7 +32,7 @@ export interface PackDefinitionInput {
   nodes: readonly AnyNodeDefinition[];
   /**
    * Settings the pack adds to the settings screen, by name (key `<pack>.<name>`). Nodes read
-   * them with `ctx.settings.get(name)`. Types: primitives, lists and optionals of them.
+   * them with `ctx.settings.get(name)`. Types: primitives, built-in types, lists and optionals of them.
    */
   settings?: Readonly<Record<string, TypeSpec | PackSettingInput>>;
 }

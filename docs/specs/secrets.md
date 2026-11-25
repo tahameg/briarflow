@@ -17,11 +17,13 @@ editors and run events only ever hold the secret's **name**. Nodes read the valu
 
 Renaming is not supported: create a new secret and pick it where the old one was used.
 
-## 2. The `secret` type
+## 2. The `Secret` type
 
-- Primitive `secret` (`t.secret({ kind? })`, shorthand `secret`). Its value is a secret name
-  (`SecretRef = string`). Assignable only to `secret`; `kind` is a constraint that only filters
-  what pickers offer.
+- Built-in struct `Secret { name: string }` (`t.secret()`, shorthand `Secret`): its value is a
+  secret's name, `{ "name": "OPENAI_KEY" }`, never the secret itself. Its static field `kind`
+  (`SecretKind?`, none = any) only filters what pickers offer. `ApiKey` (`t.apiKey()`) extends
+  `Secret` with `kind = apiKey`; a struct of your own may extend `Secret` with another kind.
+  `ApiKey → Secret` is assignable (types.md §4), not the other way.
 - Usable anywhere a type is: node ports, flow inputs, variables, globals, pack settings.
 - Editors show a dropdown of existing secret names (of the port's kind) with a **+** button that
   opens the new-secret dialog and picks the new secret. An optional secret has no "set" box:
@@ -31,8 +33,11 @@ Renaming is not supported: create a new secret and pick it where the old one was
 
 `ctx.secrets.read(ref)` returns the value. A node may read only the names it was **given**:
 
-- the value of one of its `secret` inputs (also inside optionals and lists), or
-- a `secret` setting of its pack it read with `ctx.settings.get` (settings.md).
+- the value of one of its `Secret` inputs (or of a struct extending `Secret`; also inside
+  optionals and lists), or
+- a `Secret` setting of its pack it read with `ctx.settings.get` (settings.md).
+
+`ctx.secrets.read` takes the value (`{ name }`) or the name.
 
 Anything else → `node.secret_not_allowed` (so a flow cannot make a node read an arbitrary
 secret by name from a text input). A name missing from the vault → `node.missing_secret`.

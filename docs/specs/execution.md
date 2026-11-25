@@ -19,21 +19,21 @@ from data wires, decides which nodes run and in what order.
 - Everything else sits on the line. That includes variable and global SET, Print, AI calls and
   Python nodes.
 - `defineNode({ canFail: true })` adds the `failed` execution output and an **`error` output**
-  of the primitive type `error`.
+  of the built-in struct `Error`.
   - It is set by node authors whose node can fail on purpose: AI calls, network, files, Python.
   - The editor shows the `error` output on the header row, in red, next to `failed`.
   - A node that already declares an output named `error` cannot also set `canFail`.
 - Execution ports are derived from the definition (`execPortsOf`), never stored.
 
-## 2. The `error` type
+## 2. The `Error` type
 
-`error` is a primitive whose value is
-`{ code: string; message: string; nodeId?: string; node?: string; details?: unknown }`.
+`Error` is a built-in struct (types.md §1.2) whose value is
+`{ code: string; message: string; node: string?; nodeId: string?; details: Json? }`.
 
 - The engine sets it on the failing node's `error` output, only when execution takes the
   `failed` line. On success the output is absent.
 - You read its fields with **Break error** (`briar.error.break`, pure): code, message, node,
-  nodeId. More general member-access operators come later.
+  nodeId, or with Get member (`error.code`, types.md §12).
 
 ## 3. Document
 

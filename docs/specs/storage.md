@@ -127,7 +127,7 @@ test and repair hook (conformance check 13, corrupt-document tests); `FsContextS
 
 Since 2026-10-25 media values are ids of media registry entries (docs/specs/media.md). A
 `MediaStore` is now a **blob store**: it keeps the bytes of `stored` entries (uploads), and its
-refs are `BlobRef { uri, mime, bytes?, hash?, meta? }` (the old MediaRef shape). Nodes never
+refs are `BlobRef { uri, mime, bytes?, hash?, meta? }`. Nodes never
 use it directly; the media registry, the loader (`createMedia`) and `SqliteMediaRegistry` /
 `SqliteLastRunStore` are specified in media.md.
 
@@ -149,7 +149,7 @@ interface MediaStore {
     never reused after delete.
   - **Content-addressed ids** (`FsMediaStore`, DECISIONS #56): `id` = sha-256 lowercase hex of
     `canonicalJson({ hash, mime, meta })`, where `hash`, `mime` and `meta` are the fields of
-    the returned `MediaRef`. Equal bytes put with a different mime, filename or meta get a
+    the returned `BlobRef`. Equal bytes put with a different mime, filename or meta get a
     different id, so `get` returns exactly the ref `put` returned. Equal content + equal info →
     the same ref. An id can reappear after delete + identical `put`. Such stores expose
     `contentAddressed: true` (read by the conformance suite, §3 MediaStore 6).
@@ -157,7 +157,7 @@ interface MediaStore {
   one MediaStore.
 
 ### 2.2 put
-- Reads the whole body; returns `MediaRef { uri, mime, bytes, hash, meta? }`:
+- Reads the whole body; returns `BlobRef { uri, mime, bytes, hash, meta? }`:
   `mime` lowercased and stripped of parameters (`"Image/PNG; q=1"` → `"image/png"`); invalid
   mime → `media.invalid_mime` (core's `normalizeMime` does both; `MIME_PATTERN` is the check); `bytes` = exact length; `hash` = sha-256 lowercase hex of the
   content (always computed); `meta` = `info.meta` plus `filename` when given.
@@ -165,7 +165,7 @@ interface MediaStore {
 - Stores may enforce a size limit → `media.too_large` (`details: { maxBytes }`).
 
 ### 2.3 get
-- Accepts a `MediaRef`, a `briar-media://` uri, or a bare id. Anything else (e.g. `https://`)
+- Accepts a `BlobRef`, a `briar-media://` uri, or a bare id. Anything else (e.g. `https://`)
   → `undefined` (the store does not fetch remote URLs; the media loader does, media.md §4).
 - Unknown → `undefined`. Returned `ref` is the stored one (same fields as `put` returned).
 - Stored ref data that cannot be parsed → `MediaError` `media.corrupt` (`details: { uri }`).
