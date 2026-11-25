@@ -215,7 +215,7 @@ describe("runs", () => {
     const nothing = await readEvents(await app.request(`${BASE}/runs/${result.runId}/events?after=${all.length - 1}`));
     expect(nothing.raw).toBe("");
 
-    const mediaId = result.outputs.image.mediaId;
+    const mediaId = result.outputs.image.data.mediaId;
     const image = await app.request(`${BASE}/media/${mediaId}`);
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/svg+xml");
