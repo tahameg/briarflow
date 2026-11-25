@@ -9,14 +9,18 @@ import imaging_nodes
 def test_example_manifest_types() -> None:
     m = imaging_nodes.imaging.manifest()
     assert [n["type"] for n in m["nodes"]] == [
-        "imaging.uppercase", "imaging.solidImage", "imaging.imageInfo", "imaging.repeat",
-        "imaging.countSlowly", "imaging.sign"]
-    assert [t["id"] for t in m["types"]] == ["imaging.Swatch", "imaging.Color"]
+        "imaging.uppercase", "imaging.shoutHeadline", "imaging.solidImage", "imaging.imageInfo",
+        "imaging.repeat", "imaging.countSlowly", "imaging.sign"]
+    assert [t["id"] for t in m["types"]] == ["imaging.Headline", "imaging.Swatch", "imaging.Color"]
+    assert m["types"][0]["extends"] == "briar.Text"
 
 
 def test_example_nodes_end_to_end(serve_pack) -> None:
     c = serve_pack(imaging_nodes.imaging)
     assert c.execute("imaging.uppercase", {"text": "briar"}).lines[-1]["outputs"] == {"result": "BRIAR"}
+    assert c.execute("imaging.shoutHeadline", {"title": {"value": "hi"}}).lines[-1]["outputs"] == {"result": {"value": "HI"}}
+    too_long = c.execute("imaging.shoutHeadline", {"title": {"value": "x" * 41}})
+    assert too_long.status == 422 and too_long.json()["error"]["details"]["path"] == "inputs.title.value"
 
     lines = c.execute("imaging.solidImage", {"swatch": {"color": "briar", "width": 3, "height": 2}}).lines
     assert [line["type"] for line in lines] == ["progress", "progress", "log", "result"]

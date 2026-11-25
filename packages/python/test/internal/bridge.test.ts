@@ -146,13 +146,20 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     expect(manifest.pack).toMatchObject({ name: "imaging", version: "0.1.0" });
     expect(manifest.nodes.map((n) => n.type)).toEqual([
       "imaging.uppercase",
+      "imaging.shoutHeadline",
       "imaging.solidImage",
       "imaging.imageInfo",
       "imaging.repeat",
       "imaging.countSlowly",
       "imaging.sign",
     ]);
-    expect(manifest.types.map((d) => d.id)).toEqual(["imaging.Swatch", "imaging.Color"]);
+    expect(manifest.types.map((d) => d.id)).toEqual(["imaging.Headline", "imaging.Swatch", "imaging.Color"]);
+    expect(manifest.types[0]).toMatchObject({ kind: "struct", extends: "briar.Text", fields: [{ name: "maxLength", static: true, default: 40 }] });
+  });
+
+  it("runs a node whose port extends Text", async () => {
+    const c = fakeCtx(new MemoryMediaStore());
+    expect(await exec("imaging.shoutHeadline", { title: { value: "brief" } }, c)).toEqual({ result: { value: "BRIEF" } });
   });
 
   it("runs a plain node", async () => {
@@ -264,7 +271,7 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
       expect(pack.kind).toBe("nodePack");
       expect(pack.name).toBe("imaging");
       expect(pack.version).toBe("0.1.0");
-      expect(pack.types.map((d) => d.id)).toEqual(["imaging.Swatch", "imaging.Color"]);
+      expect(pack.types.map((d) => d.id)).toEqual(["imaging.Headline", "imaging.Swatch", "imaging.Color"]);
       const sign = pack.nodes.find((n) => n.type === "imaging.sign");
       expect(sign?.secrets).toEqual(["IMAGING_KEY"]);
       const repeat = pack.nodes.find((n) => n.type === "imaging.repeat");

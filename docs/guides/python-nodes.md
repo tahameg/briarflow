@@ -40,11 +40,10 @@ npm install briarflow @briarflow/python @briarflow/nodes-std
 
 ```python
 # imaging_nodes.py
-from typing import Annotated
-from briarflow import node, pack, serve, MaxLength
+from briarflow import node, pack, serve
 
 @node(title="Uppercase", category="Text")
-def uppercase(text: Annotated[str, MaxLength(10_000)]) -> str:
+def uppercase(text: str) -> str:
     """Returns the text in upper case."""
     return text.upper()
 
@@ -62,7 +61,7 @@ python imaging_nodes.py
 
 curl http://127.0.0.1:8765/briarflow/manifest
 curl -N -X POST http://127.0.0.1:8765/briarflow/execute \
-  -d '{"protocol":1,"nodeType":"imaging.uppercase","inputs":{"text":"hi"}}'
+  -d '{"protocol":2,"nodeType":"imaging.uppercase","inputs":{"text":"hi"}}'
 # {"type":"result","outputs":{"result":"HI"}}
 ```
 
@@ -72,7 +71,7 @@ What happened:
   camelCase (`solid_image` → `imaging.solidImage`). Pass `@node(type="shout")` to choose
   another name (it is prefixed to `imaging.shout`); a dotted type must start with `imaging.`.
 - **Inputs** are the function's parameters, in order. `text` became an input port of type
-  `text`. A Python default becomes the port default.
+  `string`. A Python default becomes the port default.
 - **Output.** A single return type gives one output port named `result`. Return `None` (and
   annotate `-> None`) for no outputs.
 - **Description.** The first paragraph of the docstring.
@@ -91,15 +90,22 @@ Every parameter and the return value need a type annotation; `pack()` raises a c
 
 | Python | Briarflow type | Your function receives |
 |---|---|---|
-| `str` | `text` | `str` |
+| `str` | `string` | `str` |
 | `int` | `int` | `int` |
 | `float` | `float` (ints accepted) | `float` |
-| `bool` | `boolean` | `bool` |
-| `Image`, `Video`, `Audio`, `Model3D`, `File` | media primitives | a `MediaRef` subclass (§9) |
+| `bool` | `bool` | `bool` |
+| `Binary` | `binary` | a `Binary` (§9) |
+| `Text` | the built-in struct `Text` | `Text(value="…")` |
+| `Image`, `Video`, `Audio`, `Model3D`, `File` | the built-in media structs | `Image(data=Binary(…), mime, name, size, width, height)` … (§9) |
+| `Json`, `Secret`, `ApiKey`, `Error` | the other built-in structs | `Json(text=…)` (`.parse()`), `Secret(name=…)` … |
 | `list[T]` | `list<T>` | `list` |
 | `T \| None`, `Optional[T]` | `T?` | the value or `None` |
 | `@struct` dataclass | struct `<pack>.<ClassName>` | a dataclass instance |
+| `@struct class X(Text)` | struct `<pack>.X` extending `Text` (§5) | an `X` instance |
 | `class X(str, Enum)` | enum `<pack>.X` | an `Enum` member |
+
+Unlimited text is a plain `str`. Use `Text` (or a struct extending it, §5) for text with limits,
+such as what people type into a form.
 
 Not supported: `dict`, `tuple`, `Any`, unions of two non-`None` types. Use a `@struct`
 instead of a dict.
@@ -137,22 +143,44 @@ class Swatch:
 - Field defaults make fields optional in values (`{"color": "red"}` is a valid `Swatch`).
 - Your node receives a real `Swatch` instance with a `Color` member, and may return them; the
   SDK converts both ways.
-- Not expressible in Python v1: enum member **labels** and struct field **titles**. The
-  editor derives them from the values and names.
+- `ClassVar[T] = value` attributes are **static fields**: the type fixes their value, values
+  never carry them (`species: ClassVar[str] = "cat"`).
+- Not expressible in Python: enum member **labels** and struct field **titles**. The editor
+  derives them from the values and names.
 
-## 5. Constraints and port metadata
+## 5. Constraints, limits and port metadata
 
-Add constraints with `typing.Annotated`. The editor uses them for input widgets, and both
-the engine and the worker check them.
+Numbers and lists take constraints with `typing.Annotated`:
 
 | Marker | Applies to |
 |---|---|
-| `MinLength(n)`, `MaxLength(n)`, `Pattern(r)`, `Multiline()` | `str` |
 | `Min(n)`, `Max(n)` | `int`, `float` |
 | `MinItems(n)`, `MaxItems(n)` | `list[T]` |
-| `Formats("png", "jpeg")`, `MaxBytes(n)`, `MinWidth(n)`, `MaxWidth(n)`, `MinHeight(n)`, `MaxHeight(n)` | media |
-| `MaxDurationSec(s)` | `Video`, `Audio` |
 | `Port(title=…, description=…)` | any port or struct field |
+
+Text and media limits are **static fields** of the built-in structs. Set them by extending one
+with `@struct` (the subclass may only give static fields values or add `ClassVar`s):
+
+```python
+from briarflow import Image, Text, node, struct
+
+@struct
+class Title(Text):              # extends Text; accepted wherever Text is
+    max_length = 80             # also min_length, pattern, multiline
+
+@struct
+class Thumbnail(Image):
+    formats = ("png", "webp")   # also max_bytes, min_width, max_width, min_height, max_height
+    max_width = 512
+
+@node(title="Caption", category="Text")
+def caption(title: Title, picture: Thumbnail) -> str:
+    return f"{title.value} ({picture.width}×{picture.height})"
+```
+
+`Video` and `Audio` have `max_duration`. The manifest names them as the engine does
+(`maxLength`, `maxWidth`…). The editor uses constraints and limits for input widgets, and both
+the engine and the worker check them on inputs.
 
 ```python
 @node(title="Repeat text", category="Text", cache=False)
@@ -161,12 +189,12 @@ def repeat(text: str, times: Annotated[int, Min(0), Max(1000)] = 2, separator: s
     ...
 ```
 
-**`Pattern`:** the worker checks it with Python's `re.fullmatch`, the engine with JavaScript
+**`pattern`:** the worker checks a Text's `pattern` with Python's `re.fullmatch`, the engine with JavaScript
 `RegExp`. Stick to what both read the same way: literals, `[...]`, `\d \w \s`, `* + ? {m,n}`,
 `(...)`, `(?:...)`, `|`. Avoid named groups, lookbehind, `(?i)`, `\A` / `\Z`.
 
-Output constraints are checked by the engine after the node returns, the same as for
-TypeScript nodes.
+Output constraints and limits are checked by the engine after the node returns, the same as
+for TypeScript nodes.
 
 ## 6. Several outputs
 
@@ -257,10 +285,12 @@ if times == 0:
 
 ## 9. Media in and out
 
-Media values are `MediaRef` objects (`Image`, `Video`, `Audio`, `Model3D`, `File`) with
-`uri`, `mime`, `bytes`, `hash`, `meta` and a temporary `url`.
+Media values are the built-in structs `Image`, `Video`, `Audio`, `Model3D`, `File`: `mime`,
+`name`, `size` (and `width`, `height`, `duration`, `fps` where they apply) plus `data`, a
+`Binary` with `uri`, `mime`, `bytes`, `hash`, `meta` and a temporary `url`.
 
-**Reading.** The bridge attaches a `url` your worker can GET for the duration of the call:
+**Reading.** The bridge attaches a `url` your worker can GET for the duration of the call
+(`ctx.media.read` takes the media value or its `data`):
 
 ```python
 data = ctx.media.read(image)            # bytes
@@ -269,8 +299,9 @@ with ctx.media.open(video) as fh:       # streaming, for large files
         ...
 ```
 
-**Creating.** Return new media with `ctx.media.create`. Extra keyword arguments become
-`meta` (e.g. image width and height):
+**Creating.** Return new media with `ctx.media.create`: it gives the media struct for the mime
+(`Image` for `image/*`, …, `File` otherwise). Extra keyword arguments become `meta`, and
+`width`, `height`, `duration`, `fps` also fill those fields:
 
 ```python
 @node(title="Solid color image", category="Image", color="peach")
@@ -446,7 +477,7 @@ def test_execute():
     try:
         req = urllib.request.Request(
             f"{w.url}/briarflow/execute",
-            data=json.dumps({"protocol": 1, "nodeType": "imaging.uppercase", "inputs": {"text": "hi"}}).encode(),
+            data=json.dumps({"protocol": 2, "nodeType": "imaging.uppercase", "inputs": {"text": "hi"}}).encode(),
             method="POST",
         )
         lines = [json.loads(l) for l in urllib.request.urlopen(req).read().splitlines()]
@@ -474,4 +505,4 @@ loaded pack like any other.
 | `node.invalid_input` from a Python node | worker and engine disagree about the pack | restart both |
 | `node.invalid_output` | missing output field or wrong type | check `details.path` |
 | `python.media_too_large` | a created media item is over 100 MiB | upload it yourself and return an `https://` ref |
-| `Media … has no fetchable url` | a `MediaRef` built by hand | only read refs that arrived as inputs |
+| `Media … has no fetchable url` | a `Binary` built by hand | only read media that arrived as inputs |

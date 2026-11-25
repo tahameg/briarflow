@@ -22,6 +22,7 @@ from briarflow import (
     Min,
     NodeError,
     Port,
+    Text,
     node,
     outputs,
     pack,
@@ -55,6 +56,13 @@ class Swatch:
     color: Color
     width: Annotated[int, Min(1), Max(512), Port(description="Width in px")] = 64
     height: Annotated[int, Min(1), Max(512), Port(description="Height in px")] = 64
+
+
+@struct
+class Headline(Text):
+    """A short title: Text of at most 40 characters."""
+
+    max_length = 40
 
 
 @outputs
@@ -92,6 +100,12 @@ def make_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 def uppercase(text: str) -> str:
     """Returns the text in upper case."""
     return text.upper()
+
+
+@node(title="Shout headline", category="Text")
+def shout_headline(title: Headline) -> Headline:
+    """Returns the headline in upper case (still at most 40 characters)."""
+    return Headline(title.value.upper())
 
 
 @node(title="Solid color image", category="Image", color="peach")
@@ -150,7 +164,7 @@ imaging = pack(
     version="0.1.0",
     title="Imaging (example)",
     description="Example Python nodes: text and tiny generated images.",
-    nodes=[uppercase, solid_image, image_info, repeat, count_slowly, sign],
+    nodes=[uppercase, shout_headline, solid_image, image_info, repeat, count_slowly, sign],
 )
 
 if __name__ == "__main__":
