@@ -49,7 +49,7 @@ export function typeShape(type: TypeRef): TypeShape {
  *
  * @example
  * ```ts
- * shapeShorthand({ base: { kind: "primitive", name: "string" }, array: true, optional: false, itemOptional: false }); // "list<text>"
+ * shapeShorthand({ base: { kind: "primitive", name: "string" }, array: true, optional: false, itemOptional: false }); // "list<string>"
  * ```
  */
 export function shapeShorthand(shape: TypeShape, scope?: TypeScope): string {

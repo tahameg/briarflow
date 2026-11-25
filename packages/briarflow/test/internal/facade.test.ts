@@ -22,11 +22,11 @@ function setup(extra: Partial<BriarOptions> = {}): Briar {
 async function quickStart(briar: Briar) {
   const ctx = await briar.contexts.create({ name: "Marketing" });
   ctx.types.defineEnum("ArtStyle", ["anime", "realistic", "pixel"]);
-  ctx.types.defineStruct("Character", { name: "text", age: "int", style: "ArtStyle" });
-  ctx.globals.create("brandGuide", "text", { access: "readonly", value: "Pastel colors" });
+  ctx.types.defineStruct("Character", { name: "string", age: "int", style: "ArtStyle" });
+  ctx.globals.create("brandGuide", "string", { access: "readonly", value: "Pastel colors" });
   const flow = ctx.flows.create("Portrait");
   flow.inputs.add("character", "Character");
-  flow.outputs.add("reply", "text");
+  flow.outputs.add("reply", "string");
   const brk = flow.nodes.add("briar.struct.break", { config: { typeId: ctx.types.get("Character").id } });
   const tpl = flow.nodes.add("text.template", { at: [300, 100], config: { template: "Portrait of {{name}}, {{style}} style" } });
   const llm = flow.nodes.add("mock.llm", { values: { seed: 7 } });
@@ -136,7 +136,7 @@ describe("handles", () => {
     const flow = ctx.flows.create("F");
     expect(() => flow.inputs.add("x", "Nope")).toThrow(CommandError);
     expect(() => flow.nodes.add("nope.node")).toThrowError(/nope\.node/);
-    flow.inputs.add("x", "text");
+    flow.inputs.add("x", "string");
     expect(flow.doc.inputs.map((i) => i.name)).toEqual(["x"]);
     expect(ctx.undo()).toBe(true);
     expect(flow.doc.inputs).toEqual([]);
@@ -199,11 +199,11 @@ describe("applyCommands", () => {
 describe("global writes", () => {
   async function counterFlow(briar: Briar) {
     const ctx = await briar.contexts.create({ name: "Globals" });
-    const note = ctx.globals.create("note", "text", { value: "old" });
-    const extra = ctx.globals.create("extra", "text", { value: "old" });
+    const note = ctx.globals.create("note", "string", { value: "old" });
+    const extra = ctx.globals.create("extra", "string", { value: "old" });
     const flow = ctx.flows.create("Write");
-    flow.inputs.add("text", "text");
-    flow.outputs.add("written", "text");
+    flow.inputs.add("text", "string");
+    flow.outputs.add("written", "string");
     const set = flow.nodes.setGlobal(note);
     const set2 = flow.nodes.setGlobal(extra);
     flow.connect(flow.input.port("text"), set.port("value"));
@@ -300,7 +300,7 @@ describe("runs", () => {
   async function echo(briar: Briar) {
     const ctx = await briar.contexts.create({ name: "Echo" });
     const flow = ctx.flows.create("Echo");
-    flow.inputs.add("text", "text").outputs.add("text", "text");
+    flow.inputs.add("text", "string").outputs.add("text", "string");
     flow.connect(flow.input.port("text"), flow.output.port("text"));
     await ctx.save();
     return flow;
@@ -341,7 +341,7 @@ describe("runs", () => {
   it("flow.run runs unsaved edits", async () => {
     const briar = setup();
     const flow = await echo(briar);
-    flow.outputs.add("extra", "text");
+    flow.outputs.add("extra", "string");
     flow.connect(flow.input.port("text"), flow.output.port("extra"));
     const result = await (await flow.run({ text: "hi" })).result;
     expect(result.outputs).toEqual({ text: "hi", extra: "hi" });
@@ -354,7 +354,7 @@ describe("runs", () => {
     const briar = createBriar({ store, packs: [closablePack], idGenerator: createSequentialIdGenerator() });
     const ctx = await briar.contexts.create({ name: "Slow" });
     const flow = ctx.flows.create("Slow");
-    flow.inputs.add("text", "text").outputs.add("text", "text");
+    flow.inputs.add("text", "string").outputs.add("text", "string");
     const delay = flow.nodes.add("mock.delay", { values: { ms: 10_000 } });
     flow.connect(flow.input.port("text"), delay.port("value"));
     flow.connect(delay.port("value"), flow.output.port("text"));

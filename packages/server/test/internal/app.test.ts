@@ -186,10 +186,11 @@ describe("runs", () => {
 
     const res = await json(app, "POST", "/flows/flow_p/runs?wait=true", { inputs: { character: CHARACTER } });
     expect(res.status).toBe(200);
-    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { mediaId: string } } };
+    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { data: { mediaId: string }; mime: string } } };
     expect(result.status).toBe("succeeded");
-    expect(Object.keys(result.outputs.image)).toEqual(["mediaId"]);
-    const entry = await app.request(`${BASE}/media/${result.outputs.image.mediaId}/entry`);
+    expect(Object.keys(result.outputs.image.data)).toEqual(["mediaId"]);
+    expect(result.outputs.image.mime).toBe("image/svg+xml");
+    const entry = await app.request(`${BASE}/media/${result.outputs.image.data.mediaId}/entry`);
     expect(await entry.json()).toMatchObject({ mime: "image/svg+xml", source: { kind: "data" }, owner: { runId: result.runId, flowId: "flow_p" } });
 
     const last = (await (await app.request(`${BASE}/flows/flow_p/last-run`)).json()) as { lastRun: { runId: string; status: string; nodes: Record<string, { state: string; key?: string }> } };

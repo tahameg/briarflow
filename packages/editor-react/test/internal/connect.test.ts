@@ -7,7 +7,8 @@ import { matchConnectTargets } from "../../src/connect.js";
 import { buildFlowView } from "../../src/graph.js";
 
 const catalog = createCatalog([stdPack]);
-const t = (name: string) => ({ kind: "primitive", name }) as TypeRef;
+/** A primitive by name; built-in structs (Json, Text, …) by their capitalised name. */
+const t = (name: string) => (/^[A-Z]/.test(name) ? { kind: "named", id: `briar.${name}` } : { kind: "primitive", name }) as TypeRef;
 const prim = t;
 
 function doc(): ContextDocument {
@@ -31,7 +32,7 @@ describe("matchConnectTargets", () => {
       { key: "asInt", type: "convert.asInt" },
       { key: "length", type: "list.length" },
     ];
-    expect(matchConnectTargets(doc(), "flow_f", catalog, t("text"), "out", probes)).toEqual([
+    expect(matchConnectTargets(doc(), "flow_f", catalog, t("string"), "out", probes)).toEqual([
       { key: "join", port: "separator", portTitle: "Separator", generic: false },
       { key: "toText", port: "value", portTitle: "Value", generic: true },
       { key: "asInt", port: "value", portTitle: "Value", generic: true },
@@ -40,7 +41,7 @@ describe("matchConnectTargets", () => {
 
   it("a generic limited by oneOf takes only its types", () => {
     const probes = [{ key: "asInt", type: "convert.asInt" }];
-    expect(matchConnectTargets(doc(), "flow_f", catalog, t("json"), "out", probes).map((m) => m.key)).toEqual(["asInt"]);
+    expect(matchConnectTargets(doc(), "flow_f", catalog, t("Json"), "out", probes).map((m) => m.key)).toEqual(["asInt"]);
     expect(matchConnectTargets(doc(), "flow_f", catalog, t("int"), "out", probes)).toEqual([]);
   });
 
@@ -50,7 +51,7 @@ describe("matchConnectTargets", () => {
       { key: "join", type: "text.join" },
       { key: "get:tone", type: "briar.variable.get", config: { variableId: "var_tone" } },
     ];
-    expect(matchConnectTargets(doc(), "flow_f", catalog, t("text"), "in", probes).map((m) => [m.key, m.port])).toEqual([
+    expect(matchConnectTargets(doc(), "flow_f", catalog, t("string"), "in", probes).map((m) => [m.key, m.port])).toEqual([
       ["join", "text"],
       ["get:tone", "value"],
     ]);
@@ -58,12 +59,12 @@ describe("matchConnectTargets", () => {
 
   it("binds generic ports: list<$T> takes a list but not a single value", () => {
     const probes = [{ key: "length", type: "list.length" }];
-    expect(matchConnectTargets(doc(), "flow_f", catalog, { kind: "list", of: t("text") }, "out", probes)).toEqual([{ key: "length", port: "list", portTitle: "List", generic: true }]);
-    expect(matchConnectTargets(doc(), "flow_f", catalog, t("text"), "out", probes)).toEqual([]);
+    expect(matchConnectTargets(doc(), "flow_f", catalog, { kind: "list", of: t("string") }, "out", probes)).toEqual([{ key: "length", port: "list", portTitle: "List", generic: true }]);
+    expect(matchConnectTargets(doc(), "flow_f", catalog, t("string"), "out", probes)).toEqual([]);
   });
 
   it("returns nothing for an unknown flow", () => {
-    expect(matchConnectTargets(doc(), "flow_x", catalog, t("text"), "out", [{ key: "join", type: "text.join" }])).toEqual([]);
+    expect(matchConnectTargets(doc(), "flow_x", catalog, t("string"), "out", [{ key: "join", type: "text.join" }])).toEqual([]);
   });
 });
 
@@ -74,7 +75,7 @@ describe("variants", () => {
     variants: {
       title: "Shape",
       options: {
-        text: variant({ inputs: { value: types.text() }, outputs: { out: types.text() }, run: ({ inputs }) => ({ out: inputs.value }) }),
+        text: variant({ inputs: { value: types.string() }, outputs: { out: types.string() }, run: ({ inputs }) => ({ out: inputs.value }) }),
         number: variant({ title: "Number", inputs: { value: types.int() }, outputs: { out: types.int() }, run: ({ inputs }) => ({ out: inputs.value }) }),
       },
     },
@@ -87,7 +88,7 @@ describe("variants", () => {
       { key: "number", type: "vary.shaped", variant: "number" },
     ];
     expect(matchConnectTargets(doc(), "flow_f", withVariants, prim("int"), "out", probes).map((m) => m.key)).toEqual(["number"]);
-    expect(matchConnectTargets(doc(), "flow_f", withVariants, prim("text"), "out", probes).map((m) => m.key)).toEqual(["text"]);
+    expect(matchConnectTargets(doc(), "flow_f", withVariants, prim("string"), "out", probes).map((m) => m.key)).toEqual(["text"]);
   });
 
   it("shows the picked variant on the canvas", () => {

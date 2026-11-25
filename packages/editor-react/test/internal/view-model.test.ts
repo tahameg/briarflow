@@ -90,7 +90,7 @@ describe("buildFlowView", () => {
     expect(planConnection(view, catalog, { node: "n_get", port: "value" }, { node: "n_int", port: "value" })).toEqual({ kind: "direct" });
     expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_int", port: "value" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
     // An unwired oneOf port shows its choices.
-    expect(view.byId.get("n_int")!.inputs[0]!.typeText).toBe("text | json");
+    expect(view.byId.get("n_int")!.inputs[0]!.typeText).toBe("string | Json");
   });
 
   it("returns undefined for an unknown flow", () => {
@@ -128,15 +128,16 @@ describe("ledFamily", () => {
   const t = (name: string) => ({ kind: "primitive", name }) as TypeRef;
 
   it("groups types by family through lists and optionals", () => {
-    expect([t("text"), t("int"), t("float"), t("boolean"), t("image"), t("audio"), t("file")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data"]);
+    const b = (id: string) => ({ kind: "named", id }) as TypeRef;
+    expect([t("string"), t("int"), t("float"), t("bool"), b("briar.Image"), b("briar.Audio"), b("briar.File"), b("briar.Text")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data", "text"]);
     expect(ledFamily({ kind: "optional", of: { kind: "list", of: t("int") } })).toBe("num");
     expect(ledFamily({ kind: "named", id: "ty_style" })).toBe("data");
     expect(ledFamily({ kind: "var", name: "T" })).toBe("any");
   });
 
   it("marks lists, optional or not", () => {
-    expect(isListType({ kind: "list", of: t("text") })).toBe(true);
-    expect(isListType({ kind: "optional", of: { kind: "list", of: t("text") } })).toBe(true);
-    expect(isListType(t("text"))).toBe(false);
+    expect(isListType({ kind: "list", of: t("string") })).toBe(true);
+    expect(isListType({ kind: "optional", of: { kind: "list", of: t("string") } })).toBe(true);
+    expect(isListType(t("string"))).toBe(false);
   });
 });

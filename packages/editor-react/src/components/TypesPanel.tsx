@@ -218,7 +218,7 @@ function StructFields({ decl, scope }: { decl: StructDecl; scope: TypeScope | un
   const [fresh, setFresh] = useState<string | undefined>(undefined);
   const add = () => {
     const name = nextName("field", decl.fields.map((f) => f.name));
-    const r = dispatch({ op: "type.field.add", typeId: decl.id, name, type: "text" });
+    const r = dispatch({ op: "type.field.add", typeId: decl.id, name, type: "string" });
     if (r.ok) setFresh(name);
   };
   return (

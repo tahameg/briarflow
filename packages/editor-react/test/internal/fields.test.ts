@@ -11,7 +11,7 @@ const t = (s: string): TypeRef => {
 
 describe("typeShape / shapeShorthand", () => {
   it("round-trips every wrapper combination", () => {
-    for (const s of ["text", "int?", "list<float>", "list<boolean?>", "list<image>?", "list<audio?>?"]) {
+    for (const s of ["string", "int?", "list<float>", "list<bool?>", "list<Image>?", "list<Audio?>?"]) {
       expect(shapeShorthand(typeShape(t(s)))).toBe(s);
     }
   });
@@ -21,14 +21,14 @@ describe("typeShape / shapeShorthand", () => {
   });
 
   it("swaps the base and keeps the wrappers", () => {
-    expect(shapeShorthand({ ...typeShape(t("list<text>?")), base: t("video") })).toBe("list<video>?");
+    expect(shapeShorthand({ ...typeShape(t("list<string>?")), base: t("Video") })).toBe("list<Video>?");
   });
 });
 
 describe("toggleArray", () => {
   it("wraps a single value in a list and unwraps it again", () => {
-    expect(toggleArray(t("text"))).toBe("list<text>");
-    expect(toggleArray(t("list<text>"))).toBe("text");
+    expect(toggleArray(t("string"))).toBe("list<string>");
+    expect(toggleArray(t("list<string>"))).toBe("string");
   });
 
   it("keeps optionality when switching", () => {

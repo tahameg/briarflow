@@ -75,9 +75,10 @@ describe("settings", () => {
       ["keyed.retries", "keyed", "Retries"],
     ]);
     expect(info.values).toEqual({});
-    const set = await call("POST", "/settings", { key: "keyed.apiKey", value: "OPENAI_KEY" });
+    const set = await call("POST", "/settings", { key: "keyed.apiKey", value: { name: "OPENAI_KEY" } });
     expect(set.status).toBe(200);
-    expect(((await set.json()) as { values: object }).values).toEqual({ "keyed.apiKey": "OPENAI_KEY" });
+    expect(((await set.json()) as { values: object }).values).toEqual({ "keyed.apiKey": { name: "OPENAI_KEY" } });
+    expect((await call("POST", "/settings", { key: "keyed.apiKey", value: "OPENAI_KEY" })).status).toBe(422);
     expect((await call("POST", "/settings", { key: "keyed.retries", value: -1 })).status).toBe(422);
     expect((await call("POST", "/settings", { key: "nope.x", value: 1 })).status).toBe(422);
     const cleared = await call("POST", "/settings", { key: "keyed.apiKey", value: null });

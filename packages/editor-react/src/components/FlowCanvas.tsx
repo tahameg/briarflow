@@ -568,7 +568,7 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
   const [fresh, setFresh] = useState<string | undefined>(undefined);
   const add = () => {
     const name = nextName(dir, ports.map((p) => p.name));
-    const r = dispatch(dir === "input" ? { op: "flow.input.add", flowId, name, type: "text" } : { op: "flow.output.add", flowId, name, type: "text" });
+    const r = dispatch(dir === "input" ? { op: "flow.input.add", flowId, name, type: "string" } : { op: "flow.output.add", flowId, name, type: "string" });
     if (r.ok) setFresh(name);
   };
   return (

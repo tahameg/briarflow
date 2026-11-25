@@ -2,7 +2,7 @@
  * Pure helpers for value widgets: which widget a type gets, starting values and short
  * previews.
  */
-import { BUILTIN, isMediaRef, mediaKindOfBuiltin, structLayout } from "@briarflow/core";
+import { BUILTIN, builtinType, isMediaRef, mediaKindOfBuiltin, structLayout, withBuiltins } from "@briarflow/core";
 import type { MediaKind, MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 
 /**
@@ -36,10 +36,11 @@ export interface BuiltinView {
 
 /** The built-in a named type is or extends, if any. */
 export function builtinView(type: TypeRef, scope: TypeScope | undefined): BuiltinView | undefined {
-  if (type.kind !== "named" || !scope) return undefined;
-  const decl = scope.getType(type.id)?.decl;
+  if (type.kind !== "named") return undefined;
+  const resolve = withBuiltins((id) => scope?.getType(id)?.decl);
+  const decl = resolve(type.id);
   if (decl?.kind !== "struct") return undefined;
-  const layout = structLayout(decl, (id) => scope.getType(id)?.decl);
+  const layout = structLayout(decl, resolve);
   const statics = new Map([...layout.statics].map(([k, v]) => [k, v.value]));
   const mediaKind = mediaKindOfBuiltin(layout.root);
   if (mediaKind !== undefined) return { kind: "media", mediaKind, statics };
@@ -57,7 +58,7 @@ export function widgetKind(type: TypeRef, scope: TypeScope | undefined): WidgetK
       if (type.name === "bool") return "boolean";
       return type.name;
     case "named": {
-      const decl = scope?.getType(type.id)?.decl;
+      const decl = scope?.getType(type.id)?.decl ?? builtinType(type.id);
       if (!decl) return "unknown";
       if (decl.kind === "enum") return "enum";
       const view = builtinView(type, scope);

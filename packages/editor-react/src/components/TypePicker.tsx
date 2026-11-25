@@ -139,7 +139,8 @@ function TypeMenu({
       const ref: TypeRef = { kind: "named", id: e.decl.id };
       const name = formatType(ref, scope);
       if (!match(name)) continue;
-      out.push({ key: `n:${e.decl.id}`, group: e.decl.kind === "struct" ? "Structs" : "Enums", label: name, base: ref, hint: e.origin });
+      const group = e.origin === "builtin" ? "Built-in" : e.decl.kind === "struct" ? "Structs" : "Enums";
+      out.push({ key: `n:${e.decl.id}`, group, label: name, base: ref, hint: e.origin });
     }
     const raw = query.trim();
     if (raw && !out.some((i) => i.label === raw) && parseType(raw, scope ? { scope } : {}).ok) {

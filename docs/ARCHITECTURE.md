@@ -580,11 +580,11 @@ await briar.flows.get(flowId);          // → FlowHandle (locates its context)
 
 // Authoring from code (fluent handles over @briarflow/authoring commands)
 ctx.types.defineEnum("ArtStyle", ["anime", "realistic", "pixel"]);
-ctx.types.defineStruct("Character", { name: "text", age: "int", style: "ArtStyle" });
-ctx.globals.create("brandGuide", "text", { access: "readonly", value: "Pastel colors…" });
+ctx.types.defineStruct("Character", { name: "string", age: "int", style: "ArtStyle" });
+ctx.globals.create("brandGuide", "string", { access: "readonly", value: "Pastel colors…" });
 const flow = ctx.flows.create("Portrait");
 flow.inputs.add("character", "Character");
-flow.outputs.add("portrait", "image");
+flow.outputs.add("portrait", "Image");
 const tpl = flow.nodes.add("text.template", { at: [300, 100] });
 flow.connect(flow.input.port("character"), tpl.port("values"));
 ctx.apply({ op: "node.move", … });     // raw commands always available

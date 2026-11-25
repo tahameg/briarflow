@@ -145,9 +145,9 @@ describe("client ⇄ server", () => {
     expect(result.status).toBe("succeeded");
     expect((await client.runs.get(run.id)).result).toEqual(result);
 
-    const image = result.outputs?.["image"] as { mediaId: string };
-    const entry = await client.media.entry(image.mediaId);
-    const blob = await client.media.download(image.mediaId);
+    const image = result.outputs?.["image"] as { data: { mediaId: string } };
+    const entry = await client.media.entry(image.data.mediaId);
+    const blob = await client.media.download(image.data.mediaId);
     expect(blob.size).toBe(entry.bytes);
     expect(blob.type).toBe(entry.mime);
     expect((await client.flows.lastRun("flow_p"))?.runId).toBe(run.id);

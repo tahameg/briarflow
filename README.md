@@ -131,9 +131,9 @@ const briar = createBriar({ packs: [mockPack] });
 
 const ctx = await briar.contexts.create({ name: "Demo" });
 const flow = ctx.flows.create("Poster");
-flow.inputs.add("topic", "text");
-flow.outputs.add("caption", "text");
-flow.outputs.add("poster", "image");
+flow.inputs.add("topic", "string");
+flow.outputs.add("caption", "string");
+flow.outputs.add("poster", "Image");
 
 const llm = flow.nodes.add("mock.llm");
 const image = flow.nodes.add("mock.image");
