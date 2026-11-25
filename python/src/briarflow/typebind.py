@@ -753,6 +753,6 @@ def to_json(value: Any, b: Binding, path: str) -> Any:
                     raise InvalidValue(f"{path}.{f.wire}", "is required")
         else:
             raise InvalidValue(path, f"must be a {cls.__name__} (got {_got(value)})")
-        check_limits(cls, out, path)
+        # Limits of outputs are checked by the engine (python-protocol.md §1.3).
         return out
     raise AssertionError(b)

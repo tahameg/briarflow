@@ -121,9 +121,8 @@ def test_text_in_and_out() -> None:
     assert to_json(v, b(Name), "o") == {"value": "Ann"}
     # a plain str is accepted where a Text is returned
     assert to_json("Bo", b(Name), "o") == {"value": "Bo"}
-    # a Text is accepted for a struct extending it, and checked against its limits
-    with pytest.raises(InvalidValue, match="o.value must be at most 10 characters long"):
-        to_json(Text("x" * 11), b(Name), "o")
+    # a Text is accepted for a struct extending it; its limits are the engine's to check
+    assert to_json(Text("x" * 11), b(Name), "o") == {"value": "x" * 11}
 
 
 def test_user_static_members_are_not_values() -> None:
@@ -237,11 +236,8 @@ def test_created_media_serializes_as_dollar_media() -> None:
     assert MediaHelper().read(image.data) == b"\x89PNG"
     with pytest.raises(InvalidValue, match="o must be a Audio"):
         to_json(image, b(Audio), "o")
-    # a new Image is accepted for a struct extending Image, and checked against its limits
+    # a new Image is accepted for a struct extending Image (the engine checks its limits)
     assert to_json(image, b(Photo), "o")["width"] == 2
-    big = MediaHelper().create(b"\x89PNG--", mime="image/png")
-    with pytest.raises(InvalidValue, match="o must be at most 5 bytes"):
-        to_json(big, b(Photo), "o")
 
 
 def test_create_picks_the_struct_by_mime() -> None:

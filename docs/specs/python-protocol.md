@@ -1,7 +1,11 @@
-# Spec: Python worker protocol v1, Python SDK, TS bridge
+# Spec: Python worker protocol 2, Python SDK, TS bridge
 
-Status: draft v1 (phase 0). Owner: ux-designer. **Authoritative** for `@briarflow/python`
-and `python/briarflow` (phase 6).
+Status: protocol 2 (2026-11-25, types v2). Owner: ux-designer. **Authoritative** for
+`@briarflow/python` and `python/briarflow`.
+
+Protocol 2 differs from 1 only in types and values (types.md): the primitives are `int float
+bool string binary`; text, media, JSON, secrets and errors are built-in structs; media values
+are structs whose `data` is a `binary`. A bridge and a worker must speak the same version.
 
 ## Deviations from ARCHITECTURE.md
 
@@ -15,13 +19,13 @@ and `python/briarflow` (phase 6).
 
 Clarifications from the first SDK implementation (requests.md REQ-1 from backend-developer,
 2026-10-21) and from the first bridge implementation (REQ-5) are folded into §1–§3 below; they
-are behaviour of protocol v1, not new versions.
+are behaviour of the protocol, not new versions.
 
 ---
 
-## 1. Wire protocol v1
+## 1. Wire protocol
 
-Transport: HTTP/1.1, JSON (UTF-8). Every response carries `X-Briarflow-Protocol: 1`. If the
+Transport: HTTP/1.1, JSON (UTF-8). Every response carries `X-Briarflow-Protocol: 2`. If the
 worker was started with a token, **every** request to **every** endpoint — health included —
 must carry `Authorization: Bearer <token>`; otherwise
 `401 {"error":{"code":"protocol.unauthorized","message":"…"}}`. (The bridge's readiness poll
@@ -37,19 +41,19 @@ to every endpoint:
 | 405 | `protocol.method_not_allowed` | known path, wrong method (`GET /briarflow/execute`, `POST /briarflow/health`); message names the right method |
 
 ### 1.1 `GET /briarflow/health`
-`200 {"ok": true, "protocol": 1, "pack": {"name": "imaging", "version": "0.1.0"}}`
+`200 {"ok": true, "protocol": 2, "pack": {"name": "imaging", "version": "0.1.0"}}`
 
 ### 1.2 `GET /briarflow/manifest`
 ```json
 {
-  "protocol": 1,
+  "protocol": 2,
   "sdk": { "name": "briarflow-python", "version": "0.1.0" },
   "pack": { "name": "imaging", "version": "0.1.0", "title": "Imaging", "description": "…" },
   "types": [ { "kind": "enum", "id": "imaging.ArtStyle", "name": "ArtStyle", "members": [ { "value": "anime" } ] } ],
   "nodes": [ { "type": "imaging.upscale", "title": "Upscale image", "category": "Image",
-               "inputs": [ { "name": "image", "type": { "kind": "primitive", "name": "image" } },
+               "inputs": [ { "name": "image", "type": { "kind": "named", "id": "briar.Image" } },
                            { "name": "factor", "type": { "kind": "primitive", "name": "int", "constraints": { "min": 1, "max": 8 } }, "default": 2 } ],
-               "outputs": [ { "name": "result", "type": { "kind": "primitive", "name": "image" } } ],
+               "outputs": [ { "name": "result", "type": { "kind": "named", "id": "briar.Image" } } ],
                "config": [], "dynamicPorts": false, "secrets": [], "cache": true,
                "timeoutMs": 300000, "retry": { "maxAttempts": 1 }, "concurrency": null } ]
 }
@@ -58,34 +62,38 @@ to every endpoint:
 - Every port has `name`, `type` and `title`. `title` is `Port(title=…)` or derived from the
   name: snake_case split into words, first letter capitalized (`max_tokens` → `"Max tokens"`);
   the single output port `result` → `"Result"`. `description` and `default` appear only when
-  set; `widget` is never emitted (Python has no widget hints in v1).
+  set; `widget` is never emitted (the Python SDK has no widget hints).
 - Node `description` is always a string (`""` when there is no docstring); `icon`, `color`,
   `deprecated` are `null` when unset.
 - `concurrency` is `null` unless `@node(concurrency=n)` sets it (the default is unlimited,
   same as TS).
 - `pack.title` / `pack.description` are omitted when not given to `pack()`.
-- Struct fields carry `name`, `type`, and `description` / `default` when set. Python v1
+- Struct fields carry `name`, `type`, and `description` / `default` when set (static fields also `"static": true`). The Python SDK
   cannot express **enum member labels** (members carry only `value`) or **struct field
   titles**; clients derive labels/titles as for TS packs.
  Python nodes never have dynamic ports or
-config in v1. The bridge validates the manifest with core (`pack.invalid` on failure) and
-rejects `protocol !== 1` with `python.unsupported_protocol`.
+config. The bridge validates the manifest with core (`pack.invalid` on failure) and
+rejects `protocol !== 2` with `python.unsupported_protocol`. Pack types may extend a built-in
+(`"extends": "briar.Text"`) and carry static fields (`"static": true` with the value in
+`default`), as in documents (types.md §1.3).
 
 ### 1.3 `POST /briarflow/execute`
 Request:
 ```json
-{ "protocol": 1, "nodeType": "imaging.upscale", "runId": "run_7", "nodeId": "n_up", "attempt": 1,
+{ "protocol": 2, "nodeType": "imaging.upscale", "runId": "run_7", "nodeId": "n_up", "attempt": 1,
   "timeoutMs": 300000,
-  "inputs": { "image": { "uri": "briar-media://m_abc", "mime": "image/png", "bytes": 2048, "hash": "…",
-                         "url": "http://127.0.0.1:41234/media/tok_9f…" },
+  "inputs": { "image": { "data": { "uri": "briar-media://m_abc", "mime": "image/png", "bytes": 2048, "hash": "…",
+                                   "url": "http://127.0.0.1:41234/media/tok_9f…" },
+                         "mime": "image/png", "name": "cat.png", "size": 2048, "width": 512, "height": 512 },
               "factor": 2 },
   "config": {}, "secrets": { } }
 ```
-- Inside Briarflow a media value is `{ mediaId }` (media.md); the bridge expands each one into
-  the MediaRef below from its registry entry, so this wire format did not change (2026-10-25).
-  Pass-through refs come back as `{ mediaId }`, `$media` outputs become transient entries.
-- Every MediaRef in `inputs` (also nested) gets an extra `url` the worker can GET without
-  auth for the duration of the request (see §3.3).
+- Inside Briarflow a `binary` is `{ mediaId }` (media.md). On the wire every `binary` — the
+  `data` of a media struct, or a bare `binary` port — is a **binary ref**
+  `{ uri, mime, bytes?, hash?, meta?, url }` built from its registry entry. Pass-through refs
+  come back as `{ mediaId }`, `$media` values become transient entries.
+- Every binary ref in `inputs` (also nested) carries a `url` the worker can GET without auth
+  for the duration of the request (see §3.3).
 - `secrets` contains only the names the node declared.
 - **Required fields:** `protocol` (integer) and `nodeType` (string). Missing or wrong JSON
   type → 400 `protocol.bad_request`. Defaults for the rest: `inputs`, `config`, `secrets` →
@@ -94,12 +102,13 @@ Request:
 - **Unknown keys:** unknown top-level request keys are ignored (forward compatibility,
   §1.5). Unknown keys in `inputs` (names that are not input ports) are ignored. Inside values
   the type rules apply: an unknown **struct** field is rejected (422, types.md §7); an inbound
-  **MediaRef** may carry only `uri, mime, bytes, hash, meta, url` — other keys are ignored
+  **binary ref** may carry only `uri, mime, bytes, hash, meta, url` — other keys are ignored
   (not rejected; the engine already validated the ref).
 - **Missing inputs:** port `default` → `null` if the type is optional → otherwise 422
   `node.invalid_input` with message `inputs.<name> is required` and `details.path`.
 - **Input checks** (422) are the SDK's type check: JSON kinds, struct fields, enum members,
-  media refs, and the declared constraints. The engine checked them already, so a 422 in
+  binary refs, the declared number / list constraints and Text / media limits (static fields).
+  The engine checked them already, so a 422 in
   practice means the worker and the engine disagree about the pack (e.g. a stale manifest).
 
 Errors **before** streaming starts (plain JSON body):
@@ -108,7 +117,7 @@ Errors **before** streaming starts (plain JSON body):
 |---|---|---|
 | 400 | `protocol.bad_request` | invalid JSON, body not an object, `protocol` or `nodeType` missing or of the wrong JSON type |
 | 404 | `protocol.unknown_node` | `nodeType` not in this pack |
-| 409 | `protocol.unsupported_version` | `protocol` ≠ 1 |
+| 409 | `protocol.unsupported_version` | `protocol` ≠ 2 |
 | 422 | `node.invalid_input` | inputs fail the SDK's type check (with `details.path`) |
 
 Otherwise `200`, `Content-Type: application/x-ndjson`, `Transfer-Encoding: chunked` (no
@@ -121,7 +130,7 @@ responses with `Content-Length`.
 ```json
 {"type":"progress","fraction":0.4,"message":"upscaling"}
 {"type":"log","level":"info","message":"model loaded","data":{"ms":120}}
-{"type":"result","outputs":{"result":{"$media":{"mime":"image/png","base64":"iVBORw0…","filename":"up.png","meta":{"width":1024,"height":1024}}}}}
+{"type":"result","outputs":{"result":{"data":{"$media":{"mime":"image/png","base64":"iVBORw0…","filename":"up.png","meta":{"width":1024,"height":1024}}},"mime":"image/png","name":"up.png","size":20480,"width":1024,"height":1024}}}
 ```
 or as the last line:
 ```json
@@ -135,18 +144,20 @@ Rules:
 - Unknown line types are ignored (forward compatibility). Malformed JSON line →
   `python.protocol_error`.
 - `fraction` in [0,1]; `level` ∈ `debug|info|warn|error`.
-- **Media out:** any value position whose type is a media primitive may be either a MediaRef
-  passed through unchanged (e.g. an input image) or `{"$media": {"mime", "base64", "filename"?, "meta"?}}`.
-  The bridge decodes it, calls `MediaStore.put`, and substitutes the resulting MediaRef before
-  the engine validates outputs. Max decoded size per item: 100 MiB, `MAX_MEDIA_OUT_BYTES` (`python.media_too_large`).
+- **Media out:** any `binary` position (the `data` of an `Image`…) may be either a binary ref
+  passed through unchanged (e.g. an input image's `data`) or `{"$media": {"mime", "base64", "filename"?, "meta"?}}`.
+  The bridge decodes it, puts it in the media registry, and substitutes the `{ mediaId }`
+  before the engine validates outputs. A `uri` that is `briar-media://<id>` becomes
+  `{ mediaId: id }`; an http(s) `uri` becomes a link entry. Max decoded size per item: 100 MiB,
+  `MAX_MEDIA_OUT_BYTES` (`python.media_too_large`).
 - Error `code` follows node-api.md §6 codes; `retryable` maps to `NodeError.retryable`.
 - **Output checks are split.** The SDK checks output **shape and types** (every declared
-  output present, JSON kinds, struct fields, enum members, media refs or `$media`) and on
+  output present, JSON kinds, struct fields, enum members, binary refs or `$media`) and on
   failure sends the terminal line `{"type":"error","code":"node.invalid_output","message":"…","retryable":false,"details":{"path":"outputs.result"}}`
   (`details.path` uses the types.md §7 path syntax). The SDK does **not** check output
-  **constraints** (min/max, lengths, formats…): the engine validates every output after the
+  **constraints or limits** (min/max, Text lengths, media formats…): the engine validates every output after the
   bridge has replaced `$media` items, as for TS nodes (types.md §6).
-- **Pass-through MediaRefs** in outputs have their `url` key stripped by the SDK (it is a
+- **Pass-through binary refs** in outputs have their `url` key stripped by the SDK (it is a
   per-request loopback URL). The bridge strips `url` again defensively before validation.
 - **`Cancelled` with the client still connected** (a node raises `Cancelled` itself, or
   catches the cancellation of some inner work and re-raises it): the worker sends the
@@ -167,9 +178,9 @@ Rules:
   (`node.cancelled` terminal line).
 
 ### 1.5 Versioning
-- `protocol` is an integer. Additive changes (new optional fields, new line types) keep `1`.
-  Both sides ignore unknown fields. A breaking change bumps to `2`; a bridge may support
-  several versions and picks the one in the manifest.
+- `protocol` is an integer. Additive changes (new optional fields, new line types) keep the
+  number. Both sides ignore unknown fields. A breaking change bumps it (types v2 made it `2`);
+  a bridge may support several versions and picks the one in the manifest.
 
 ## 2. Python SDK (`python/briarflow`, pip `briarflow`)
 
@@ -181,9 +192,8 @@ Python ≥ 3.10, stdlib only (`http.server` + `ThreadingHTTPServer`, `json`, `da
 ```python
 from briarflow import (
     node, struct, outputs, pack, serve,
-    Image, Video, Audio, Model3D, File, MediaRef,
-    MinLength, MaxLength, Pattern, Multiline, Min, Max, MinItems, MaxItems, Formats, MaxBytes,
-    MinWidth, MaxWidth, MinHeight, MaxHeight, MaxDurationSec,
+    Binary, Text, Image, Video, Audio, Model3D, File, Json, Secret, SecretKind, ApiKey, Error,
+    Min, Max, MinItems, MaxItems,
     Port, ExecContext, MediaHelper, NodeError, Cancelled,
     Pack, Worker, Constraint, PROTOCOL_VERSION, __version__,
 )
@@ -191,18 +201,19 @@ from briarflow import (
 
 | Name | Purpose |
 |---|---|
-| `@node(type=None, title=None, category=None, description=None, cache=True, timeout_ms=300_000, retry=0, concurrency=None, secrets=(), icon=None, color=None)` | Marks a function as a node. Ports come from the signature. Description defaults to the docstring's first paragraph. **Type rule:** `type=None` → `<pack>.<camelCase(function name)>`; `type` without a dot (`"shout"`) → prefixed with the pack name (`"<pack>.shout"`); a dotted `type` must start with `<pack>.` (node-api.md §7 namespace rule; Python packs cannot claim extra namespaces in v1) else `pack()` raises `ValueError`. The result must match the node type regex (node-api.md §1). **Retry rule:** an integer `retry=N` means N extra attempts, i.e. `retry: { maxAttempts: N + 1 }` (`retry=0` → `maxAttempts: 1`); a dict is passed through as the retry policy. |
-| `@struct` | On a `@dataclass`: becomes a pack struct type named after the class. Field docs via `Annotated[..., Port(description=…)]`. |
+| `@node(type=None, title=None, category=None, description=None, cache=True, timeout_ms=300_000, retry=0, concurrency=None, secrets=(), icon=None, color=None)` | Marks a function as a node. Ports come from the signature. Description defaults to the docstring's first paragraph. **Type rule:** `type=None` → `<pack>.<camelCase(function name)>`; `type` without a dot (`"shout"`) → prefixed with the pack name (`"<pack>.shout"`); a dotted `type` must start with `<pack>.` (node-api.md §7 namespace rule; Python packs cannot claim extra namespaces) else `pack()` raises `ValueError`. The result must match the node type regex (node-api.md §1). **Retry rule:** an integer `retry=N` means N extra attempts, i.e. `retry: { maxAttempts: N + 1 }` (`retry=0` → `maxAttempts: 1`); a dict is passed through as the retry policy. |
+| `@struct` | On a `@dataclass`: becomes a pack struct type named after the class. Field docs via `Annotated[..., Port(description=…)]`. `ClassVar[T] = value` attributes are **static fields**. On a subclass of a struct (a built-in such as `Text`, `Image`, or a `@struct` class) it **extends** that struct: it may only give static fields values (`max_length = 80`) or add new `ClassVar`s; a new instance field raises `TypeError`. |
 | `@outputs` | On a `@dataclass` used as a return type: one output port per field. |
 | `pack(name, version, nodes, types=(), title=None, description=None)` | Builds the pack; resolves default node types; validates (raises `ValueError` with a clear message). |
 | `serve(pack, host="127.0.0.1", port=8765, token=None)` | Runs the worker (blocking). Env `BRIARFLOW_HOST`, `BRIARFLOW_PORT`, `BRIARFLOW_TOKEN` override arguments. Port `0` = pick a free port. **Always** prints `briarflow-worker ready port=<n>` (the real bound port) on stdout once listening, whatever port was requested. Handles SIGTERM gracefully. |
 | `NodeError(code, message, retryable=False, details=None)` | Expected failures. |
 | `Cancelled` | Raised by `ctx.progress()` after cancellation; a node may raise it too (§1.3). |
-| `MinWidth`, `MaxWidth`, `MinHeight`, `MaxHeight`, `MaxDurationSec` | Media constraint markers (types.md §6), used like `Formats` / `MaxBytes`. |
+| `Binary` | The value of `binary`: `uri`, `mime`, `bytes`, `hash`, `meta`, `url`. |
+| `Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error`, `SecretKind` | The built-in structs and enum (types.md §1.2) as dataclasses. Static fields use snake_case (`max_length`, `min_width`, `max_duration`); the manifest uses the engine's names (`maxLength`…). `Json.of(data)` / `.parse()`. |
 | `Worker(pack, host="127.0.0.1", port=8765, token=None, verbose=False)` | Worker bound to a socket, for tests and embedding: `start()` (background thread, returns the worker), `serve_forever()` (blocking), `url`, `host`, `port`, `stop()`. Does not read env vars, install signal handlers or print the ready line — `serve()` does those. |
 | `Pack` | Type returned by `pack()`: `name`, `version`, `title`, `description`, `nodes`, `types`, `manifest()`, `node(type)`. |
 | `MediaHelper` | Type of `ctx.media` (§2.4), exported for type hints and tests. |
-| `Constraint`, `PROTOCOL_VERSION`, `__version__` | Base class of the markers; protocol integer (`1`); SDK version. |
+| `Constraint`, `PROTOCOL_VERSION`, `__version__` | Base class of the markers; protocol integer (`2`); SDK version. |
 
 ### 2.2 Ports from the signature
 
@@ -222,34 +233,55 @@ def upscale(image: Image, factor: Annotated[int, Min(1), Max(8)] = 2, *, ctx: Ex
 
 | Python | Briarflow |
 |---|---|
-| `str` | text |
-| `int` | int |
-| `float` | float (accepts int values) |
-| `bool` | boolean |
-| `Image`, `Video`, `Audio`, `Model3D`, `File` | media primitives (values arrive as `MediaRef` instances) |
-| `list[T]` | `list<T>` |
+| `str` | `string` |
+| `int` | `int` |
+| `float` | `float` (accepts int values) |
+| `bool` | `bool` |
+| `Binary` | `binary` |
+| `Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error` | the built-in structs `briar.*` |
+| `list[T]` (also `tuple[T, ...]`) | `list<T>` |
 | `T \| None`, `Optional[T]` | `T?` |
 | `@struct` dataclass | struct `<pack>.<ClassName>` |
+| `@struct class X(Base)` | struct `<pack>.X` that extends `Base` |
+| `ClassVar[T] = value` on a struct | static field |
 | `class X(str, Enum)` | enum `<pack>.X`, member values = enum values |
-| `Annotated[T, MinLength(n) / MaxLength(n) / Pattern(r) / Multiline()]` | text constraints (see the `Pattern` note below) |
-| `Annotated[T, Min(n) / Max(n)]` | int/float constraints |
+| `Annotated[int \| float, Min(n) / Max(n)]` | number constraints |
 | `Annotated[list[T], MinItems(n) / MaxItems(n)]` | list constraints |
-| `Annotated[Image, Formats("png","jpeg") / MaxBytes(n) / MinWidth(n) / MaxWidth(n) / MinHeight(n) / MaxHeight(n)]`, `Annotated[Video, MaxDurationSec(s)]` | media constraints |
 | `Annotated[T, Port(title=…, description=…)]` | port metadata |
+
+Text and media limits are static fields, so they are set by extending:
+
+```python
+@struct
+class Title(Text):            # Title extends Text { maxLength = 80 }; accepted wherever Text is
+    max_length = 80
+
+@struct
+class Thumbnail(Image):       # formats and size limits of an Image
+    formats = ("png", "webp")
+    max_width = 512
+```
+
+`pack()` checks them like the engine: `min_length > max_length`, a negative limit or a pattern
+that does not compile raise `ValueError`; a static field with another type than in the base
+raises `TypeError`. A plain `str` has no limits.
 
 Anything else (dict, tuple, Any, unions of non-None types) → `pack()` raises `TypeError` naming
 the parameter and listing supported types. Struct field and enum value rules follow types.md §1.
 
-**`Pattern` regex dialect.** The SDK checks `Pattern(r)` with Python `re.fullmatch`; the engine
+**`pattern` regex dialect.** The SDK checks a Text's `pattern` with Python `re.fullmatch`; the engine
 checks the same pattern string with ECMAScript `RegExp` (whole-string match). The manifest
 carries the string unchanged. Authors must use the subset both dialects read the same way:
 literals, classes `[...]`, `\d \w \s`, quantifiers `* + ? {m,n}`, groups `(...)` /
 `(?:...)`, alternation `|`. Avoid named groups (`(?P<n>…)` vs `(?<n>…)`), lookbehind, inline
 flags (`(?i)`), possessive quantifiers, `\A`/`\Z`, and Unicode property escapes.
 
-Values passed to the function: `str`/`int`/`float`/`bool`, `MediaRef` objects, struct
-**dataclass instances**, `Enum` members, lists, `None`. Returned values are converted back the
-same way (dataclass → dict, Enum → value).
+Values passed to the function: `str`/`int`/`float`/`bool`, `Binary` objects, struct
+**dataclass instances** (a `Title` input arrives as `Title(value="…")`; an `Image` as
+`Image(data=Binary(…), mime=…, width=…)`), `Enum` members, lists, `None`. Returned values are
+converted back the same way (dataclass → dict, Enum → value); where a Text (or a struct
+extending it) is expected, a plain `str` is accepted too, and an instance of the base struct
+(`Image` for a `Thumbnail` port) is accepted.
 
 ### 2.4 `ExecContext`
 
@@ -266,10 +298,11 @@ class ExecContext:
     media: MediaHelper
 
 class MediaHelper:
-    def read(self, ref: MediaRef) -> bytes            # GETs ref.url
-    def open(self, ref: MediaRef) -> BinaryIO         # streaming variant
-    def create(self, data: bytes, mime: str, filename: str | None = None, **meta) -> MediaRef
-        # returns a MediaRef placeholder serialized as {"$media": …}
+    def read(self, value: Image | … | Binary) -> bytes      # GETs value.data.url
+    def open(self, value: Image | … | Binary) -> BinaryIO   # streaming variant
+    def create(self, data: bytes, mime: str, filename: str | None = None, **meta) -> Image | Video | Audio | Model3D | File
+        # the media struct for the mime, its data a new Binary serialized as {"$media": …};
+        # width, height, duration, fps in meta fill those fields
 ```
 
 Exceptions: `NodeError` → `error` line with its code; `Cancelled` → `error` line with
