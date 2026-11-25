@@ -236,7 +236,7 @@ describe("ids", () => {
       { op: "node.add", flowId: KIT, id: "n_k", type: "briar.constant", position: { x: 0, y: 0 }, config: { type: "int" } },
     ]);
     expect(r.resolved[0]).toMatchObject({ type: ir.list(ir.optional(ir.named("ty_char"))) });
-    expect(r.resolved[1]).toMatchObject({ fields: [{ name: "a", type: ir.optional(ir.text()) }] });
+    expect(r.resolved[1]).toMatchObject({ fields: [{ name: "a", type: ir.optional(ir.string()) }] });
     expect(r.resolved[2]).toMatchObject({ config: { type: ir.int() } });
     expect(nodeOf(r.doc, KIT, "n_k")!.config).toEqual({ type: ir.int() });
   });

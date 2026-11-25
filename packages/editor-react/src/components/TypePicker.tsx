@@ -127,7 +127,7 @@ function TypeMenu({
     const r = anchor.getBoundingClientRect();
     return { top: r.bottom + 4, left: r.left };
   });
-  const wrappers = shape ?? { base: { kind: "primitive", name: "text" } as TypeRef, array: false, optional: false, itemOptional: false };
+  const wrappers = shape ?? { base: { kind: "primitive", name: "string" } as TypeRef, array: false, optional: false, itemOptional: false };
   const currentBase = shape ? formatType(shape.base, scope) : undefined;
 
   const items = useMemo<MenuItem[]>(() => {

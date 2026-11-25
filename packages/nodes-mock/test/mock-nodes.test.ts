@@ -51,19 +51,19 @@ const structCtx = () =>
   context({
     types: [
       enumType("ty_mood", "Mood", ["calm", "angry", "sad"]),
-      struct("ty_inner", "Inner", [field("flag", ir.boolean())]),
+      struct("ty_inner", "Inner", [field("flag", ir.bool())]),
       struct("ty_all", "All", [
-        field("title", ir.text()),
-        field("short", ir.text({ maxLength: 3 })),
-        field("long", ir.text({ minLength: 30 })),
+        field("title", ir.string()),
+        field("short", ir.string()),
+        field("long", ir.string()),
         field("count", ir.int()),
         field("ranged", ir.int({ min: 10, max: 12 })),
         field("ratio", ir.float({ min: 0, max: 1 })),
-        field("ok", ir.boolean()),
+        field("ok", ir.bool()),
         field("mood", ir.named("ty_mood")),
-        field("tags", ir.list(ir.text())),
+        field("tags", ir.list(ir.string())),
         field("three", ir.list(ir.int(), { minItems: 3 })),
-        field("maybe", ir.optional(ir.text())),
+        field("maybe", ir.optional(ir.string())),
         field("inner", ir.named("ty_inner")),
         field("image", ir.image()),
         field("doc", ir.file()),
@@ -73,7 +73,7 @@ const structCtx = () =>
         field("clips", ir.list(ir.optional(ir.video()), { minItems: 1 })),
       ]),
       struct("ty_video", "WithVideo", [field("clip", ir.video())]),
-      struct("ty_simple", "Simple", [field("name", ir.text())]),
+      struct("ty_simple", "Simple", [field("name", ir.string())]),
     ],
   });
 

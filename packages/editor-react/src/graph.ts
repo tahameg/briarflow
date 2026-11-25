@@ -3,6 +3,7 @@
  * diagnostics and run status. No React here, so it can be unit tested and reused by other
  * view layers.
  */
+import { mediaKindOfBuiltin } from "@briarflow/core";
 import {
   analyzeExec,
   ERROR_OUTPUT,
@@ -453,7 +454,8 @@ export function canConnect(view: FlowView, from: { node: string; port: string },
 export function visualMediaKind(type: TypeRef): "image" | "video" | undefined {
   const inner = type.kind === "optional" || type.kind === "list" ? type.of : type;
   if (inner.kind === "optional" || inner.kind === "list") return visualMediaKind(inner);
-  return inner.kind === "primitive" && (inner.name === "image" || inner.name === "video") ? inner.name : undefined;
+  const kind = inner.kind === "named" ? mediaKindOfBuiltin(inner.id) : undefined;
+  return kind === "image" || kind === "video" ? kind : undefined;
 }
 
 /** What a node's inputs were in the run: the wired source's output, else the node's constant. */

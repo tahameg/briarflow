@@ -3,7 +3,8 @@
  * problems; returns diagnostics in a deterministic order (structure, types, signature,
  * variables, nodes, edges, cycles, variable ordering; document order inside each group).
  */
-import { extendsProblems, type ExtendsProblem } from "../types/layout.js";
+import { extendsProblems, structLayout, type ExtendsProblem } from "../types/layout.js";
+import { limitProblems } from "../types/limits.js";
 import type { ContextDocument, FlowDocument, TypeDecl } from "../documents/model.js";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
@@ -438,7 +439,13 @@ function checkTypeDecls(
       });
     }
     const resolve = (id: string) => scope.getType(id)?.decl;
-    for (const p of extendsProblems(t, resolve)) out.push(extendsDiagnostic(p, t, at, scope));
+    const extendsIssues = extendsProblems(t, resolve);
+    for (const p of extendsIssues) out.push(extendsDiagnostic(p, t, at, scope));
+    if (extendsIssues.length === 0) {
+      for (const p of limitProblems(structLayout(t, resolve))) {
+        out.push({ severity: "error", code: "type.invalid_constraint", message: constraintMessage(p, `"${t.name}"`), path: { ...at, field: p.constraint }, details: { constraint: p.constraint } });
+      }
+    }
     for (const f of t.fields) {
       const fat = { ...at, field: f.name };
       if (f.static && f.default === undefined && f.type.kind !== "optional") {

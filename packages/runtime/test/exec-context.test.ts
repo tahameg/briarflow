@@ -20,7 +20,7 @@ describe("ExecContext", () => {
   it("has runId, flowId, nodeId, attempt, an AbortSignal, the engine media and resolveType", async () => {
     const { engine, media } = makeEngine();
     const d = doc({
-      types: [{ kind: "struct", id: "ty_char", name: "Character", fields: [{ name: "name", type: ir.text() }] }],
+      types: [{ kind: "struct", id: "ty_char", name: "Character", fields: [{ name: "name", type: ir.string() }] }],
       nodes: [n("n_ctx", "probe.ctx")],
     });
     const result = await engine.run({ context: d, flowId: FLOW_ID, runId: "run_x" }).result;
@@ -32,7 +32,7 @@ describe("ExecContext", () => {
     // ctx.media is the engine media scoped to the node: what it puts belongs to the run.
     expect(Object.keys(seen["media"] as object).sort()).toEqual(["entry", "link", "put", "read", "url"]);
     expect(media).toBeDefined();
-    expect(seen["resolveType"]).toEqual({ kind: "struct", id: "ty_char", name: "Character", fields: [{ name: "name", type: ir.text() }] });
+    expect(seen["resolveType"]).toEqual({ kind: "struct", id: "ty_char", name: "Character", fields: [{ name: "name", type: ir.string() }] });
     expect((seen["node"] as { id: string }).id).toBe("n_ctx");
   });
 
@@ -75,7 +75,7 @@ describe("ExecContext", () => {
           },
         },
       });
-      const d = doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_s", "probe.secret")], edges: [e("n_s.value", "n_out.out")] });
+      const d = doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_s", "probe.secret")], edges: [e("n_s.value", "n_out.out")] });
       const result = await engine.run({ context: d, flowId: FLOW_ID }).result;
       expect(result.outputs).toEqual({ out: "key:s3cret" });
       expect(asked).toEqual(["API_KEY"]);
@@ -110,7 +110,7 @@ describe("ExecContext", () => {
         return new Response("pong");
       }) as typeof fetch;
       const { engine } = makeEngine({ fetch: fakeFetch });
-      const d = doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_ctx", "probe.ctx", { values: { url: "https://example.test/ping" } })], edges: [e("n_ctx.value", "n_out.out")] });
+      const d = doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_ctx", "probe.ctx", { values: { url: "https://example.test/ping" } })], edges: [e("n_ctx.value", "n_out.out")] });
       const result = await engine.run({ context: d, flowId: FLOW_ID }).result;
       expect(result.outputs).toEqual({ out: "pong" });
       expect(calls).toHaveLength(1);
@@ -149,14 +149,14 @@ describe("phase 3 exit flow", () => {
           id: "ty_char",
           name: "Character",
           fields: [
-            { name: "name", type: ir.text() },
+            { name: "name", type: ir.string() },
             { name: "age", type: ir.int(), default: 30 },
           ],
         },
       ],
       inputs: [{ name: "character", type: ir.named("ty_char") }],
       outputs: [
-        { name: "reply", type: ir.text() },
+        { name: "reply", type: ir.string() },
         { name: "portrait", type: ir.image() },
       ],
       nodes: [

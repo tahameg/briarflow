@@ -5,7 +5,7 @@ import { stdPack } from "@briarflow/nodes-std";
 import { createEngine } from "@briarflow/runtime";
 
 const pos = { x: 0, y: 0 };
-const text = { kind: "primitive", name: "text" } as const;
+const text = { kind: "primitive", name: "string" } as const;
 const int = { kind: "primitive", name: "int" } as const;
 
 function doc(flowPart: Partial<ContextDocument["flows"][number]>, types: ContextDocument["types"] = []): ContextDocument {

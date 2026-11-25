@@ -16,7 +16,7 @@ import {
 } from "@briarflow/core";
 import { ir } from "@briarflow/testing";
 
-const text = ir.text();
+const text = ir.string();
 const int = ir.int();
 const float = ir.float();
 const X = ir.named("ty_x");
@@ -27,15 +27,15 @@ describe("isAssignable (types.md §4 table)", () => {
     // primitive p
     ["text → text", text, text, true],
     ["int → int", int, int, true],
-    ["boolean → boolean", ir.boolean(), ir.boolean(), true],
+    ["boolean → boolean", ir.bool(), ir.bool(), true],
     ["image → image", ir.image(), ir.image(), true],
     ["int → float", int, float, true],
     ["float → float", float, float, true],
     ["float → int", float, int, false],
     ["text → float", text, float, false],
-    ["boolean → float", ir.boolean(), float, false],
+    ["boolean → float", ir.bool(), float, false],
     ["int → text (no implicit text)", int, text, false],
-    ["boolean → text", ir.boolean(), text, false],
+    ["boolean → text", ir.bool(), text, false],
     ["text → int", text, int, false],
     ["text → named", text, X, false],
     ["text → list<text>", text, ir.list(text), false],
@@ -87,9 +87,9 @@ describe("isAssignable (types.md §4 table)", () => {
   });
 
   it("ignores constraints and list bounds", () => {
-    expect(isAssignable(ir.text({ maxLength: 10 }), ir.text({ maxLength: 5 }))).toBe(true);
+    expect(isAssignable(ir.string(), ir.string())).toBe(true);
     expect(isAssignable(ir.int({ min: -5 }), ir.float({ min: 0 }))).toBe(true);
-    expect(isAssignable(ir.image({ formats: ["gif"] }), ir.image({ formats: ["png"] }))).toBe(true);
+    expect(isAssignable(ir.image(), ir.image())).toBe(true);
     expect(isAssignable(ir.list(text, { maxItems: 10 }), ir.list(text, { maxItems: 1 }))).toBe(true);
   });
 });
@@ -105,8 +105,8 @@ describe("typeEquals / stripConstraints", () => {
   });
 
   it("respects constraints unless ignoreConstraints", () => {
-    expect(typeEquals(ir.text({ maxLength: 3 }), text)).toBe(false);
-    expect(typeEquals(ir.text({ maxLength: 3 }), text, { ignoreConstraints: true })).toBe(true);
+    expect(typeEquals(ir.int(), ir.int({ min: 0 }))).toBe(false);
+    expect(typeEquals(ir.int(), ir.int({ min: 0 }), { ignoreConstraints: true })).toBe(true);
     expect(typeEquals(ir.list(text, { maxItems: 1 }), ir.list(text))).toBe(false);
     expect(typeEquals(ir.list(text, { maxItems: 1 }), ir.list(text), { ignoreConstraints: true })).toBe(true);
   });
@@ -116,7 +116,7 @@ describe("typeEquals / stripConstraints", () => {
   });
 
   it("stripConstraints removes constraints and bounds recursively", () => {
-    const input = ir.optional(ir.list(ir.list(ir.text({ maxLength: 3 }), { minItems: 1 }), { maxItems: 4 }));
+    const input = ir.optional(ir.list(ir.list(ir.string(), { minItems: 1 }), { maxItems: 4 }));
     const before = structuredClone(input);
     expect(stripConstraints(input)).toEqual(ir.optional(ir.list(ir.list(text))));
     expect(input).toEqual(before);
@@ -226,7 +226,7 @@ describe("bindTypeVars (types.md §5)", () => {
   });
 
   it("constraints are dropped from bindings", () => {
-    expectBindings([input("a", T, ir.text({ maxLength: 3 }))], { T: text });
+    expectBindings([input("a", T, ir.string())], { T: text });
     expectBindings([input("l", ir.list(T), ir.list(ir.int({ min: 0 }), { maxItems: 2 }))], { T: int });
   });
 

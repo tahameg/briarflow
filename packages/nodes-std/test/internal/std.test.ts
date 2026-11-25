@@ -104,7 +104,7 @@ describe("text.template", () => {
     const ports = textTemplate.resolvePorts?.({ config: { template: "{{character_name_that_is_long}} and {{b}}" }, scope: {} as never });
     expect(ports).toEqual({
       inputs: { character_name_that_is_long: { kind: "typeSpec", ref: { kind: "var", name: "T1" } }, b: { kind: "typeSpec", ref: { kind: "var", name: "T2" } } },
-      outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "text" } } },
+      outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "string" } } },
     });
   });
 
@@ -127,7 +127,7 @@ describe("toText", () => {
     expect(valueToText(3)).toBe("3");
     expect(valueToText(false)).toBe("false");
     expect(valueToText(null)).toBe("");
-    expect(valueToText({ mediaId: "med_1" }, { kind: "primitive", name: "image" })).toBe("med_1");
+    expect(valueToText({ mediaId: "med_1" }, { kind: "named", id: "briar.Image" })).toBe("med_1");
     expect(valueToText([{ b: 1, a: 2 }])).toBe('[{"a":2,"b":1}]');
     expect(await call(convertToText, { value: 42 })).toEqual({ text: "42" });
   });

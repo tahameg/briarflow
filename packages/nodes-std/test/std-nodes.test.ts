@@ -53,13 +53,13 @@ const charCtx = (): ContextDocument =>
   context({
     types: [
       struct("ty_char", "Character", [
-        field("name", ir.text()),
+        field("name", ir.string()),
         field("age", ir.int({ min: 0 }), { default: 30, description: "Years" }),
-        field("nick", ir.optional(ir.text())),
+        field("nick", ir.optional(ir.string())),
       ]),
     ],
     globals: [
-      { id: "gv_style", name: "style", type: ir.text(), access: "readonly", value: "noir" },
+      { id: "gv_style", name: "style", type: ir.string(), access: "readonly", value: "noir" },
       { id: "gv_count", name: "count", type: ir.int(), access: "readwrite", value: 1 },
     ],
     flows: [flow({ id: "flow_s", name: "S", variables: [{ id: "var_x", name: "x", type: ir.int({ min: 0 }), access: "public", default: 0 }], builtins: false })],
@@ -266,7 +266,7 @@ describe("text.template", () => {
       ["name", { kind: "var", name: "T1" }],
       ["style", { kind: "var", name: "T2" }],
     ]);
-    expect(r.ports.outputs.map((p) => [p.name, p.type])).toEqual([["text", { kind: "primitive", name: "text" }]]);
+    expect(r.ports.outputs.map((p) => [p.name, p.type])).toEqual([["text", { kind: "primitive", name: "string" }]]);
     expect(r.outputs).toEqual({ text: "Aria in 2, Aria" });
   });
 
@@ -282,14 +282,14 @@ describe("text.template", () => {
 
   it("a field path makes a json input; variables add no input", () => {
     const scope = {
-      flow: { id: "f", inputs: [], outputs: [], variables: [{ id: "var_c", name: "city", type: ir.text(), access: "private" as const }] },
+      flow: { id: "f", inputs: [], outputs: [], variables: [{ id: "var_c", name: "city", type: ir.string(), access: "private" as const }] },
       globals: [],
       resolveType: () => undefined,
     };
     const ports = textTemplate.resolvePorts!({ config: { template: "{{who}} from {{user.city}} in {{$(city)}}" }, scope });
     expect(ports).toEqual({
-      inputs: { who: { kind: "typeSpec", ref: { kind: "var", name: "T1" } }, user: { kind: "typeSpec", ref: { kind: "primitive", name: "json" } } },
-      outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "text" } } },
+      inputs: { who: { kind: "typeSpec", ref: { kind: "var", name: "T1" } }, user: { kind: "typeSpec", ref: { kind: "named", id: "briar.Json" } } },
+      outputs: { text: { kind: "typeSpec", ref: { kind: "primitive", name: "string" } } },
     });
   });
 
@@ -420,7 +420,7 @@ describe("convert nodes", () => {
 
   it("As int / As float take only text or json", () => {
     const port = convertAsInt.inputs.value;
-    expect(port.ref).toEqual({ kind: "var", name: "T", oneOf: [ir.text(), ir.json()] });
+    expect(port.ref).toEqual({ kind: "var", name: "T", oneOf: [ir.string(), ir.json()] });
   });
 
   it.each([
@@ -514,8 +514,8 @@ describe("struct and constant nodes", () => {
   });
 
   it("briar.constant: ports typed by config.type; identity", async () => {
-    const r = await runNode(constant, { value: ["a", "b"] }, { config: { type: ir.list(ir.text()) } });
-    expect(r.ports.inputs[0]?.type).toEqual(ir.list(ir.text()));
+    const r = await runNode(constant, { value: ["a", "b"] }, { config: { type: ir.list(ir.string()) } });
+    expect(r.ports.inputs[0]?.type).toEqual(ir.list(ir.string()));
     expect(r.outputs).toEqual({ value: ["a", "b"] });
     expect((await rejects(runNode(constant, { value: "x" }, { config: { type: ir.int() } }))).code).toBe("node.invalid_input");
   });

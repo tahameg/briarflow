@@ -6,6 +6,7 @@ import type { Diagnostic } from "../validation/diagnostic.js";
 import { constraintMessage, constraintProblems } from "./constraints.js";
 import type { ListTypeRef, PrimitiveName, TypeRef } from "./ir.js";
 import { PRIMITIVE_NAMES } from "./ir.js";
+import { BUILTIN_TYPES, builtinType } from "./builtins.js";
 import type { TypeScope } from "./scope.js";
 
 /** Options of {@link parseType}. */
@@ -33,7 +34,7 @@ class ParseFailure {
   constructor(readonly diagnostic: Diagnostic) {}
 }
 
-const EXAMPLES = "Example of valid types: text, list<image>, Character?";
+const EXAMPLES = "Example of valid types: string, list<Image>, Character?";
 
 /**
  * Parses a shorthand string into the IR. Never throws for bad input; returns a diagnostic with
@@ -208,7 +209,9 @@ class Parser {
 
   private named(name: string, start: number): TypeRef {
     const scope = this.options.scope;
-    if (!scope) return { kind: "named", id: name };
+    // Built-in types are in every scope, so they resolve without one too.
+    const builtin = BUILTIN_TYPES.find((d) => d.name === name || d.id === name);
+    if (!scope) return { kind: "named", id: builtin?.id ?? name };
     const r = scope.resolveName(name);
     if (r.ok) return { kind: "named", id: r.decl.id };
     void start;
@@ -265,6 +268,8 @@ export function formatType(type: TypeRef, scope?: TypeScope): string {
 
 function formatNamed(id: string, scope: TypeScope | undefined): string {
   if (!scope) {
+    const builtin = builtinType(id);
+    if (builtin) return builtin.name;
     return /^([a-z][a-z0-9_]*\.)?[A-Z][A-Za-z0-9_]*$/.test(id) ? id : `#${id}`;
   }
   const entry = scope.getType(id);

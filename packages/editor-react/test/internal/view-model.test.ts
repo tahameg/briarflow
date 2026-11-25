@@ -100,7 +100,7 @@ describe("buildFlowView", () => {
 
 describe("helpers", () => {
   it("styles list and optional types", () => {
-    const s = typeStyle({ kind: "optional", of: { kind: "list", of: { kind: "primitive", name: "image" } } });
+    const s = typeStyle({ kind: "optional", of: { kind: "list", of: { kind: "named", id: "briar.Image" } } });
     expect(s).toMatchObject({ token: "peach", hollow: true, optional: true, shape: "square" });
     expect(typeStyle({ kind: "var", name: "T" }).unbound).toBe(true);
   });
@@ -118,9 +118,9 @@ describe("helpers", () => {
   });
 
   it("picks widgets and initial values", () => {
-    expect(widgetKind({ kind: "primitive", name: "image" }, undefined)).toBe("media");
+    expect(widgetKind({ kind: "named", id: "briar.Image" }, undefined)).toBe("media");
     expect(initialValue({ kind: "primitive", name: "int", constraints: { min: 3 } }, undefined)).toBe(3);
-    expect(initialValue({ kind: "list", of: { kind: "primitive", name: "text" } }, undefined)).toEqual([]);
+    expect(initialValue({ kind: "list", of: { kind: "primitive", name: "string" } }, undefined)).toEqual([]);
   });
 });
 

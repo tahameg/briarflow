@@ -20,7 +20,7 @@ import {
 } from "../src/index.js";
 import type { ContextDocument, NodeInstance } from "../src/index.js";
 
-const prompt = { prompt: t.text() };
+const prompt = { prompt: t.string() };
 const image = defineNode({
   type: "img.generate",
   pure: true,
@@ -33,7 +33,7 @@ const image = defineNode({
         title: "Best",
         description: "Slow and sharp.",
         config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
-        inputs: { ...prompt, negative: t.optional(t.text()) },
+        inputs: { ...prompt, negative: t.optional(t.string()) },
         outputs: { image: t.image(), seed: t.int() },
         run: ({ config }) => ({ image: { mediaId: "y" }, seed: config.steps }),
       }),
@@ -78,7 +78,7 @@ describe("defineNode with variants", () => {
     ["bad name", { variants: { options: { "a b": variant({ run: () => ({}) }) } } }, 'variant "a b": is not a valid variant name'],
     ["missing default", { variants: { default: "z", options: { a: variant({ run: () => ({}) }) } } }, 'variants.default "z"'],
     ["not from variant()", { variants: { options: { a: { run: () => ({}) } } } }, "must be made with variant"],
-    ["bad port", { variants: { options: { a: variant({ inputs: { "1x": t.text() }, run: () => ({}) }) } } }, 'variant "a"'],
+    ["bad port", { variants: { options: { a: variant({ inputs: { "1x": t.string() }, run: () => ({}) }) } } }, 'variant "a"'],
     ["conversion", { conversion: true, pure: true, variants: { options: { a: variant({ run: () => ({}) }) } } }, "conversion node cannot have variants"],
   ])("rejects %s", (_name, extra, message) => {
     expect(() => defineNode({ type: "img.bad", ...(extra as object) } as never)).toThrow(message);

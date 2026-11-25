@@ -35,8 +35,7 @@ import {
   type OutputsOf,
   type ResolvedPort,
   type TypeDecl,
-  type TypeRef,
-} from "@briarflow/core";
+  type TypeRef, BUILTIN } from "@briarflow/core";
 
 function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): void {
   if (value === null || value === undefined) return;
@@ -45,7 +44,8 @@ function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): voi
     for (const item of value) collectSecretRefs(item, type.of, out);
     return;
   }
-  if (type.kind === "primitive" && type.name === "secret" && typeof value === "string") out.add(value);
+  const name = typeof value === "object" ? (value as { name?: unknown }).name : undefined;
+  if (type.kind === "named" && (type.id === BUILTIN.Secret || type.id === BUILTIN.ApiKey) && typeof name === "string") out.add(name);
 }
 
 /** One captured `ctx.progress` call (clamped like the engine; no throttling). */

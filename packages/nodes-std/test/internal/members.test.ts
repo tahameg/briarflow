@@ -6,8 +6,8 @@ import { createMedia, createMemoryMediaRegistry, memberAt, memberPaths, readMemb
 import { memberGet, memberSet } from "@briarflow/nodes-std";
 import { context, field, ir, runNode, struct } from "@briarflow/testing";
 
-const portrait = struct("ty_portrait", "Portrait", [field("image", ir.image()), field("caption", ir.optional(ir.text()))]);
-const character = struct("ty_char", "Character", [field("name", ir.text()), field("age", ir.int(), { default: 30 }), field("portrait", ir.named("ty_portrait")), field("friend", ir.optional(ir.named("ty_char")))]);
+const portrait = struct("ty_portrait", "Portrait", [field("image", ir.image()), field("caption", ir.optional(ir.string()))]);
+const character = struct("ty_char", "Character", [field("name", ir.string()), field("age", ir.int(), { default: 30 }), field("portrait", ir.named("ty_portrait")), field("friend", ir.optional(ir.named("ty_char")))]);
 const decls = new Map<string, TypeDecl>([portrait, character].map((d) => [d.id, d]));
 const resolve = (id: string) => decls.get(id);
 const ctx = () => context({ types: [portrait, character] });
@@ -24,7 +24,7 @@ describe("typeMembers", () => {
     expect(m.map((x) => x.name)).toEqual(["id", "mime", "extension", "name", "size", "url", "width", "height"]);
     expect(m.every((x) => !x.writable)).toBe(true);
     expect(typeMembers(ir.video(), resolve).map((x) => x.name)).toContain("fps");
-    expect(typeMembers(ir.text(), resolve).map((x) => x.name)).toEqual(["length"]);
+    expect(typeMembers(ir.string(), resolve).map((x) => x.name)).toEqual(["length"]);
     expect(typeMembers(ir.int(), resolve)).toEqual([]);
   });
 
@@ -36,7 +36,7 @@ describe("typeMembers", () => {
       ["friend", true],
     ]);
     const opt = typeMembers(ir.optional(ir.named("ty_char")), resolve);
-    expect(opt.find((x) => x.name === "name")).toMatchObject({ type: ir.optional(ir.text()), writable: false });
+    expect(opt.find((x) => x.name === "name")).toMatchObject({ type: ir.optional(ir.string()), writable: false });
   });
 
   it("follows paths and lists nested members without entering a struct twice", () => {

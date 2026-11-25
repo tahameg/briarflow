@@ -319,7 +319,7 @@ export function PortMarker({ style }: { style: TypeStyle }) {
  *
  * @example
  * ```tsx
- * <TypeChip type={{ kind: "list", of: { kind: "primitive", name: "text" } }} />
+ * <TypeChip type={{ kind: "list", of: { kind: "primitive", name: "string" } }} />
  * ```
  */
 export function TypeChip({ type, scope }: { type: TypeRef; scope?: TypeScope | undefined }) {

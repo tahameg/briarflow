@@ -41,7 +41,7 @@ describe("createMemoryCache", () => {
 
 describe("engine cache", () => {
   const textFlow = (nodeId: string) =>
-    context([flow({ outputs: [field("v", ir.text())], nodes: [node(nodeId, "tk.text", { title: nodeId, values: { value: "hello" } })], edges: [edge(`${nodeId}.value`, "n_out.v")] })]);
+    context([flow({ outputs: [field("v", ir.string())], nodes: [node(nodeId, "tk.text", { title: nodeId, values: { value: "hello" } })], edges: [edge(`${nodeId}.value`, "n_out.v")] })]);
 
   it("hits across runs regardless of node id and title; useCache:false bypasses it", async () => {
     const { engine } = testEngine({ packs });

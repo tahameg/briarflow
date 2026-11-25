@@ -55,7 +55,7 @@ describe("type.defineStruct", () => {
       name: "Scene",
       description: "A scene",
       fields: [
-        { name: "title", type: ir.text() },
+        { name: "title", type: ir.string() },
         { name: "count", type: ir.int(), default: 3, description: "how many" },
         { name: "style", type: ir.named("ty_style") },
         { name: "cast", type: ir.list(ir.optional(ir.named("ty_char"))) },
@@ -363,7 +363,7 @@ describe("type.field.add", () => {
   it("adds at an index; struct.make / struct.break gain the port in every flow", () => {
     const r = accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "title", type: "text", default: "Sir", description: "Honorific", index: 1 }]);
     expect(fieldNames(r.doc, "ty_char")).toEqual(["name", "title", "age", "style", "nickname"]);
-    expect(structOf(r.doc, "ty_char").fields[1]).toEqual({ name: "title", type: ir.text(), default: "Sir", description: "Honorific" });
+    expect(structOf(r.doc, "ty_char").fields[1]).toEqual({ name: "title", type: ir.string(), default: "Sir", description: "Honorific" });
     expect(portsOf(r.doc, KIT, "n_make").inputs).toContain("title");
     expect(portsOf(r.doc, PORTRAIT, "n_brk").outputs).toContain("title");
   });
@@ -461,13 +461,13 @@ describe("type.field.rename", () => {
 describe("type.field.setType", () => {
   it("soft breakage: constants, globals, variables and the field default become diagnostics", () => {
     const r = accept(richDoc(), [{ op: "type.field.setType", typeId: "ty_char", field: "age", type: "text" }]);
-    expect(structOf(r.doc, "ty_char").fields[1]!.type).toEqual(ir.text());
+    expect(structOf(r.doc, "ty_char").fields[1]!.type).toEqual(ir.string());
     expect(structOf(r.doc, "ty_char").fields[1]!.default).toBe(30);
     expect(diags(r.diagnostics, "node.invalid_value").some((d) => d.path.nodeId === "n_make")).toBe(true);
     expect(diags(r.diagnostics, "global.invalid_value").some((d) => d.path.globalId === "gv_hero")).toBe(true);
     expect(diags(r.diagnostics, "variable.invalid_default").some((d) => d.path.variableId === "var_hero")).toBe(true);
     expect(diags(r.diagnostics, "type.invalid_default").some((d) => d.path.typeId === "ty_char" && d.path.field === "age")).toBe(true);
-    expect(r.resolved[0]).toMatchObject({ type: ir.text() });
+    expect(r.resolved[0]).toMatchObject({ type: ir.string() });
   });
 
   it("IR with constraints is accepted", () => {

@@ -13,7 +13,7 @@ describe("commands.md §10", () => {
     expect(r.created[7]).toEqual({ edgeId: "e_1" });
     expect(r.diagnostics).toEqual([]);
     expect(r.doc.revision).toBe(1);
-    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text(), T2: ir.named("ty_style") });
+    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.string(), T2: ir.named("ty_style") });
   });
 
   it("type.field.setType style → int keeps e_3 without diagnostics (template re-binds)", () => {
@@ -21,7 +21,7 @@ describe("commands.md §10", () => {
     const r = accept(doc, [{ op: "type.field.setType", typeId: "ty_char", field: "style", type: "int" }]);
     expect(edgeIds(r.doc, PORTRAIT)).toContain("e_3");
     expect(r.diagnostics).toEqual([]);
-    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text(), T2: ir.int() });
+    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.string(), T2: ir.int() });
   });
 
   it("flow.output.setType prompt → image gives edge.type_mismatch on e_4", () => {

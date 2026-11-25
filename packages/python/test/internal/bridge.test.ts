@@ -441,7 +441,7 @@ describe("NDJSON stream handling (fake worker)", () => {
     protocol: 1,
     pack: { name: "fake", version: "1.0.0" },
     types: [
-      { kind: "struct", id: "fake.Pic", name: "Pic", fields: [{ name: "img", type: { kind: "primitive", name: "image" } }] },
+      { kind: "struct", id: "fake.Pic", name: "Pic", fields: [{ name: "img", type: { kind: "named", id: "briar.Image" } }] },
     ],
     nodes: [
       {
@@ -453,7 +453,7 @@ describe("NDJSON stream handling (fake worker)", () => {
         icon: null,
         color: null,
         inputs: [{ name: "pics", type: { kind: "list", of: { kind: "named", id: "fake.Pic" } }, title: "Pics" }],
-        outputs: [{ name: "result", type: { kind: "optional", of: { kind: "primitive", name: "image" } }, title: "Result" }],
+        outputs: [{ name: "result", type: { kind: "optional", of: { kind: "named", id: "briar.Image" } }, title: "Result" }],
         config: [],
         dynamicPorts: false,
         secrets: [],

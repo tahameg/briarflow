@@ -74,8 +74,8 @@ describe("start sequence", () => {
     const { engine } = engineWith();
     const doc = context([
       flow({
-        inputs: [field("a", ir.int({ min: 0 })), field("b", ir.text(), { default: "dflt" }), field("c", ir.optional(ir.text()))],
-        outputs: [field("a", ir.int()), field("b", ir.text()), field("c", ir.optional(ir.text()))],
+        inputs: [field("a", ir.int({ min: 0 })), field("b", ir.string(), { default: "dflt" }), field("c", ir.optional(ir.string()))],
+        outputs: [field("a", ir.int()), field("b", ir.string()), field("c", ir.optional(ir.string()))],
         edges: [edge("n_in.a", "n_out.a"), edge("n_in.b", "n_out.b"), edge("n_in.c", "n_out.c")],
       }),
     ]);
@@ -184,7 +184,7 @@ describe("failure and skip", () => {
     const { engine } = engineWith();
     const doc = context([
       flow({
-        outputs: [field("ok", ir.text())],
+        outputs: [field("ok", ir.string())],
         nodes: [
           node("n_fail", "tk.fail"),
           node("n_after", "tk.text"),
@@ -261,7 +261,7 @@ describe("retries", () => {
     vi.useFakeTimers();
     try {
       const { engine } = engineWith();
-      const doc = context([flow({ outputs: [field("v", ir.text())], nodes: [node("n_f", "mock.flaky", { values: { failures: 2 } })], edges: [edge("n_f.value", "n_out.v")] })]);
+      const doc = context([flow({ outputs: [field("v", ir.string())], nodes: [node("n_f", "mock.flaky", { values: { failures: 2 } })], edges: [edge("n_f.value", "n_out.v")] })]);
       const run = engine.run({ context: doc, flowId: "flow_t" });
       const eventsP = collect(run.events());
       await vi.runAllTimersAsync();
@@ -419,7 +419,7 @@ describe("events", () => {
 
 describe("ExecContext", () => {
   it("resolves declared secrets and fails missing ones with node.missing_secret", async () => {
-    const doc = context([flow({ outputs: [field("v", ir.text())], nodes: [node("n_s", "tk.secret", { title: "Call API" })], edges: [edge("n_s.value", "n_out.v")] })]);
+    const doc = context([flow({ outputs: [field("v", ir.string())], nodes: [node("n_s", "tk.secret", { title: "Call API" })], edges: [edge("n_s.value", "n_out.v")] })]);
     const ok = await runToEnd(engineWith({ secrets: secretsOf({ API_KEY: "k-1" }) }).engine, doc);
     expect(ok.result.outputs).toEqual({ v: "k-1" });
     const missing = await runToEnd(engineWith().engine, doc);

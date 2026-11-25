@@ -2,22 +2,70 @@
  * Pure helpers for value widgets: which widget a type gets, starting values and short
  * previews.
  */
-import { MEDIA_PRIMITIVE_NAMES, isMediaRef } from "@briarflow/core";
-import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
+import { BUILTIN, isMediaRef, mediaKindOfBuiltin, structLayout } from "@briarflow/core";
+import type { MediaKind, MediaRef, TypeRef, TypeScope } from "@briarflow/core";
 
-/** Widget kinds of the constant / input editors (design-system.md §7). */
-export type WidgetKind = "text" | "int" | "float" | "boolean" | "json" | "secret" | "enum" | "media" | "struct" | "list" | "optional" | "unbound" | "unknown";
+/**
+ * Widget kinds of the constant / input editors (design-system.md §7). `text` edits a string,
+ * `textStruct` a Text (`{ value }`), `media` a media struct (Image, …), `binary` a bare binary,
+ * `json` a Json (`{ text }`), `secret` a Secret (`{ name }`).
+ */
+export type WidgetKind =
+  | "text"
+  | "textStruct"
+  | "int"
+  | "float"
+  | "boolean"
+  | "json"
+  | "secret"
+  | "enum"
+  | "media"
+  | "binary"
+  | "struct"
+  | "list"
+  | "optional"
+  | "unbound"
+  | "unknown";
+
+/** What a built-in struct (or one extending it) is, for widgets: its kind and static fields. */
+export interface BuiltinView {
+  kind: "text" | "media" | "json" | "secret";
+  mediaKind?: MediaKind;
+  statics: ReadonlyMap<string, unknown>;
+}
+
+/** The built-in a named type is or extends, if any. */
+export function builtinView(type: TypeRef, scope: TypeScope | undefined): BuiltinView | undefined {
+  if (type.kind !== "named" || !scope) return undefined;
+  const decl = scope.getType(type.id)?.decl;
+  if (decl?.kind !== "struct") return undefined;
+  const layout = structLayout(decl, (id) => scope.getType(id)?.decl);
+  const statics = new Map([...layout.statics].map(([k, v]) => [k, v.value]));
+  const mediaKind = mediaKindOfBuiltin(layout.root);
+  if (mediaKind !== undefined) return { kind: "media", mediaKind, statics };
+  if (layout.root === BUILTIN.Text) return { kind: "text", statics };
+  if (layout.root === BUILTIN.Json) return { kind: "json", statics };
+  if (layout.root === BUILTIN.Secret) return { kind: "secret", statics };
+  return undefined;
+}
 
 /** Widget kind of a type. */
 export function widgetKind(type: TypeRef, scope: TypeScope | undefined): WidgetKind {
   switch (type.kind) {
     case "primitive":
-      if ((MEDIA_PRIMITIVE_NAMES as readonly string[]).includes(type.name)) return "media";
-      return type.name as "text" | "int" | "float" | "boolean" | "json" | "secret";
+      if (type.name === "string") return "text";
+      if (type.name === "bool") return "boolean";
+      return type.name;
     case "named": {
       const decl = scope?.getType(type.id)?.decl;
       if (!decl) return "unknown";
-      return decl.kind === "enum" ? "enum" : "struct";
+      if (decl.kind === "enum") return "enum";
+      const view = builtinView(type, scope);
+      if (view?.kind === "text") return "textStruct";
+      if (view?.kind === "media") return "media";
+      if (view?.kind === "json") return "json";
+      if (view?.kind === "secret") return "secret";
+      return "struct";
     }
     case "list":
       return "list";
@@ -35,17 +83,19 @@ export function widgetKind(type: TypeRef, scope: TypeScope | undefined): WidgetK
 export function initialValue(type: TypeRef, scope: TypeScope | undefined): unknown {
   switch (type.kind) {
     case "primitive":
-      if (type.name === "text") return "";
+      if (type.name === "string") return "";
       if (type.name === "int" || type.name === "float") return type.constraints?.min ?? 0;
-      if (type.name === "boolean") return false;
-      if (type.name === "json") return {};
+      if (type.name === "bool") return false;
       return null;
     case "named": {
       const decl = scope?.getType(type.id)?.decl;
       if (!decl) return null;
       if (decl.kind === "enum") return decl.members[0]?.value ?? null;
+      const view = builtinView(type, scope);
+      if (view?.kind === "media" || view?.kind === "secret") return null;
+      if (view?.kind === "json") return { text: "{}" };
       const out: Record<string, unknown> = {};
-      for (const f of decl.fields) out[f.name] = f.default !== undefined ? f.default : initialValue(f.type, scope);
+      for (const f of structLayout(decl, (id) => scope?.getType(id)?.decl).fields) out[f.name] = f.default !== undefined ? f.default : initialValue(f.type, scope);
       return out;
     }
     case "list":
@@ -71,6 +121,7 @@ export function previewValue(value: unknown, max = 60): string {
   else if (value === null) s = "none";
   else if (typeof value === "string") s = JSON.stringify(value);
   else if (isMediaRef(value)) s = `media ${value.mediaId}`;
+  else if (typeof value === "object" && isMediaRef((value as { data?: unknown }).data)) s = `media ${(value as { data: MediaRef }).data.mediaId}`;
   else s = JSON.stringify(value) ?? String(value);
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }

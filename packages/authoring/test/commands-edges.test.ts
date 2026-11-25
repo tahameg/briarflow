@@ -93,7 +93,7 @@ describe("edge.connect", () => {
   it("generic bindings are stored after connect and removed after the last edge is disconnected", () => {
     const d = build(richDoc(), [add("n_g", "kit.same")]);
     const r = accept(d, [conn("n_src.text", "n_g.a", "e_g")]);
-    expect(nodeOf(r.doc, KIT, "n_g")!.typeBindings).toEqual({ T: ir.text() });
+    expect(nodeOf(r.doc, KIT, "n_g")!.typeBindings).toEqual({ T: ir.string() });
     const r2 = accept(r.doc, [{ op: "edge.disconnect", flowId: KIT, edgeId: "e_g" }]);
     expect(nodeOf(r2.doc, KIT, "n_g")!.typeBindings).toBeUndefined();
     expect("typeBindings" in nodeOf(r2.doc, KIT, "n_g")!).toBe(false);

@@ -22,8 +22,7 @@ import {
   type PortMap,
   type PortOptions,
   type TypeRef,
-  type UnknownValue,
-} from "@briarflow/core";
+  type UnknownValue, mediaValue } from "@briarflow/core";
 
 /** A 1×1 PNG (what `kit.imageSource` outputs). */
 const KIT_PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="), (c) => c.charCodeAt(0));
@@ -304,7 +303,13 @@ function createKitPack(): NodePack {
       type: "kit.imageSource",
       pure: true,
       outputs: { image: t.image() },
-      run: async ({ ctx }) => ({ image: await ctx.media.put(KIT_PNG, { mime: "image/png", filename: "kit.png" }) }),
+      run: async ({ ctx }) => ({
+        image: mediaValue("image", await ctx.media.put(KIT_PNG, { mime: "image/png", filename: "kit.png" }), {
+          mime: "image/png",
+          bytes: KIT_PNG.byteLength,
+          meta: { filename: "kit.png" },
+        }),
+      }),
     }),
     defineNode({
       type: "kit.passText",

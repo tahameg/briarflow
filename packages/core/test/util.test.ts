@@ -177,7 +177,10 @@ describe("names (types.md §1)", () => {
   });
 
   it("reserved type names", () => {
-    const reserved = ["Text", "Int", "Float", "Boolean", "Image", "Video", "Audio", "Model3d", "Model3D", "File", "List", "Optional"];
+    const reserved = [
+      ...["Text", "Image", "Video", "Audio", "Model3D", "File", "Json", "SecretKind", "Secret", "ApiKey", "Error"],
+      ...["Int", "Float", "Bool", "String", "Binary", "Boolean", "Model3d", "List", "Optional"],
+    ];
     expect([...RESERVED_TYPE_NAMES].sort()).toEqual([...reserved].sort());
     for (const name of reserved) expect(isValidTypeName(name), name).toBe(false);
     expect(isValidTypeName("Texts")).toBe(true);

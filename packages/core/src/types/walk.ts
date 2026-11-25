@@ -1,7 +1,7 @@
 /**
  * Internal helpers to traverse and rewrite type IR.
  */
-import type { TypeRef } from "./ir.js";
+import { PRIMITIVE_NAMES, type TypeRef } from "./ir.js";
 
 /** Rewrites every named ref with `fn(id)`; returns the same object when nothing changed. */
 export function mapNamedIds(type: TypeRef, fn: (id: string) => string): TypeRef {
@@ -65,8 +65,7 @@ export function typeRefShapeProblem(value: unknown, path: string): { path: strin
   const v = value as Record<string, unknown>;
   switch (v["kind"]) {
     case "primitive": {
-      const names = ["text", "int", "float", "boolean", "json", "secret", "image", "video", "audio", "model3d", "file", "error"];
-      if (typeof v["name"] !== "string" || !names.includes(v["name"])) {
+      if (typeof v["name"] !== "string" || !(PRIMITIVE_NAMES as readonly string[]).includes(v["name"])) {
         return { path: `${path}.name`, reason: "must be a primitive name" };
       }
       const c = v["constraints"];

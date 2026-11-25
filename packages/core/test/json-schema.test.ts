@@ -26,6 +26,7 @@ import {
   portraitContext,
   struct,
   wordsPack,
+  textType,
 } from "@briarflow/testing";
 
 const DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -65,20 +66,23 @@ function withoutSchemaKey(schema: JsonSchema): JsonSchema {
 }
 
 describe("toJsonSchema: mapping table", () => {
-  it("text with constraints (pattern anchored)", () => {
-    const schema = toJsonSchema(ir.text({ minLength: 1, maxLength: 5, pattern: "[a-z]+", multiline: true }), empty);
-    expect(schema).toEqual({ $schema: DRAFT, type: "string", minLength: 1, maxLength: 5, pattern: "^(?:[a-z]+)$" });
+  it("a struct extending Text: its limits on value (pattern anchored)", () => {
+    const short = textType("ty_short", { minLength: 1, maxLength: 5, pattern: "[a-z]+" });
+    const schema = toJsonSchema(ir.named("ty_short"), createTypeScope({ globalTypes: [short] }));
+    const def = (schema.$defs as Record<string, JsonSchema>)[short.name] as JsonSchema;
+    expect(def).toMatchObject({ type: "object", required: ["value"], properties: { value: { type: "string", minLength: 1, maxLength: 5, pattern: "^(?:[a-z]+)$" } } });
     const validate = compile(schema);
-    expect(validate("abc")).toBe(true);
-    expect(validate("abc1")).toBe(false);
-    expect(validate("")).toBe(false);
+    expect(validate({ value: "abc" })).toBe(true);
+    expect(validate({ value: "abc1" })).toBe(false);
+    expect(validate({ value: "" })).toBe(false);
+    expect(validate({ value: "abc", maxLength: 9 })).toBe(false);
   });
 
   it("int, float, boolean", () => {
     expect(toJsonSchema(ir.int({ min: 0, max: 9 }), empty)).toEqual({ $schema: DRAFT, type: "integer", minimum: 0, maximum: 9 });
     expect(toJsonSchema(ir.float({ min: -1.5 }), empty)).toEqual({ $schema: DRAFT, type: "number", minimum: -1.5 });
-    expect(toJsonSchema(ir.boolean(), empty)).toEqual({ $schema: DRAFT, type: "boolean" });
-    expect(toJsonSchema(ir.text(), empty)).toEqual({ $schema: DRAFT, type: "string" });
+    expect(toJsonSchema(ir.bool(), empty)).toEqual({ $schema: DRAFT, type: "boolean" });
+    expect(toJsonSchema(ir.string(), empty)).toEqual({ $schema: DRAFT, type: "string" });
     const validate = compile(toJsonSchema(ir.int({ min: 0, max: 9 }), empty));
     expect(validate(3)).toBe(true);
     expect(validate(1.5)).toBe(false);
@@ -86,7 +90,7 @@ describe("toJsonSchema: mapping table", () => {
   });
 
   it("list", () => {
-    const schema = toJsonSchema(ir.list(ir.text(), { minItems: 1, maxItems: 2 }), empty);
+    const schema = toJsonSchema(ir.list(ir.string(), { minItems: 1, maxItems: 2 }), empty);
     expect(schema).toEqual({ $schema: DRAFT, type: "array", items: { type: "string" }, minItems: 1, maxItems: 2 });
     const validate = compile(schema);
     expect(validate(["a"])).toBe(true);
@@ -104,22 +108,23 @@ describe("toJsonSchema: mapping table", () => {
     expect(validate("1")).toBe(false);
   });
 
-  it("media: $ref MediaRef ({ mediaId }), defined once, kind as x-briar-media", () => {
+  it("media: the Image struct with data as $ref MediaRef ({ mediaId }), defined once, kind as x-briar-media", () => {
     const schema = toJsonSchema(ir.list(ir.image()), empty);
-    expect(Object.keys(schema.$defs as object)).toEqual(["MediaRef"]);
+    expect(Object.keys(schema.$defs as object)).toEqual(["Image", "MediaRef"]);
     expect(JSON.stringify(schema)).toContain('"#/$defs/MediaRef"');
     expect(JSON.stringify(schema)).toContain('"x-briar-media":"image"');
     const validate = compile(schema);
-    expect(validate([{ mediaId: "med_1" }])).toBe(true);
-    expect(validate([{ mediaId: "med_1", mime: "image/png" }])).toBe(false);
-    expect(validate([{ uri: "briar-media://m_1", mime: "image/png" }])).toBe(false);
+    expect(validate([{ data: { mediaId: "med_1" }, mime: "image/png" }])).toBe(true);
+    expect(validate([{ mediaId: "med_1" }])).toBe(false);
+    expect(validate([{ data: { mediaId: "med_1", mime: "image/png" }, mime: "image/png" }])).toBe(false);
     expect(validate(["med_1"])).toBe(false);
   });
 
-  it("media formats are listed as x-briar-formats (checked when the media is read)", () => {
-    const schema = toJsonSchema(ir.image({ formats: ["png", "jpeg"] }), empty);
+  it("media formats of a struct extending Image are listed as x-briar-formats (checked when the media is read)", () => {
+    const photo = { kind: "struct" as const, id: "ty_photo", name: "Photo", extends: "briar.Image", fields: [{ name: "formats", type: ir.list(ir.string()), static: true, default: ["png", "jpeg"] }] };
+    const schema = toJsonSchema(ir.named("ty_photo"), createTypeScope({ globalTypes: [photo] }));
     expect(JSON.stringify(schema)).toContain('"x-briar-formats":["image/png","image/jpeg"]');
-    expect(compile(schema)({ mediaId: "med_1" })).toBe(true);
+    expect(compile(schema)({ data: { mediaId: "med_1" }, mime: "image/png" })).toBe(true);
   });
 
   it("struct and enum defs (Deviation 1 required rule, defaults, descriptions, labels)", () => {
@@ -168,7 +173,7 @@ describe("toJsonSchema: mapping table", () => {
 
   it("local type shadowing a global gets Name__id", () => {
     const doc = editFlow(portraitContext(), PORTRAIT_FLOW_ID, (f) => {
-      f.types.push(struct("ty_lc", "Character", [field("alias", ir.text())]));
+      f.types.push(struct("ty_lc", "Character", [field("alias", ir.string())]));
       f.types.push(struct("ty_wrap", "Wrapper", [field("global", ir.named(CHARACTER_ID)), field("local", ir.named("ty_lc"))]));
     });
     const schema = toJsonSchema(ir.named("ty_wrap"), scopeForFlow(doc, PORTRAIT_FLOW_ID));

@@ -4,11 +4,11 @@ import { ir } from "@briarflow/testing";
 
 describe("emptyValue", () => {
   it("is the zero value of text, numbers, booleans and lists", () => {
-    expect(emptyValue(ir.text())).toBe("");
+    expect(emptyValue(ir.string())).toBe("");
     expect(emptyValue(ir.int())).toBe(0);
     expect(emptyValue(ir.float())).toBe(0);
-    expect(emptyValue(ir.boolean())).toBe(false);
-    expect(emptyValue(ir.list(ir.text()))).toEqual([]);
+    expect(emptyValue(ir.bool())).toBe(false);
+    expect(emptyValue(ir.list(ir.string()))).toEqual([]);
   });
 
   it("moves numbers into their bounds", () => {
@@ -20,7 +20,7 @@ describe("emptyValue", () => {
   it("is null for structs, enums, media, optionals and generics", () => {
     expect(emptyValue({ kind: "named", id: "ty_person" })).toBeNull();
     expect(emptyValue(ir.image())).toBeNull();
-    expect(emptyValue(ir.optional(ir.text()))).toBeNull();
+    expect(emptyValue(ir.optional(ir.string()))).toBeNull();
     expect(emptyValue({ kind: "var", name: "T" })).toBeNull();
   });
 });

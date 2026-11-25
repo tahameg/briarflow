@@ -17,8 +17,8 @@ describe("global.create", () => {
       { op: "global.create", id: "gv_tags", name: "tags", type: "list<text>", access: "readonly", value: ["a"], description: "Tags" },
     ]);
     expect(r.created).toEqual([{ globalId: "gv_tags" }]);
-    expect(r.doc.globals.at(-1)).toEqual({ id: "gv_tags", name: "tags", type: ir.list(ir.text()), access: "readonly", value: ["a"], description: "Tags" });
-    expect(r.resolved[0]).toMatchObject({ type: ir.list(ir.text()) });
+    expect(r.doc.globals.at(-1)).toEqual({ id: "gv_tags", name: "tags", type: ir.list(ir.string()), access: "readonly", value: ["a"], description: "Tags" });
+    expect(r.resolved[0]).toMatchObject({ type: ir.list(ir.string()) });
   });
 
   it("generated id; readwrite without a value; global types resolve", () => {
@@ -79,7 +79,7 @@ describe("global.rename", () => {
 describe("global.setType", () => {
   it("soft: value and set-node constants become diagnostics; get/set ports follow", () => {
     const r = accept(richDoc(), [{ op: "global.setType", globalId: "gv_count", type: "text" }]);
-    expect(g(r.doc, "gv_count").type).toEqual(ir.text());
+    expect(g(r.doc, "gv_count").type).toEqual(ir.string());
     expect(g(r.doc, "gv_count").value).toBe(0);
     expect(diags(r.diagnostics, "global.invalid_value").some((d) => d.path.globalId === "gv_count")).toBe(true);
     expect(diags(r.diagnostics, "node.invalid_value").some((d) => d.path.nodeId === "n_cset")).toBe(true);

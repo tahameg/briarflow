@@ -196,7 +196,9 @@ export function definePack(input: PackDefinitionInput): NodePack {
     const parts: PackSettingInput | undefined = isTypeSpec(raw) ? { type: raw } : typeof raw === "object" && raw !== null && isTypeSpec((raw as PackSettingInput).type) ? (raw as PackSettingInput) : undefined;
     if (!parts) return fail(`${where} must be a type from t (e.g. t.secret()) or { type, title?, description?, default? }.`);
     const ref = parts.type.ref;
-    if (collectNamedIds(ref).length > 0 || containsVar(ref)) fail(`${where} must use primitives, lists or optionals; named and generic types are not supported.`);
+    if (collectNamedIds(ref).some((id) => !isBuiltinId(id)) || containsVar(ref)) {
+      fail(`${where} must use primitives, built-in types (ApiKey, Text…), lists or optionals; other named types and generics are not supported.`);
+    }
     const setting: { -readonly [K in keyof PackSetting]: PackSetting[K] } = { key: `${name}.${settingName}`, name: settingName, title: parts.title ?? titleFromName(settingName), type: ref };
     if (parts.description !== undefined) setting.description = parts.description;
     if (parts.default !== undefined) {

@@ -78,7 +78,7 @@ const PRIMITIVE_TOKENS: Record<string, BriarToken> = {
  *
  * @example
  * ```ts
- * typeStyle({ kind: "list", of: { kind: "primitive", name: "text" } }); // mint, hollow
+ * typeStyle({ kind: "list", of: { kind: "primitive", name: "string" } }); // mint, hollow
  * ```
  */
 export function typeStyle(type: TypeRef, kindOf?: NamedKindLookup): TypeStyle {

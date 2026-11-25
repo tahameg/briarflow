@@ -238,7 +238,7 @@ describe("node.setConfig", () => {
     const r = accept(richDoc(), [{ op: "node.setConfig", flowId: PORTRAIT, nodeId: "n_tpl", config: { template: "Draw {{name}}" } }]);
     expect(portsOf(r.doc, PORTRAIT, "n_tpl").inputs).toEqual(["name"]);
     expect(edgeIds(r.doc, PORTRAIT)).toEqual(["e_1", "e_2", "e_4"]);
-    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text() });
+    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.string() });
   });
 
   it("constants of vanished ports are removed", () => {

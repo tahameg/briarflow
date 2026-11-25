@@ -2,7 +2,7 @@
  * Data-driven value rows for types.md §6 (constraints) and §7 (accepted JSON). Each row is
  * validated with `validateValue(value, type, scope, { path: "v" })`.
  */
-import type { TypeRef } from "@briarflow/core";
+import { BUILTIN, type StructDecl, type TypeDecl, type TypeRef } from "@briarflow/core";
 import { ir } from "./build.js";
 
 /** How `message` is compared with the diagnostic message (path `v` included). */
@@ -18,26 +18,52 @@ export interface ValueCase {
   message?: string;
   /** Default `"exact"`. */
   match?: MessageMatch;
+  /** Types the row's type needs in scope (e.g. a struct extending Text). */
+  types?: readonly TypeDecl[];
 }
+
+/** A struct extending Text whose static fields have these values. */
+export function textType(id: string, statics: { minLength?: number; maxLength?: number; pattern?: string; multiline?: boolean }): StructDecl {
+  const types: Record<string, TypeRef> = {
+    minLength: ir.int(),
+    maxLength: ir.optional(ir.int()),
+    pattern: ir.optional(ir.string()),
+    multiline: ir.bool(),
+  };
+  return {
+    kind: "struct",
+    id,
+    name: `Text_${id.replace(/[^A-Za-z0-9]/g, "")}`,
+    extends: BUILTIN.Text,
+    fields: Object.entries(statics).map(([name, value]) => ({ name, type: types[name] ?? ir.string(), static: true, default: value })),
+  };
+}
+
+const textRow = (label: string, statics: Parameters<typeof textType>[1], text: string, message?: string): ValueCase => {
+  const decl = textType(`ty_${label.replace(/[^A-Za-z0-9]/g, "")}`.slice(0, 60), statics);
+  return { label, type: ir.named(decl.id), types: [decl], value: { value: text }, ok: message === undefined, ...(message === undefined ? {} : { message }) };
+};
 
 const ref = () => ({ mediaId: "med_1" });
 
 /** Rows of the §6 constraint table: one pass and one fail per constraint, exact suffixes. */
 export const constraintCases: readonly ValueCase[] = [
-  // text
-  { label: "text minLength ok", type: ir.text({ minLength: 2 }), value: "ab", ok: true },
-  { label: "text minLength fail", type: ir.text({ minLength: 2 }), value: "a", ok: false, message: "v must be at least 2 characters long" },
-  { label: "text minLength counts code points", type: ir.text({ minLength: 2 }), value: "😀", ok: false, message: "v must be at least 2 characters long" },
-  { label: "text minLength 0 accepts empty", type: ir.text({ minLength: 0 }), value: "", ok: true },
-  { label: "text maxLength ok (code points)", type: ir.text({ maxLength: 2 }), value: "😀😀", ok: true },
-  { label: "text maxLength boundary", type: ir.text({ maxLength: 2 }), value: "ab", ok: true },
-  { label: "text maxLength fail", type: ir.text({ maxLength: 2 }), value: "abc", ok: false, message: "v must be at most 2 characters long" },
-  { label: "text pattern ok", type: ir.text({ pattern: "[a-z]+" }), value: "abc", ok: true },
-  { label: "text pattern anchored at end", type: ir.text({ pattern: "[a-z]+" }), value: "abc1", ok: false, message: "v must match the pattern [a-z]+" },
-  { label: "text pattern anchored at start", type: ir.text({ pattern: "[a-z]+" }), value: "1abc", ok: false, message: "v must match the pattern [a-z]+" },
-  { label: "text pattern alternation is anchored as a whole", type: ir.text({ pattern: "a|b" }), value: "ab", ok: false, message: "v must match the pattern a|b" },
-  { label: "text pattern uses the u flag", type: ir.text({ pattern: "\\p{L}+" }), value: "héllo", ok: true },
-  { label: "text multiline is never validated", type: ir.text({ multiline: false }), value: "a\nb", ok: true },
+  // Text (its limits are static fields of a struct extending it)
+  textRow("text minLength ok", { minLength: 2 }, "ab"),
+  textRow("text minLength fail", { minLength: 2 }, "a", "v.value must be at least 2 characters long"),
+  textRow("text minLength counts code points", { minLength: 2 }, "😀", "v.value must be at least 2 characters long"),
+  textRow("text minLength 0 accepts empty", { minLength: 0 }, ""),
+  textRow("text maxLength ok (code points)", { maxLength: 2 }, "😀😀"),
+  textRow("text maxLength boundary", { maxLength: 2 }, "ab"),
+  textRow("text maxLength fail", { maxLength: 2 }, "abc", "v.value must be at most 2 characters long"),
+  textRow("text pattern ok", { pattern: "[a-z]+" }, "abc"),
+  textRow("text pattern anchored at end", { pattern: "[a-z]+" }, "abc1", "v.value must match the pattern [a-z]+"),
+  textRow("text pattern anchored at start", { pattern: "[a-z]+" }, "1abc", "v.value must match the pattern [a-z]+"),
+  textRow("text pattern alternation is anchored as a whole", { pattern: "a|b" }, "ab", "v.value must match the pattern a|b"),
+  textRow("text pattern uses the u flag", { pattern: "\\p{L}+" }, "héllo"),
+  textRow("text multiline is never validated", { multiline: true }, "a\nb"),
+  { label: "plain Text has no limits", type: ir.text(), value: { value: "" }, ok: true },
+  { label: "string has no limits", type: ir.string(), value: "😀".repeat(5000), ok: true },
   // int
   { label: "int ok", type: ir.int(), value: 5, ok: true },
   { label: "int 2.0 is accepted", type: ir.int(), value: 2.0, ok: true },
@@ -56,36 +82,41 @@ export const constraintCases: readonly ValueCase[] = [
   { label: "float max fail", type: ir.float({ max: 0.5 }), value: 0.75, ok: false, message: "v must be <= 0.5" },
   { label: "float max boundary", type: ir.float({ max: 0.5 }), value: 0.5, ok: true },
   // boolean
-  { label: "boolean true", type: ir.boolean(), value: true, ok: true },
-  { label: "boolean false", type: ir.boolean(), value: false, ok: true },
-  { label: "boolean string", type: ir.boolean(), value: "true", ok: false, message: "v must be true or false", match: "prefix" },
-  { label: "boolean number", type: ir.boolean(), value: 1, ok: false, message: "v must be true or false", match: "prefix" },
-  // media: constraints are checked against the registry entry when a node reads it (checkMediaEntry)
-  { label: "media constraints are not checked on the value", type: ir.image({ formats: ["png"], maxWidth: 1 }), value: ref(), ok: true },
-  { label: "media old uri shape", type: ir.image(), value: { uri: "briar-media://m_1", mime: "image/png" }, ok: false, message: "v is not a valid image", match: "prefix" },
+  { label: "boolean true", type: ir.bool(), value: true, ok: true },
+  { label: "boolean false", type: ir.bool(), value: false, ok: true },
+  { label: "boolean string", type: ir.bool(), value: "true", ok: false, message: "v must be true or false", match: "prefix" },
+  { label: "boolean number", type: ir.bool(), value: 1, ok: false, message: "v must be true or false", match: "prefix" },
+  // media: limits are checked against the registry entry when a node reads it (checkMediaEntry)
+  { label: "media limits are not checked on the value", type: ir.image(), value: { data: ref(), mime: "image/png" }, ok: true },
+  { label: "media old uri shape", type: ir.image(), value: { data: { uri: "briar-media://m_1", mime: "image/png" }, mime: "image/png" }, ok: false, message: "v.data is not a valid binary value", match: "prefix" },
   // list
-  { label: "list minItems ok", type: ir.list(ir.text(), { minItems: 2 }), value: ["a", "b"], ok: true },
-  { label: "list minItems fail", type: ir.list(ir.text(), { minItems: 2 }), value: ["a"], ok: false, message: "v must have at least 2 items" },
-  { label: "list maxItems ok", type: ir.list(ir.text(), { maxItems: 2 }), value: [], ok: true },
-  { label: "list maxItems fail", type: ir.list(ir.text(), { maxItems: 2 }), value: ["a", "b", "c"], ok: false, message: "v must have at most 2 items" },
+  { label: "list minItems ok", type: ir.list(ir.string(), { minItems: 2 }), value: ["a", "b"], ok: true },
+  { label: "list minItems fail", type: ir.list(ir.string(), { minItems: 2 }), value: ["a"], ok: false, message: "v must have at least 2 items" },
+  { label: "list maxItems ok", type: ir.list(ir.string(), { maxItems: 2 }), value: [], ok: true },
+  { label: "list maxItems fail", type: ir.list(ir.string(), { maxItems: 2 }), value: ["a", "b", "c"], ok: false, message: "v must have at most 2 items" },
 ];
 
 /** Rows of the §7 table (accepted JSON per type, type mismatches, element paths). */
 export const shapeCases: readonly ValueCase[] = [
-  { label: "text accepts a string", type: ir.text(), value: "hi", ok: true },
-  { label: "text rejects a number", type: ir.text(), value: 3, ok: false, message: "v ", match: "prefix" },
-  { label: "text rejects null", type: ir.text(), value: null, ok: false, message: "v ", match: "prefix" },
+  { label: "text accepts a string", type: ir.string(), value: "hi", ok: true },
+  { label: "text rejects a number", type: ir.string(), value: 3, ok: false, message: "v ", match: "prefix" },
+  { label: "text rejects null", type: ir.string(), value: null, ok: false, message: "v ", match: "prefix" },
   { label: "int rejects a numeric string", type: ir.int(), value: "27", ok: false, message: 'v must be a whole number (got "27")' },
   { label: "float rejects a string", type: ir.float(), value: "1.5", ok: false, message: "v must be a number", match: "prefix" },
-  { label: "media accepts a media value", type: ir.image(), value: ref(), ok: true },
+  { label: "media accepts a media value", type: ir.image(), value: { data: ref(), mime: "image/png" }, ok: true },
+  { label: "media rejects a bare binary", type: ir.image(), value: ref(), ok: false, message: "v.data is required", match: "contains" },
   { label: "media rejects a string", type: ir.image(), value: "med_1", ok: false, message: "v ", match: "prefix" },
+  { label: "binary accepts a media id", type: ir.binary(), value: ref(), ok: true },
+  { label: "Text rejects a static field in the value", type: ir.text(), value: { value: "a", maxLength: 3 }, ok: false, message: "v.maxLength is a static field", match: "prefix" },
+  { label: "Json accepts its text", type: ir.json(), value: { text: "[1]" }, ok: true },
+  { label: "Secret accepts its name", type: ir.secret(), value: { name: "OPENAI_KEY" }, ok: true },
   { label: "list accepts an array", type: ir.list(ir.int()), value: [1, 2], ok: true },
   { label: "list rejects an object", type: ir.list(ir.int()), value: { 0: 1 }, ok: false, message: "v ", match: "prefix" },
   { label: "list element path", type: ir.list(ir.int({ min: 0 })), value: [1, -1], ok: false, message: "v[1] must be >= 0" },
-  { label: "nested list element path", type: ir.list(ir.list(ir.text())), value: [["a"], ["b", 3]], ok: false, message: "v[1][1] ", match: "prefix" },
+  { label: "nested list element path", type: ir.list(ir.list(ir.string())), value: [["a"], ["b", 3]], ok: false, message: "v[1][1] ", match: "prefix" },
   { label: "optional accepts null", type: ir.optional(ir.int()), value: null, ok: true },
   { label: "optional accepts undefined", type: ir.optional(ir.int()), value: undefined, ok: true },
   { label: "optional accepts the inner value", type: ir.optional(ir.int()), value: 3, ok: true },
   { label: "optional checks the inner value", type: ir.optional(ir.int({ min: 0 })), value: -1, ok: false, message: "v must be >= 0" },
-  { label: "list of optionals", type: ir.list(ir.optional(ir.text())), value: ["a", null], ok: true },
+  { label: "list of optionals", type: ir.list(ir.optional(ir.string())), value: ["a", null], ok: true },
 ];

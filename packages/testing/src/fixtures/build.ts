@@ -3,6 +3,7 @@
  * the fixtures and by test suites of every package (no authoring dependency).
  */
 import {
+  BUILTIN,
   CONTEXT_FORMAT,
   CONTEXT_FORMAT_VERSION,
   FLOW_INPUT_NODE_TYPE,
@@ -17,14 +18,10 @@ import {
   type FlowDocument,
   type FlowVariable,
   type GlobalVariable,
-  type ImageConstraints,
-  type MediaConstraints,
   type NodeInstance,
   type NumberConstraints,
   type Position,
   type StructDecl,
-  type TextConstraints,
-  type TimedMediaConstraints,
   type TypeDecl,
   type TypeRef,
 } from "@briarflow/core";
@@ -67,24 +64,24 @@ export type MutableContext = Omit<ContextDocument, "types" | "globals" | "flows"
 
 /** IR builders (plain `TypeRef`s, no validation). */
 export const ir = {
-  text: (constraints?: TextConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "text", constraints } : { kind: "primitive", name: "text" },
+  string: (): TypeRef => ({ kind: "primitive", name: "string" }),
   int: (constraints?: NumberConstraints): TypeRef =>
     constraints ? { kind: "primitive", name: "int", constraints } : { kind: "primitive", name: "int" },
   float: (constraints?: NumberConstraints): TypeRef =>
     constraints ? { kind: "primitive", name: "float", constraints } : { kind: "primitive", name: "float" },
-  boolean: (): TypeRef => ({ kind: "primitive", name: "boolean" }),
-  json: (): TypeRef => ({ kind: "primitive", name: "json" }),
-  image: (constraints?: ImageConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "image", constraints } : { kind: "primitive", name: "image" },
-  video: (constraints?: TimedMediaConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "video", constraints } : { kind: "primitive", name: "video" },
-  audio: (constraints?: TimedMediaConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "audio", constraints } : { kind: "primitive", name: "audio" },
-  model3d: (constraints?: MediaConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "model3d", constraints } : { kind: "primitive", name: "model3d" },
-  file: (constraints?: MediaConstraints): TypeRef =>
-    constraints ? { kind: "primitive", name: "file", constraints } : { kind: "primitive", name: "file" },
+  bool: (): TypeRef => ({ kind: "primitive", name: "bool" }),
+  binary: (): TypeRef => ({ kind: "primitive", name: "binary" }),
+  /** The built-in struct Text (`{ value }`). */
+  text: (): TypeRef => ({ kind: "named", id: BUILTIN.Text }),
+  json: (): TypeRef => ({ kind: "named", id: BUILTIN.Json }),
+  secret: (): TypeRef => ({ kind: "named", id: BUILTIN.Secret }),
+  apiKey: (): TypeRef => ({ kind: "named", id: BUILTIN.ApiKey }),
+  error: (): TypeRef => ({ kind: "named", id: BUILTIN.Error }),
+  image: (): TypeRef => ({ kind: "named", id: BUILTIN.Image }),
+  video: (): TypeRef => ({ kind: "named", id: BUILTIN.Video }),
+  audio: (): TypeRef => ({ kind: "named", id: BUILTIN.Audio }),
+  model3d: (): TypeRef => ({ kind: "named", id: BUILTIN.Model3D }),
+  file: (): TypeRef => ({ kind: "named", id: BUILTIN.File }),
   named: (id: string): TypeRef => ({ kind: "named", id }),
   list: (of: TypeRef, bounds: { minItems?: number; maxItems?: number } = {}): TypeRef => ({ kind: "list", of, ...bounds }),
   optional: (of: TypeRef): TypeRef => ({ kind: "optional", of }),

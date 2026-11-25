@@ -112,14 +112,14 @@ describe("mock.structured", () => {
       id: "ty_char",
       name: "Character",
       fields: [
-        { name: "name", type: { kind: "primitive", name: "text", constraints: { maxLength: 6 } } },
+        { name: "name", type: { kind: "primitive", name: "string" } },
         { name: "age", type: { kind: "primitive", name: "int", constraints: { min: 10, max: 12 } } },
         { name: "score", type: { kind: "primitive", name: "float" } },
-        { name: "alive", type: { kind: "primitive", name: "boolean" } },
+        { name: "alive", type: { kind: "primitive", name: "bool" } },
         { name: "mood", type: { kind: "named", id: "ty_mood" } },
-        { name: "tags", type: { kind: "list", of: { kind: "primitive", name: "text" }, minItems: 3 } },
-        { name: "nick", type: { kind: "optional", of: { kind: "primitive", name: "text" } } },
-        { name: "avatar", type: { kind: "primitive", name: "image" } },
+        { name: "tags", type: { kind: "list", of: { kind: "primitive", name: "string" }, minItems: 3 } },
+        { name: "nick", type: { kind: "optional", of: { kind: "primitive", name: "string" } } },
+        { name: "avatar", type: { kind: "named", id: "briar.Image" } },
       ],
     },
   ];
@@ -157,7 +157,7 @@ describe("mock.structured", () => {
   });
 
   it("leaves optional video fields null (also inside lists) and rejects required video", async () => {
-    const video = { kind: "primitive", name: "video" } as const;
+    const video = { kind: "named", id: "briar.Video" } as const;
     const withVideo: TypeDecl[] = [
       {
         kind: "struct",

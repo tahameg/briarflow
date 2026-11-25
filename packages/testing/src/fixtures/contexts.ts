@@ -5,6 +5,7 @@
  * Node types used here come from {@link briarTestPack} and {@link kitPack}
  * (see `testCatalog()`).
  */
+import { textType } from "./values.js";
 import type { ContextDocument, DiagnosticPath, FlowVariable, GlobalVariable, MediaRef } from "@briarflow/core";
 import { context, edge, editContext, editFlow, enumType, field, flow, ir, node, struct } from "./build.js";
 
@@ -33,10 +34,10 @@ export function portraitContext(): ContextDocument {
     types: [
       enumType(ART_STYLE_ID, "ArtStyle", [{ value: "anime", label: "Anime" }, "realistic", { value: "pixel", label: "Pixel art" }]),
       struct(CHARACTER_ID, "Character", [
-        field("name", ir.text()),
+        field("name", ir.string()),
         field("age", ir.int({ min: 0 }), { default: 30 }),
         field("style", ir.named(ART_STYLE_ID)),
-        field("nickname", ir.optional(ir.text())),
+        field("nickname", ir.optional(ir.string())),
       ]),
     ],
     flows: [
@@ -44,7 +45,7 @@ export function portraitContext(): ContextDocument {
         id: PORTRAIT_FLOW_ID,
         name: "Portrait",
         inputs: [field("character", ir.named(CHARACTER_ID))],
-        outputs: [field("prompt", ir.text())],
+        outputs: [field("prompt", ir.string())],
         nodes: [
           node("n_brk", "briar.struct.break", { x: 200, y: 0 }, { config: { typeId: CHARACTER_ID } }),
           node(
@@ -53,7 +54,7 @@ export function portraitContext(): ContextDocument {
             { x: 420, y: 0 },
             {
               config: { template: "Draw {{name}} in {{style}} style" },
-              typeBindings: { T1: ir.text(), T2: ir.named(ART_STYLE_ID) },
+              typeBindings: { T1: ir.string(), T2: ir.named(ART_STYLE_ID) },
             },
           ),
         ],
@@ -87,23 +88,23 @@ export const SAMPLE_IMAGE_REF: MediaRef = { mediaId: "med_logo" };
  */
 export function everyTypeContext(): ContextDocument {
   const mood = enumType("ty_mood", "Mood", [{ value: "calm", label: "Ruhig 😌" }, { value: "gpt-4.1", label: "Model" }, "16x9"]);
-  const inner = struct("ty_inner", "Inner", [field("flag", ir.boolean()), field("score", ir.float({ min: 0, max: 1 }))], "Innerer Typ — ünïcødé");
+  const inner = struct("ty_inner", "Inner", [field("flag", ir.bool()), field("score", ir.float({ min: 0, max: 1 }))], "Innerer Typ — ünïcødé");
   const outer = struct("ty_outer", "Outer", [
     field("inner", ir.named("ty_inner")),
-    field("tags", ir.list(ir.text({ maxLength: 20 }), { minItems: 1, maxItems: 3 })),
+    field("tags", ir.list(ir.string(), { minItems: 1, maxItems: 3 })),
     field("maybe", ir.optional(ir.named("ty_inner"))),
     field("moods", ir.list(ir.named("ty_mood"))),
     field("count", ir.int({ min: -5, max: 5 }), { default: 0, description: "数" }),
   ]);
   const globals: GlobalVariable[] = [
-    { id: "gv_logo", name: "logo", type: ir.image({ formats: ["png"], maxBytes: 1_000_000 }), access: "readwrite", value: SAMPLE_IMAGE_REF },
+    { id: "gv_logo", name: "logo", type: ir.image(), access: "readwrite", value: { data: SAMPLE_IMAGE_REF, mime: "image/png" } },
     { id: "gv_mood", name: "mood", type: ir.named("ty_mood"), access: "readonly", value: "calm", description: "Stimmung" },
   ];
   return context({
     id: "ctx_every",
     name: "Ünïcødé ✨ 文脈",
     description: "Every type kind — 每种类型",
-    types: [mood, inner, outer],
+    types: [mood, inner, outer, textType("ty_name_text", { minLength: 1, maxLength: 100, pattern: "[\\p{L} ]+", multiline: true })],
     globals,
     flows: [
       flow({
@@ -111,22 +112,22 @@ export function everyTypeContext(): ContextDocument {
         name: "Every type 🌱",
         description: "Signature with every primitive",
         inputs: [
-          field("text", ir.text({ minLength: 1, maxLength: 100, pattern: "[\\p{L} ]+", multiline: true })),
+          field("text", ir.named("ty_name_text")),
           field("int", ir.int({ min: 0, max: 10 }), { default: 5 }),
           field("float", ir.float({ min: -1.5, max: 1.5 })),
-          field("boolean", ir.boolean()),
-          field("image", ir.image({ formats: ["png", "jpeg"], maxBytes: 5_000_000, minWidth: 1, maxWidth: 4096, minHeight: 1, maxHeight: 4096 })),
-          field("video", ir.video({ formats: ["mp4"], maxDurationSec: 60 })),
-          field("audio", ir.audio({ formats: ["mp3", "wav"] })),
-          field("model", ir.model3d({ formats: ["glb"] })),
-          field("file", ir.file({ formats: ["pdf", "application/zip"] })),
+          field("boolean", ir.bool()),
+          field("image", ir.image()),
+          field("video", ir.video()),
+          field("audio", ir.audio()),
+          field("model", ir.model3d()),
+          field("file", ir.file()),
           field("images", ir.list(ir.image(), { maxItems: 4 })),
-          field("maybeText", ir.optional(ir.text())),
+          field("maybeText", ir.optional(ir.string())),
           field("outer", ir.named("ty_outer")),
           field("mood", ir.named("ty_mood"), { default: "calm" }),
         ],
-        outputs: [field("summary", ir.text())],
-        nodes: [node("n_big", "briar.constant", { x: 200, y: 0 }, { config: { type: ir.text() }, values: { value: largeText() } })],
+        outputs: [field("summary", ir.string())],
+        nodes: [node("n_big", "briar.constant", { x: 200, y: 0 }, { config: { type: ir.string() }, values: { value: largeText() } })],
         edges: [edge("e_big", "n_big.value", "n_out.summary")],
       }),
     ],
@@ -150,8 +151,8 @@ export const VARIABLES_FLOW_ID = "flow_v";
 export function variablesContext(example: "A" | "B" | "C" | "D"): ContextDocument {
   const variable = (id: string, name: string, access: "public" | "private", def?: unknown): FlowVariable =>
     def === undefined
-      ? { id, name, type: ir.text(), access }
-      : { id, name, type: ir.text(), access, default: def };
+      ? { id, name, type: ir.string(), access }
+      : { id, name, type: ir.string(), access, default: def };
   switch (example) {
     case "A":
       return context({
@@ -160,8 +161,8 @@ export function variablesContext(example: "A" | "B" | "C" | "D"): ContextDocumen
           flow({
             id: VARIABLES_FLOW_ID,
             name: "Example A",
-            inputs: [field("topic", ir.text())],
-            outputs: [field("summary", ir.text())],
+            inputs: [field("topic", ir.string())],
+            outputs: [field("summary", ir.string())],
             variables: [variable("var_summary", "summary", "private")],
             nodes: [
               node("n_set", "briar.variable.set", { x: 200, y: 0 }, { config: { variableId: "var_summary" } }),
@@ -195,7 +196,7 @@ export function variablesContext(example: "A" | "B" | "C" | "D"): ContextDocumen
           flow({
             id: VARIABLES_FLOW_ID,
             name: "Example C",
-            inputs: [field("a", ir.text()), field("b", ir.text())],
+            inputs: [field("a", ir.string()), field("b", ir.string())],
             variables: [variable("var_x", "x", "public", "")],
             nodes: [
               node("n_set1", "briar.variable.set", { x: 200, y: 0 }, { config: { variableId: "var_x" } }),
@@ -614,7 +615,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
         nodes: [node("n_i", "kit.intSource", { x: 0, y: 0 }), node("n_s", "kit.sinkText", { x: 200, y: 0 })],
         edges: [edge("e_1", "n_i.value", "n_s.value")],
       }),
-    messageContains: ["Use convert.toText to turn it into text."],
+    messageContains: ["Use convert.toText to turn it into a string."],
   },
   {
     label: "list of int into int (hint: list.get)",
@@ -673,7 +674,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     path: { flowId: K, nodeId: "n_get" },
     doc: () =>
       kitContext({
-        variables: [{ id: "var_x", name: "x", type: ir.text(), access: "private" }],
+        variables: [{ id: "var_x", name: "x", type: ir.string(), access: "private" }],
         nodes: [
           node("n_get", "briar.variable.get", { x: 0, y: 0 }, { config: { variableId: "var_x" } }),
           node("n_sink", "kit.sinkText", { x: 200, y: 0 }),
@@ -688,7 +689,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     path: { flowId: K, nodeId: "n_get" },
     doc: () =>
       kitContext({
-        globals: [{ id: "gv_x", name: "x", type: ir.text(), access: "readwrite" }],
+        globals: [{ id: "gv_x", name: "x", type: ir.string(), access: "readwrite" }],
         nodes: [
           node("n_get", "briar.global.get", { x: 0, y: 0 }, { config: { globalId: "gv_x" } }),
           node("n_sink", "kit.sinkText", { x: 200, y: 0 }),
@@ -703,7 +704,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     path: { flowId: K, nodeId: "n_set" },
     doc: () =>
       kitContext({
-        globals: [{ id: "gv_ro", name: "brand", type: ir.text(), access: "readonly", value: "Acme" }],
+        globals: [{ id: "gv_ro", name: "brand", type: ir.string(), access: "readonly", value: "Acme" }],
         nodes: [node("n_set", "briar.global.set", { x: 0, y: 0 }, { config: { globalId: "gv_ro" }, values: { value: "New" } })],
       }),
   },
@@ -719,7 +720,7 @@ export const brokenFixtures: readonly BrokenFixture[] = [
     code: "variable.unused",
     severity: "warning",
     path: { flowId: K, variableId: "var_u" },
-    doc: () => kitContext({ variables: [{ id: "var_u", name: "unused", type: ir.text(), access: "private", default: "" }] }),
+    doc: () => kitContext({ variables: [{ id: "var_u", name: "unused", type: ir.string(), access: "private", default: "" }] }),
     messageContains: ["unused"],
   },
   {

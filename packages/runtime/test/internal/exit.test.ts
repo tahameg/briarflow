@@ -12,7 +12,7 @@ function portraitDoc() {
         id: "flow_p",
         name: "Portrait",
         inputs: [field("character", ir.named("ty_char"))],
-        outputs: [field("description", ir.text()), field("portrait", ir.image())],
+        outputs: [field("description", ir.string()), field("portrait", ir.image())],
         nodes: [
           node("n_brk", "briar.struct.break", { config: { typeId: "ty_char" } }),
           node("n_tpl", "text.template", { config: { template: "Portrait of {{name}}, age {{age}}, in {{style}} style." } }),
@@ -39,10 +39,10 @@ function portraitDoc() {
           id: "ty_char",
           name: "Character",
           fields: [
-            field("name", ir.text()),
+            field("name", ir.string()),
             field("age", ir.int({ min: 0 }), { default: 30 }),
             field("style", ir.named("ty_style")),
-            field("nickname", ir.optional(ir.text())),
+            field("nickname", ir.optional(ir.string())),
           ],
         },
       ],

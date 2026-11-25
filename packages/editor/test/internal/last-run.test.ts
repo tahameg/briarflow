@@ -4,7 +4,7 @@ import { applyCommands } from "@briarflow/authoring";
 import { createEditorStore, runStateFromLastRun, viewImageNode } from "../../src/index.js";
 import { CLOCK, FakeBackend, baseDoc, tick } from "./fakes.js";
 
-const view = defineNode({ type: "debug.image", frontend: true, inputs: { image: t.image(), label: t.optional(t.text()) }, run: () => ({}) });
+const view = defineNode({ type: "debug.image", frontend: true, inputs: { image: t.image(), label: t.optional(t.string()) }, run: () => ({}) });
 const make = defineNode({ type: "img.make", outputs: { image: t.image() }, run: () => ({ image: { mediaId: "med_x" } }) });
 const catalog = createCatalog([definePack({ name: "img", version: "1.0.0", namespaces: ["img", "debug"], nodes: [view, make] })]);
 

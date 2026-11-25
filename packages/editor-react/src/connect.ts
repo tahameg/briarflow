@@ -35,7 +35,7 @@ const PROBE_PREFIX = "n__probe";
  *
  * @example
  * ```ts
- * matchConnectTargets(doc, "flow_p", catalog, { kind: "primitive", name: "text" }, "out", [{ key: "join", type: "text.join" }]);
+ * matchConnectTargets(doc, "flow_p", catalog, { kind: "primitive", name: "string" }, "out", [{ key: "join", type: "text.join" }]);
  * // → [{ key: "join", port: "separator", portTitle: "Separator", generic: false }]
  * ```
  */

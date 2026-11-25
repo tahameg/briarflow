@@ -25,9 +25,9 @@ function doc() {
 
 describe("media previews", () => {
   it("knows which port types are visual media", () => {
-    expect(visualMediaKind({ kind: "primitive", name: "image" })).toBe("image");
-    expect(visualMediaKind({ kind: "list", of: { kind: "optional", of: { kind: "primitive", name: "video" } } })).toBe("video");
-    expect(visualMediaKind({ kind: "primitive", name: "audio" })).toBeUndefined();
+    expect(visualMediaKind({ kind: "named", id: "briar.Image" })).toBe("image");
+    expect(visualMediaKind({ kind: "list", of: { kind: "optional", of: { kind: "named", id: "briar.Video" } } })).toBe("video");
+    expect(visualMediaKind({ kind: "named", id: "briar.Audio" })).toBeUndefined();
   });
 
   it("gives image-output nodes a preview with the last run's media", () => {

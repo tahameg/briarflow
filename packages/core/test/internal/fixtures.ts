@@ -34,12 +34,12 @@ export const structBreak = defineNode({
 export const textTemplate = defineNode({
   type: "text.template",
   config: { template: cfg.text({ multiline: true }) },
-  outputs: { text: t.text() },
+  outputs: { text: t.string() },
   resolvePorts({ config }) {
     const names = [...new Set([...config.template.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1] as string))];
     return {
       inputs: Object.fromEntries(names.map((n, i) => [n, t.var(`T${i + 1}`)])),
-      outputs: { text: t.text() },
+      outputs: { text: t.string() },
     };
   },
   run: () => ({ text: "" }),
@@ -66,7 +66,7 @@ const varNode = (type: string, write: boolean, key: "variableId" | "globalId") =
     run: passthrough,
   });
 
-export const toText = defineNode({ type: "convert.toText", inputs: { value: t.var("T") }, outputs: { text: t.text() }, run: () => ({ text: "" }) });
+export const toText = defineNode({ type: "convert.toText", inputs: { value: t.var("T") }, outputs: { text: t.string() }, run: () => ({ text: "" }) });
 export const add1 = defineNode({ type: "briar.add1", inputs: { value: t.int() }, outputs: { value: t.int() }, run: () => ({ value: 1 }) });
 
 export const briarPack = definePack({
@@ -109,7 +109,7 @@ export function portraitContext(): ContextDocument {
   const flow: FlowDocument = {
     ...created,
     inputs: [{ name: "character", type: { kind: "named", id: "ty_char" } }],
-    outputs: [{ name: "prompt", type: { kind: "primitive", name: "text" } }],
+    outputs: [{ name: "prompt", type: { kind: "primitive", name: "string" } }],
   };
   return {
     ...doc,
@@ -120,10 +120,10 @@ export function portraitContext(): ContextDocument {
         id: "ty_char",
         name: "Character",
         fields: [
-          { name: "name", type: { kind: "primitive", name: "text" } },
+          { name: "name", type: { kind: "primitive", name: "string" } },
           { name: "age", type: { kind: "primitive", name: "int", constraints: { min: 0 } }, default: 30 },
           { name: "style", type: { kind: "named", id: "ty_style" } },
-          { name: "nickname", type: { kind: "optional", of: { kind: "primitive", name: "text" } } },
+          { name: "nickname", type: { kind: "optional", of: { kind: "primitive", name: "string" } } },
         ],
       },
     ],

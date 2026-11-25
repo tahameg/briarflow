@@ -9,8 +9,8 @@ import { context, edge, field, flow, ir, node, testEngine } from "./helpers.js";
 
 const useKey = defineNode({
   type: "keyed.useKey",
-  inputs: { key: t.optional(t.secret({ kind: "apiKey" })), other: { type: t.text(), default: "" } },
-  outputs: { text: t.text() },
+  inputs: { key: t.optional(t.secret({ kind: "apiKey" })), other: { type: t.string(), default: "" } },
+  outputs: { text: t.string() },
   cache: false,
   run: async ({ inputs, ctx }) => {
     const fromSetting = (await ctx.settings.get("defaultKey")) as string | null;
@@ -31,7 +31,7 @@ async function vaultWith(): Promise<SecretVault> {
 function doc(values: Record<string, unknown>) {
   return context([
     flow({
-      outputs: [field("text", ir.text())],
+      outputs: [field("text", ir.string())],
       nodes: [node("n_k", "keyed.useKey", { values })],
       edges: [edge("n_k.text", "n_out.text")],
     }),

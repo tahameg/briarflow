@@ -106,7 +106,7 @@ describe("failure and skip", () => {
   it("a failure in a downstream output makes nodes feeding nothing else still run", async () => {
     const { engine } = makeEngine();
     const d = doc({
-      outputs: [{ name: "out", type: ir.text() }],
+      outputs: [{ name: "out", type: ir.string() }],
       nodes: [n("n_f", "mock.fail"), n("n_ok", "probe.echo", { values: { value: "ran" } })],
       edges: [e("n_f.value", "n_out.out")],
     });
@@ -205,7 +205,7 @@ describe("retries", () => {
   it("mock.flaky (retry: 3) succeeds after its failures", async () => {
     vi.useFakeTimers();
     const { engine } = makeEngine();
-    const d = doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_f", "mock.flaky", { values: { failures: 2 } })], edges: [e("n_f.value", "n_out.out")] });
+    const d = doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_f", "mock.flaky", { values: { failures: 2 } })], edges: [e("n_f.value", "n_out.out")] });
     const run = run1(engine, d);
     await vi.advanceTimersByTimeAsync(10_000);
     const result = await run.result;

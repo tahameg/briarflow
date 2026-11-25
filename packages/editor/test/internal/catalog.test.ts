@@ -7,8 +7,8 @@ import { baseDoc } from "./fakes.js";
 const shout = defineNode({
   type: "words.shout",
   title: "Shout",
-  inputs: { text: { type: t.text(), widget: "textarea" }, marks: { type: t.int({ min: 0 }), default: 1 } },
-  outputs: { text: t.text() },
+  inputs: { text: { type: t.string(), widget: "textarea" }, marks: { type: t.int({ min: 0 }), default: 1 } },
+  outputs: { text: t.string() },
   run: ({ inputs }) => ({ text: inputs.text }),
 });
 const wordsPack = definePack({ name: "words", version: "0.1.0", nodes: [shout] });
@@ -22,7 +22,7 @@ const descriptor = (over: Partial<NodeDescriptor>): NodeDescriptor => ({
   icon: "image",
   color: "mint",
   inputs: [{ name: "factor", type: { kind: "primitive", name: "int" }, title: "Factor", default: 2, widget: null }],
-  outputs: [{ name: "image", type: { kind: "primitive", name: "image" }, title: "Image" }],
+  outputs: [{ name: "image", type: { kind: "named", id: "briar.Image" }, title: "Image" }],
   config: [{ name: "mode", kind: "choice", required: false, title: "Mode", default: "fast", choices: ["fast", "best"] }],
   dynamicPorts: false,
   secrets: [],

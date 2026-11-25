@@ -13,7 +13,7 @@ const keyed = definePack({
     apiKey: { type: t.optional(t.secret({ kind: "apiKey" })), title: "API key", description: "Key for every call." },
     retries: { type: t.int({ min: 0 }), default: 2 },
   },
-  nodes: [defineNode({ type: "keyed.ping", outputs: { ok: t.boolean() }, run: () => ({ ok: true }) })],
+  nodes: [defineNode({ type: "keyed.ping", outputs: { ok: t.bool() }, run: () => ({ ok: true }) })],
 });
 
 let briar: Briar;

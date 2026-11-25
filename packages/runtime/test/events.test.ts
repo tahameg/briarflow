@@ -59,8 +59,8 @@ function checkOrdering(events: readonly RunEvent[], deps: Record<string, string[
 
 const diamond = () =>
   doc({
-    inputs: [{ name: "t", type: ir.text() }],
-    outputs: [{ name: "out", type: ir.text() }],
+    inputs: [{ name: "t", type: ir.string() }],
+    outputs: [{ name: "out", type: ir.string() }],
     nodes: [
       n("n_a", "probe.echo"),
       n("n_b", "probe.echo"),
@@ -115,7 +115,7 @@ describe("event ordering", () => {
   it("failed and skipped runs also satisfy the guarantees", async () => {
     const { engine } = makeEngine();
     const d = doc({
-      outputs: [{ name: "out", type: ir.text() }],
+      outputs: [{ name: "out", type: ir.string() }],
       nodes: [n("n_f", "probe.throw", { values: { kind: "nodeError" } }), n("n_after", "probe.echo")],
       edges: [e("n_f.value", "n_after.value"), e("n_after.value", "n_out.out")],
     });
@@ -138,7 +138,7 @@ describe("events() replay", () => {
 
   it("replays then follows live events; independent consumers see the same stream", async () => {
     const { engine } = makeEngine();
-    const d = doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] });
+    const d = doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] });
     const run = engine.run({ context: d, flowId: FLOW_ID });
     const early = collect(run);
     await started(run, "n_w");
@@ -180,7 +180,7 @@ describe("events() replay", () => {
 
 describe("progress events", () => {
   const progressDoc = (values: number[], message = "", nanFirst = false) =>
-    doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_p", "probe.progress", { values: { values, message, nanFirst } })], edges: [e("n_p.value", "n_out.out")] });
+    doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_p", "probe.progress", { values: { values, message, nanFirst } })], edges: [e("n_p.value", "n_out.out")] });
 
   it("clamps to [0,1], ignores NaN; first report is immediate; message truncated to 200 chars", async () => {
     vi.useFakeTimers();

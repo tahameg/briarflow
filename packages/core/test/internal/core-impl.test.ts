@@ -25,7 +25,7 @@ import {
 import { briarPack, catalog, edge, node, portraitContext, withFlow } from "./fixtures.js";
 
 const codes = (ds: Diagnostic[]) => ds.map((d) => d.code);
-const text: TypeRef = { kind: "primitive", name: "text" };
+const text: TypeRef = { kind: "primitive", name: "string" };
 const int: TypeRef = { kind: "primitive", name: "int" };
 
 describe("defineNode / definePack / catalog / descriptors", () => {
@@ -33,7 +33,7 @@ describe("defineNode / definePack / catalog / descriptors", () => {
     const def = defineNode({
       type: "openai.chatCompletion",
       inputs: { maxTokens: { type: t.int(), default: 5 } },
-      outputs: { text: t.text() },
+      outputs: { text: t.string() },
       retry: 2,
       run: () => ({ text: "" }),
     });
@@ -50,7 +50,7 @@ describe("defineNode / definePack / catalog / descriptors", () => {
   it("rejects bad definitions", () => {
     const run = () => ({});
     expect(() => defineNode({ type: "Bad", run })).toThrow(/type must look like/);
-    expect(() => defineNode({ type: "a.b", inputs: { "1x": t.text() }, run })).toThrow(/not a valid port name/);
+    expect(() => defineNode({ type: "a.b", inputs: { "1x": t.string() }, run })).toThrow(/not a valid port name/);
     expect(() => defineNode({ type: "a.b", inputs: { n: { type: t.int({ min: 0 }), default: -1 } }, run })).toThrow(/invalid default/);
     expect(() => defineNode({ type: "a.b", outputs: { n: { type: t.int(), default: 1 } }, run: () => ({ n: 1 }) })).toThrow(/output ports cannot/);
     expect(() => defineNode({ type: "a.b", config: { m: cfg_choice() }, run })).toThrow(/not one of the choices/);
@@ -92,7 +92,7 @@ describe("serialization", () => {
     doc.flows[0].nodes[2].position.x = "a";
     expect(() => deserializeContext(doc)).toThrow(expect.objectContaining({ code: "format.invalid", details: { path: "flows[0].nodes[2].position.x" } }));
     expect(() => deserializeContext("{")).toThrow(expect.objectContaining({ code: "format.invalid" }));
-    expect(() => deserializeContext({ ...portraitContext(), formatVersion: 2 })).toThrow(expect.objectContaining({ code: "format.unsupported_version" }));
+    expect(() => deserializeContext({ ...portraitContext(), formatVersion: 3 })).toThrow(expect.objectContaining({ code: "format.unsupported_version" }));
   });
 });
 
@@ -115,7 +115,7 @@ describe("validation", () => {
     }));
     const ds = validateFlow(doc, "flow_p", catalog);
     expect(codes(ds)).toContain("edge.type_mismatch");
-    expect(ds.find((d) => d.code === "edge.type_mismatch")?.message).toContain("Template (n_tpl).text (text) to Output (n_out).prompt (int)");
+    expect(ds.find((d) => d.code === "edge.type_mismatch")?.message).toContain("Template (n_tpl).text (string) to Output (n_out).prompt (int)");
     expect(ds.find((d) => d.code === "flow.cycle")?.message).toContain("Add1 (n_add) → Add1 (n_add2) → Add1 (n_add)");
   });
 
