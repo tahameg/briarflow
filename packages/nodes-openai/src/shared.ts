@@ -2,7 +2,7 @@
  * What the OpenAI nodes share: pack options, settings (which vault key for which job) and
  * key resolution.
  */
-import { NodeError, t, type ExecContext } from "@briarflow/core";
+import { NodeError, t, type ExecContext, type SecretValue } from "@briarflow/core";
 
 /** Options of {@link openaiPack}. All optional. */
 export interface OpenAIPackOptions {
@@ -43,7 +43,7 @@ export const nodeSettings = {
 
 /** The key and base URL a node calls with. */
 export async function connection(ctx: ExecContext, job: "textKey" | "imageKey"): Promise<{ apiKey: string; baseUrl: string }> {
-  const ref = ((await ctx.settings.get(job)) as string | null) ?? ((await ctx.settings.get("defaultKey")) as string | null);
+  const ref = ((await ctx.settings.get(job)) as SecretValue | null) ?? ((await ctx.settings.get("defaultKey")) as SecretValue | null);
   if (!ref) {
     throw new NodeError(
       "openai.no_key",

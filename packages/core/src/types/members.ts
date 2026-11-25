@@ -5,7 +5,7 @@
  */
 import type { FieldDecl, TypeDecl } from "../documents/model.js";
 import type { TypeRef } from "./ir.js";
-import { structLayout } from "./layout.js";
+import { structLayout, withBuiltins } from "./layout.js";
 
 /** Looks up a struct or enum by id (local → global → built-in → pack). */
 export type TypeResolver = (id: string) => TypeDecl | undefined;
@@ -51,7 +51,8 @@ function fieldMember(f: FieldDecl, writable: boolean): TypeMember {
  * // → ["data", "mime", "name", "size", "width", "height", "formats", "maxBytes", …]
  * ```
  */
-export function typeMembers(type: TypeRef, resolve: TypeResolver): TypeMember[] {
+export function typeMembers(type: TypeRef, given: TypeResolver): TypeMember[] {
+  const resolve = withBuiltins(given);
   if (type.kind === "optional") return typeMembers(type.of, resolve).map((m) => ({ ...m, type: opt(m.type), writable: false }));
   if (type.kind === "named") {
     const decl = resolve(type.id);
@@ -123,7 +124,8 @@ export function memberPaths(type: TypeRef, resolve: TypeResolver, depth = 3): Me
  * Reads `path` from `value` of `type`. A missing step (none / absent field) gives `null`; a
  * static field gives the type's value.
  */
-export function readMember(value: unknown, type: TypeRef, path: readonly string[], resolve: TypeResolver): unknown {
+export function readMember(value: unknown, type: TypeRef, path: readonly string[], given: TypeResolver): unknown {
+  const resolve = withBuiltins(given);
   let current: unknown = value;
   let t = type;
   for (const name of path) {
@@ -157,7 +159,8 @@ export function readMember(value: unknown, type: TypeRef, path: readonly string[
  * A copy of struct `value` with the member at `path` replaced (nested structs are copied
  * along the way; `value` is not changed). Every step must be a struct field.
  */
-export function writeMember(value: unknown, type: TypeRef, path: readonly string[], next: unknown, resolve: TypeResolver): unknown {
+export function writeMember(value: unknown, type: TypeRef, path: readonly string[], next: unknown, given: TypeResolver): unknown {
+  const resolve = withBuiltins(given);
   const [name, ...rest] = path;
   if (name === undefined) return next;
   if (type.kind !== "named") return value;

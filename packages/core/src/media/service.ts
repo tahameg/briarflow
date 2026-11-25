@@ -17,18 +17,18 @@ export interface NodeMedia {
   /** A transient entry for media on the web; the bytes are fetched when read. */
   link(url: string, info: PutMediaInfo): Promise<MediaRef>;
   /** The entry of a media value. Unknown → `MediaError("media.not_found")`. */
-  entry(ref: MediaRef | string): Promise<MediaEntry>;
+  entry(ref: MediaLike): Promise<MediaEntry>;
   /**
    * The bytes of a media value, from memory, the registry, the blob store or the web. Treat the
    * result as read-only: it may be shared. Errors: `media.not_found`, `media.too_large`,
    * `media.fetch_failed`, `media.corrupt`, `media.unavailable`.
    */
-  read(ref: MediaRef | string, options?: { maxBytes?: number }): Promise<Uint8Array>;
+  read(ref: MediaLike, options?: { maxBytes?: number }): Promise<Uint8Array>;
   /**
    * A URL others can GET without credentials: a link's own URL, or the blob store's public or
    * signed URL (`MediaStore.resolveUrl`) for stored media. `undefined` otherwise.
    */
-  url(ref: MediaRef | string): Promise<string | undefined>;
+  url(ref: MediaLike): Promise<string | undefined>;
 }
 
 /** Options of {@link Media.read}. */
@@ -71,10 +71,10 @@ export interface Media {
   readonly registry: MediaRegistry;
   readonly blobs: MediaStore | undefined;
   /** The entry, or `undefined`. */
-  entry(ref: MediaRef | string): Promise<MediaEntry | undefined>;
-  read(ref: MediaRef | string, options?: MediaReadOptions): Promise<Uint8Array>;
+  entry(ref: MediaLike): Promise<MediaEntry | undefined>;
+  read(ref: MediaLike, options?: MediaReadOptions): Promise<Uint8Array>;
   /** For downloads: the bytes as a stream, or the URL of a `link` entry. Unknown → `media.not_found`. */
-  open(ref: MediaRef | string, options?: { signal?: AbortSignal }): Promise<MediaBody>;
+  open(ref: MediaLike, options?: { signal?: AbortSignal }): Promise<MediaBody>;
   /** A `data` entry; with `owner` it is transient. Images get their width and height from the header. */
   put(data: Uint8Array, info: PutMediaInfo & { owner?: MediaOwner }): Promise<MediaEntry>;
   /** A kept entry for an uploaded file: `stored` in the blob store when there is one, else `data`. */
@@ -82,11 +82,11 @@ export interface Media {
   /** A `link` entry; with `owner` it is transient. */
   link(url: string, info: PutMediaInfo & { owner?: MediaOwner }): Promise<MediaEntry>;
   /** Deletes the entry (not the blob of a `stored` entry: blobs are shared by content). */
-  delete(ref: MediaRef | string): Promise<boolean>;
+  delete(ref: MediaLike): Promise<boolean>;
   adopt(ids: readonly string[], owner: MediaOwner): Promise<void>;
   deleteOwned(match: Partial<MediaOwner>): Promise<string[]>;
   /** See {@link NodeMedia.url}. */
-  url(ref: MediaRef | string): Promise<string | undefined>;
+  url(ref: MediaLike): Promise<string | undefined>;
   /** The `ctx.media` of one node execution. */
   forNode(scope: { owner?: MediaOwner; fetch?: typeof fetch; signal?: AbortSignal }): NodeMedia;
   /** Bytes held in memory now. */
@@ -105,11 +105,18 @@ function corrupt(id: string, problem: string): MediaError {
   return new MediaError("media.corrupt", `Media "${id}" cannot be read: ${problem}.`, { details: { mediaId: id } });
 }
 
-/** The id of a media value or a bare id. Throws `media.invalid_ref`. */
-export function mediaIdOf(ref: MediaRef | string): string {
-  const id = typeof ref === "string" ? ref : (ref as MediaRef | undefined)?.mediaId;
+/** What the media API accepts: a binary value, a media struct value (its `data`), or a bare id. */
+export type MediaLike = MediaRef | { data: MediaRef } | string;
+
+/**
+ * The id of a binary value (`{ mediaId }`), of a media struct value (its `data`), or a bare id.
+ * Throws `media.invalid_ref`.
+ */
+export function mediaIdOf(ref: MediaLike): string {
+  const inner = typeof ref === "object" && ref !== null && "data" in ref ? (ref as { data: MediaRef }).data : ref;
+  const id = typeof inner === "string" ? inner : (inner as MediaRef | undefined)?.mediaId;
   if (typeof id !== "string" || !MEDIA_ID_PATTERN.test(id)) {
-    throw new MediaError("media.invalid_ref", `${describe(ref)} is not a media value: expected { mediaId }.`, { details: { ref } });
+    throw new MediaError("media.invalid_ref", `${describe(ref)} is not a media value: expected { mediaId } or a media struct with data.`, { details: { ref } });
   }
   return id;
 }
@@ -191,7 +198,7 @@ export function createMedia(options: MediaOptions): Media {
     memory.delete(id);
   };
 
-  const entry = async (ref: MediaRef | string): Promise<MediaEntry | undefined> => {
+  const entry = async (ref: MediaLike): Promise<MediaEntry | undefined> => {
     const id = mediaIdOf(ref);
     const cached = entries.get(id);
     if (cached) return cached;
@@ -214,7 +221,7 @@ export function createMedia(options: MediaOptions): Media {
     );
   };
 
-  const entryOrThrow = async (ref: MediaRef | string): Promise<MediaEntry> => {
+  const entryOrThrow = async (ref: MediaLike): Promise<MediaEntry> => {
     const e = await entry(ref);
     if (!e) throw notFound(mediaIdOf(ref));
     return e;
@@ -238,7 +245,7 @@ export function createMedia(options: MediaOptions): Media {
     return readAll(res.body, { ...o, what: `"${e.id}"` });
   };
 
-  const read = async (ref: MediaRef | string, o: MediaReadOptions = {}): Promise<Uint8Array> => {
+  const read = async (ref: MediaLike, o: MediaReadOptions = {}): Promise<Uint8Array> => {
     o.signal?.throwIfAborted();
     const id = mediaIdOf(ref);
     const hit = memory.get(id);
@@ -311,7 +318,7 @@ export function createMedia(options: MediaOptions): Media {
     );
   };
 
-  const url = async (ref: MediaRef | string): Promise<string | undefined> => {
+  const url = async (ref: MediaLike): Promise<string | undefined> => {
     const e = await entryOrThrow(ref);
     if (e.source.kind === "link") return e.source.url;
     if (e.source.kind !== "stored" || !blobs?.resolveUrl) return undefined;

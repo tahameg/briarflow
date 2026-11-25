@@ -98,7 +98,7 @@ export type {
   TextValue,
   VideoValue,
 } from "./types/builtins.js";
-export { extendsProblems, extendsStruct, rootOf, structLayout } from "./types/layout.js";
+export { extendsProblems, extendsStruct, rootOf, structLayout, withBuiltins } from "./types/layout.js";
 export type { DeclResolver, ExtendsProblem, StaticField, StructLayout } from "./types/layout.js";
 export { isTruthy } from "./values/truthy.js";
 export { isTypeSpec, t } from "./types/builder.js";

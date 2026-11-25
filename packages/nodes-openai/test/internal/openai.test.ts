@@ -45,7 +45,7 @@ function nodeOf(type: string, fetchFn: typeof fetch) {
 describeNodePack(openaiPack({ fetch: fakeFetch(textAnswer("hi")).fn }), {
   samples: {
     "openai.text": [
-      { inputs: { prompt: "Hello" }, vault: { OPENAI_KEY: KEY }, settings: { defaultKey: "OPENAI_KEY" }, check: (r) => expect(r.outputs["text"]).toBe("hi") },
+      { inputs: { prompt: "Hello" }, vault: { OPENAI_KEY: KEY }, settings: { defaultKey: { name: "OPENAI_KEY" } }, check: (r) => expect(r.outputs["text"]).toBe("hi") },
       { name: "no key", inputs: { prompt: "Hello" }, errorCode: "openai.no_key" },
     ],
     "openai.image": [{ inputs: { prompt: "A cat" }, errorCode: "openai.no_key" }],
@@ -61,7 +61,7 @@ describe("openai.text", () => {
       variant: "gpt-5",
       config: { reasoning: "low" },
       vault: { TEXT: KEY, OTHER: "sk-other-key-000000" },
-      settings: { textKey: "TEXT", defaultKey: "OTHER" },
+      settings: { textKey: { name: "TEXT" }, defaultKey: { name: "OTHER" } },
     });
     expect(r.outputs).toEqual({ text: "Hello there", usage: { inputTokens: 9, outputTokens: 4 }, model: "gpt-5-mini-2026-01-01", complete: true });
     expect(f.calls[0]!.url).toBe("https://api.openai.com/v1/responses");
@@ -72,7 +72,7 @@ describe("openai.text", () => {
   it("reasoning models take an effort, the others a temperature, Other model any id", async () => {
     const f = fakeFetch(textAnswer("a"));
     const { def, packs } = nodeOf("openai.text", f.fn);
-    const options = { packs, vault: { K: KEY }, settings: { defaultKey: "K" } };
+    const options = { packs, vault: { K: KEY }, settings: { defaultKey: { name: "K" } } };
     expect(Object.keys(def.inputs)).not.toContain("temperature");
     await runNode(def, { prompt: "x", temperature: 0.3 }, { ...options, variant: "gpt-4o" });
     expect(f.calls[0]!.body).toMatchObject({ model: "gpt-4o", temperature: 0.3 });
@@ -84,21 +84,21 @@ describe("openai.text", () => {
   it("falls back to the default key and a custom base URL", async () => {
     const f = fakeFetch(textAnswer("a"));
     const { def, packs } = nodeOf("openai.text", f.fn);
-    await runNode(def, { prompt: "x" }, { packs, vault: { DEF: KEY }, settings: { defaultKey: "DEF", baseUrl: "https://proxy.example/v1/" } });
+    await runNode(def, { prompt: "x" }, { packs, vault: { DEF: KEY }, settings: { defaultKey: { name: "DEF" }, baseUrl: "https://proxy.example/v1/" } });
     expect(f.calls[0]!.url).toBe("https://proxy.example/v1/responses");
     expect(f.calls[0]!.headers["authorization"]).toBe(`Bearer ${KEY}`);
   });
 
   it("maps errors and never shows the key", async () => {
     const { def, packs } = nodeOf("openai.text", fakeFetch(json({ error: { message: `bad key ${KEY}`, type: "invalid_request_error" } }, 401)).fn);
-    const err = (await runNode(def, { prompt: "x" }, { packs, vault: { K: KEY }, settings: { defaultKey: "K" } }).catch((e: unknown) => e)) as { code: string; message: string };
+    const err = (await runNode(def, { prompt: "x" }, { packs, vault: { K: KEY }, settings: { defaultKey: { name: "K" } } }).catch((e: unknown) => e)) as { code: string; message: string };
     expect(err.code).toBe("openai.unauthorized");
     expect(err.message).not.toContain(KEY);
     const quota = nodeOf("openai.text", fakeFetch(json({ error: { code: "insufficient_quota", message: "no money" } }, 429)).fn);
-    const quotaErr = (await runNode(quota.def, { prompt: "x" }, { packs: quota.packs, vault: { K: KEY }, settings: { defaultKey: "K" } }).catch((e: unknown) => e)) as { code: string };
+    const quotaErr = (await runNode(quota.def, { prompt: "x" }, { packs: quota.packs, vault: { K: KEY }, settings: { defaultKey: { name: "K" } } }).catch((e: unknown) => e)) as { code: string };
     expect(quotaErr.code).toBe("openai.quota_exceeded");
     const limited = nodeOf("openai.text", fakeFetch(json({ error: { message: "slow down" } }, 429, { "retry-after": "2" })).fn);
-    expect(await runNode(limited.def, { prompt: "x" }, { packs: limited.packs, vault: { K: KEY }, settings: { defaultKey: "K" } }).catch((e: unknown) => e)).toMatchObject({ code: "node.rate_limited", retryable: true });
+    expect(await runNode(limited.def, { prompt: "x" }, { packs: limited.packs, vault: { K: KEY }, settings: { defaultKey: { name: "K" } } }).catch((e: unknown) => e)).toMatchObject({ code: "node.rate_limited", retryable: true });
   });
 
   it("reads refusals and incomplete answers", () => {
@@ -111,7 +111,7 @@ describe("openai.image", () => {
   it("stores the generated image and sends GPT Image options", async () => {
     const f = fakeFetch(json({ data: [{ b64_json: PNG_B64 }] }));
     const { def, packs } = nodeOf("openai.image", f.fn);
-    const r = await runNode(def, { prompt: "A cat" }, { packs, config: { size: "1024x1536", quality: "xhigh", format: "webp", compression: 80, background: "transparent", moderation: "low" }, vault: { IMG: KEY }, settings: { imageKey: "IMG" } });
+    const r = await runNode(def, { prompt: "A cat" }, { packs, config: { size: "1024x1536", quality: "xhigh", format: "webp", compression: 80, background: "transparent", moderation: "low" }, vault: { IMG: KEY }, settings: { imageKey: { name: "IMG" } } });
     expect(Object.keys(r.outputs)).toEqual(["image"]);
     expect(await r.media.entry(r.outputs["image"] as MediaRef)).toMatchObject({ mime: "image/webp", meta: { width: 1024, height: 1536 } });
     expect(f.calls[0]!.url).toBe("https://api.openai.com/v1/images/generations");
@@ -121,7 +121,7 @@ describe("openai.image", () => {
   it("leaves auto settings to the API and reads the picked size back", async () => {
     const f = fakeFetch(json({ data: [{ b64_json: PNG_B64 }], size: "1536x1024" }));
     const { def, packs } = nodeOf("openai.image", f.fn);
-    const r = await runNode(def, { prompt: "A cat" }, { packs, variant: "gpt-image-2", config: { compression: 50 }, vault: { K: KEY }, settings: { imageKey: "K" } });
+    const r = await runNode(def, { prompt: "A cat" }, { packs, variant: "gpt-image-2", config: { compression: 50 }, vault: { K: KEY }, settings: { imageKey: { name: "K" } } });
     expect(f.calls[0]!.body).toEqual({ model: "gpt-image-2", prompt: "A cat", n: 1, output_format: "png" });
     expect(await r.media.entry(r.outputs["image"] as MediaRef)).toMatchObject({ mime: "image/png", meta: { width: 1536, height: 1024 } });
   });
@@ -130,7 +130,7 @@ describe("openai.image", () => {
     const f = fakeFetch(json({ data: [{ b64_json: PNG_B64 }] }));
     const { def, packs } = nodeOf("openai.image", f.fn);
     const run = (customSize?: string) =>
-      runNode(def, { prompt: "A cat" }, { packs, config: { size: "custom", ...(customSize === undefined ? {} : { customSize }) }, vault: { K: KEY }, settings: { imageKey: "K" } });
+      runNode(def, { prompt: "A cat" }, { packs, config: { size: "custom", ...(customSize === undefined ? {} : { customSize }) }, vault: { K: KEY }, settings: { imageKey: { name: "K" } } });
     await run("1536x864");
     expect(f.calls[0]!.body["size"]).toBe("1536x864");
     for (const bad of [undefined, "big", "1000x1000", "4096x1024", "3840x960", "512x512"]) {

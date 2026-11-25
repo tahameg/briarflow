@@ -2,6 +2,7 @@
  * Mock nodes (docs/specs/node-api.md §10). Deterministic, offline, no secrets.
  */
 import {
+  builtinType,
   cfg,
   defineNode,
   mediaKindOfBuiltin,
@@ -90,7 +91,7 @@ function filler(prompt: string, seed: number, resolve: (id: string) => TypeDecl 
         return items;
       }
       case "named": {
-        const decl = resolve(type.id);
+        const decl = resolve(type.id) ?? builtinType(type.id);
         if (!decl) throw new NodeError("mock.unknown_type", `mock.structured cannot find type ${type.id} (at ${path}).`);
         if (decl.kind === "enum") {
           const members = decl.members;

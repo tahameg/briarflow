@@ -81,7 +81,7 @@ describe("mock.image and mock.model3d", () => {
     const h = harness();
     const a = await call(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 1 }, h);
     await call(mockImage, { prompt: "A <cat> & dog", width: 100, height: 50, seed: 1 }, h);
-    expect(a).toEqual({ image: { mediaId: "med_1" } });
+    expect(a).toMatchObject({ image: { data: { mediaId: "med_1" }, mime: "image/svg+xml", width: 100, height: 50 } });
     expect(h.stored[0]).toMatchObject({ mime: "image/svg+xml", meta: { width: 100, height: 50 } });
     const svg = new TextDecoder().decode(h.stored[0]?.bytes);
     expect(svg).toBe(new TextDecoder().decode(h.stored[1]?.bytes));
@@ -93,8 +93,8 @@ describe("mock.image and mock.model3d", () => {
 
   it("stores a glTF 2.0 cube", async () => {
     const h = harness();
-    const out = (await call(mockModel3d, { prompt: "cube", seed: 0 }, h)) as { model: MediaRef };
-    expect(out.model).toEqual({ mediaId: "med_1" });
+    const out = (await call(mockModel3d, { prompt: "cube", seed: 0 }, h)) as { model: { data: MediaRef } };
+    expect(out.model.data).toEqual({ mediaId: "med_1" });
     expect(h.stored[0]?.mime).toBe("model/gltf+json");
     const gltf = JSON.parse(new TextDecoder().decode(h.stored[0]?.bytes));
     expect(gltf.asset.version).toBe("2.0");
@@ -130,7 +130,7 @@ describe("mock.structured", () => {
     const b = (await call(mockStructured, { prompt: "hero", seed: 0 }, harness(1, types), { typeId: "ty_char" })) as { value: Record<string, unknown> };
     expect(a).toEqual(b);
     const v = a.value;
-    expect(v["name"]).toMatch(/^name [0-9a-f]$/);
+    expect(v["name"]).toMatch(/^name [0-9a-f]{4}$/);
     expect(v["age"]).toBeGreaterThanOrEqual(10);
     expect(v["age"]).toBeLessThanOrEqual(12);
     expect(typeof v["score"]).toBe("number");
@@ -138,7 +138,7 @@ describe("mock.structured", () => {
     expect(["happy", "sad"]).toContain(v["mood"]);
     expect(v["tags"]).toHaveLength(3);
     expect(typeof v["nick"]).toBe("string");
-    expect(v["avatar"]).toEqual({ mediaId: `med_${h.stored.length}` });
+    expect(v["avatar"]).toMatchObject({ data: { mediaId: `med_${h.stored.length}` }, mime: "image/svg+xml" });
     expect(h.stored.at(-1)?.mime).toBe("image/svg+xml");
     const hex = await mockHash({ prompt: "hero", seed: 0, path: "value.tags[0]" });
     expect((v["tags"] as string[])[0]).toBe(`tags ${hex.slice(0, 4)}`);

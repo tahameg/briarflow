@@ -1,7 +1,7 @@
 /**
  * Node result cache (docs/specs/runtime.md §6).
  */
-import { canonicalJson, isMediaRef, sha256Hex, type MediaRef, type TypeDecl, type TypeRef } from "@briarflow/core";
+import { canonicalJson, isMediaRef, sha256Hex, type MediaRef, type TypeDecl, type TypeRef, structLayout, withBuiltins } from "@briarflow/core";
 
 /**
  * Stores successful node outputs by cache key. Errors thrown by an implementation are logged
@@ -106,7 +106,6 @@ export function computeCacheKey(input: CacheKeyInput): Promise<string> {
   );
 }
 
-const MEDIA_KINDS = new Set(["image", "video", "audio", "model3d", "file"]);
 
 function mediaKey(ref: MediaRef): { $media: string } {
   return { $media: ref.mediaId };
@@ -133,16 +132,18 @@ export function replaceMedia(value: unknown, type: TypeRef | undefined, getType:
     case "optional":
       return replaceMedia(value, type.of, getType);
     case "primitive":
-      return MEDIA_KINDS.has(type.name) && isMediaRef(value) ? mediaKey(value) : value;
+      return type.name === "binary" && isMediaRef(value) ? mediaKey(value) : value;
     case "list":
       return Array.isArray(value) ? value.map((item) => replaceMedia(item, type.of, getType)) : value;
     case "named": {
-      const decl = getType(type.id);
+      const resolve = withBuiltins(getType);
+      const decl = resolve(type.id);
       if (!decl || decl.kind !== "struct" || Array.isArray(value)) return decl?.kind === "enum" ? value : untyped(value);
       const rec = value as Record<string, unknown>;
       const out: Record<string, unknown> = {};
+      const fields = structLayout(decl, resolve).fields;
       for (const [k, v] of Object.entries(rec)) {
-        const field = decl.fields.find((f) => f.name === k);
+        const field = fields.find((f) => f.name === k);
         out[k] = replaceMedia(v, field?.type, getType);
       }
       return out;

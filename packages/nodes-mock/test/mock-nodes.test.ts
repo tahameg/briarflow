@@ -27,7 +27,7 @@ import {
   mockStructured,
   PACKAGE_NAME,
 } from "@briarflow/nodes-mock";
-import { context, describeNodePack, enumType, field, flow, ir, runNode, struct } from "@briarflow/testing";
+import { context, describeNodePack, enumType, field, flow, ir, runNode, struct, textType } from "@briarflow/testing";
 
 async function rejects(p: Promise<unknown>): Promise<{ code: string; message: string; retryable?: boolean }> {
   try {
@@ -52,10 +52,12 @@ const structCtx = () =>
     types: [
       enumType("ty_mood", "Mood", ["calm", "angry", "sad"]),
       struct("ty_inner", "Inner", [field("flag", ir.bool())]),
+      textType("ty_short", { maxLength: 3 }),
+      textType("ty_long", { minLength: 30 }),
       struct("ty_all", "All", [
         field("title", ir.string()),
-        field("short", ir.string()),
-        field("long", ir.string()),
+        field("short", ir.named("ty_short")),
+        field("long", ir.named("ty_long")),
         field("count", ir.int()),
         field("ranged", ir.int({ min: 10, max: 12 })),
         field("ratio", ir.float({ min: 0, max: 1 })),
@@ -267,8 +269,8 @@ describe("mock.structured", () => {
     const r = await runNode(mockStructured, { prompt: "hero", seed: 1 }, opts);
     const v = r.outputs.value as Record<string, unknown>;
     expect(v["title"]).toMatch(/^title [0-9a-f]{4}$/);
-    expect(Array.from(v["short"] as string).length).toBeLessThanOrEqual(3);
-    expect(Array.from(v["long"] as string).length).toBeGreaterThanOrEqual(30);
+    expect(Array.from((v["short"] as { value: string }).value).length).toBeLessThanOrEqual(3);
+    expect(Array.from((v["long"] as { value: string }).value).length).toBeGreaterThanOrEqual(30);
     expect(Number.isInteger(v["count"]) && (v["count"] as number) >= 0 && (v["count"] as number) <= 99).toBe(true);
     expect([10, 11, 12]).toContain(v["ranged"]);
     expect((v["ratio"] as number) >= 0 && (v["ratio"] as number) <= 1).toBe(true);
@@ -289,7 +291,10 @@ describe("mock.structured", () => {
     const strip = async (x: { media: Media; outputs: { value: unknown } }) =>
       Object.fromEntries(
         await Promise.all(
-          Object.entries(x.outputs.value as Record<string, unknown>).map(async ([k, val]) => [k, isMediaRef(val) ? (await x.media.entry(val))?.hash : val] as const),
+          Object.entries(x.outputs.value as Record<string, unknown>).map(async ([k, val]) => {
+            const data = typeof val === "object" && val !== null ? (val as { data?: unknown }).data : undefined;
+            return [k, isMediaRef(data) ? (await x.media.entry(data))?.hash : val] as const;
+          }),
         ),
       );
     expect(await strip(again)).toEqual(await strip(r));

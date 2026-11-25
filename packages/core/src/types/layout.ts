@@ -4,6 +4,7 @@
  * fields are collected along the chain, the nearest value winning.
  */
 import type { FieldDecl, StructDecl, TypeDecl } from "../documents/model.js";
+import { builtinType } from "./builtins.js";
 
 /** Looks up a struct or enum by id. */
 export type DeclResolver = (id: string) => TypeDecl | undefined;
@@ -51,7 +52,8 @@ export interface ExtendsProblem {
  * structLayout(shortText, resolve).statics.get("maxLength")?.value; // 80
  * ```
  */
-export function structLayout(decl: StructDecl, resolve: DeclResolver): StructLayout {
+export function structLayout(decl: StructDecl, given: DeclResolver): StructLayout {
+  const resolve = withBuiltins(given);
   const chain: StructDecl[] = [decl];
   const seen = new Set([decl.id]);
   let current = decl;
@@ -83,15 +85,17 @@ export function structLayout(decl: StructDecl, resolve: DeclResolver): StructLay
 }
 
 /** Is struct `id` the struct `baseId` or does it extend it (directly or not)? */
-export function extendsStruct(id: string, baseId: string, resolve: DeclResolver): boolean {
+export function extendsStruct(id: string, baseId: string, given: DeclResolver): boolean {
   if (id === baseId) return true;
+  const resolve = withBuiltins(given);
   const decl = resolve(id);
   if (decl?.kind !== "struct") return false;
   return structLayout(decl, resolve).chain.includes(baseId);
 }
 
 /** The id of the root of a struct's `extends` chain (itself without `extends`). */
-export function rootOf(id: string, resolve: DeclResolver): string {
+export function rootOf(id: string, given: DeclResolver): string {
+  const resolve = withBuiltins(given);
   const decl = resolve(id);
   return decl?.kind === "struct" ? structLayout(decl, resolve).root : id;
 }
@@ -101,8 +105,9 @@ export function rootOf(id: string, resolve: DeclResolver): string {
  * known struct, the chain must not loop, an extending struct may only declare static fields, and
  * a static field that an inherited one already has must keep its type.
  */
-export function extendsProblems(decl: StructDecl, resolve: DeclResolver): ExtendsProblem[] {
+export function extendsProblems(decl: StructDecl, given: DeclResolver): ExtendsProblem[] {
   if (decl.extends === undefined) return [];
+  const resolve = withBuiltins(given);
   const out: ExtendsProblem[] = [];
   const base = resolve(decl.extends);
   if (!base) return [{ code: "type.extends_unknown", structId: decl.id, target: decl.extends }];
@@ -132,4 +137,9 @@ export function extendsProblems(decl: StructDecl, resolve: DeclResolver): Extend
     }
   }
   return out;
+}
+
+/** A resolver that also knows the built-in types (they are in every scope). */
+export function withBuiltins(resolve: DeclResolver): DeclResolver {
+  return (id) => resolve(id) ?? builtinType(id);
 }

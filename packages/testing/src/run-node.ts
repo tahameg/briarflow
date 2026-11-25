@@ -358,7 +358,8 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
         }
         return value;
       },
-      async read(ref: string) {
+      async read(given: string | { name: string }) {
+        const ref = typeof given === "object" && given !== null ? given.name : given;
         if (!allowedSecrets.has(ref)) {
           throw new NodeError("node.secret_not_allowed", `Node ${title} asked for secret "${ref}", which none of its inputs or settings gives it.`, { details: { secret: ref } });
         }
