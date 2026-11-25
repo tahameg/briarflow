@@ -1,5 +1,8 @@
 """Briarflow Python SDK: write nodes in Python and serve them to a Briarflow engine.
 
+Types: ``str`` ``int`` ``float`` ``bool`` ``Binary`` are the primitives; ``Text``, ``Image``…
+are built-in structs whose limits are static members (``class ShortText(Text): max_length = 80``).
+
 Example:
     from briarflow import node, pack, serve
 
@@ -12,30 +15,13 @@ Example:
 """
 
 from ._version import PROTOCOL_VERSION, __version__
-from .constraints import (
-    Constraint,
-    Formats,
-    Max,
-    MaxBytes,
-    MaxDurationSec,
-    MaxHeight,
-    MaxItems,
-    MaxLength,
-    MaxWidth,
-    Min,
-    MinHeight,
-    MinItems,
-    MinLength,
-    MinWidth,
-    Multiline,
-    Pattern,
-    Port,
-)
+from .constraints import Constraint, Max, MaxItems, Min, MinItems, Port
 from .context import ExecContext, MediaHelper
 from .decorators import node, outputs, struct
 from .errors import Cancelled, NodeError
-from .media import Audio, File, Image, MediaRef, Model3D, Video
+from .media import Binary
 from .pack import Pack, pack
+from .structs import ApiKey, Audio, Error, File, Image, Json, Model3D, Secret, SecretKind, Text, Video
 from .worker import Worker, serve
 
 __all__ = [
@@ -48,28 +34,23 @@ __all__ = [
     "Pack",
     "serve",
     "Worker",
+    "Binary",
+    "Text",
     "Image",
     "Video",
     "Audio",
     "Model3D",
     "File",
-    "MediaRef",
+    "Json",
+    "Secret",
+    "SecretKind",
+    "ApiKey",
+    "Error",
     "Constraint",
-    "MinLength",
-    "MaxLength",
-    "Pattern",
-    "Multiline",
     "Min",
     "Max",
     "MinItems",
     "MaxItems",
-    "Formats",
-    "MaxBytes",
-    "MinWidth",
-    "MaxWidth",
-    "MinHeight",
-    "MaxHeight",
-    "MaxDurationSec",
     "Port",
     "ExecContext",
     "MediaHelper",

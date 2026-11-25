@@ -42,7 +42,7 @@ cancel_pack = pack("cancel", "0.1.0", [loop, progress_loop])
 
 
 def _open_execute(port: int, node_type: str, inputs: dict) -> socket.socket:
-    body = json.dumps({"protocol": 1, "nodeType": node_type, "inputs": inputs}).encode()
+    body = json.dumps({"protocol": 2, "nodeType": node_type, "inputs": inputs}).encode()
     sock = socket.create_connection(("127.0.0.1", port), timeout=5)
     sock.sendall(
         b"POST /briarflow/execute HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"

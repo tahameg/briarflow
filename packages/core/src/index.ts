@@ -278,7 +278,7 @@ export type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "./interface
 export { createMemoryMediaRegistry, mediaExists, normalizeMediaEntry, ownerMatches, ownerOf } from "./interfaces/media-registry.js";
 export type { MediaEntry, MediaOwner, MediaRegistry, MediaSource, MemoryMediaRegistryOptions, NewMediaEntry } from "./interfaces/media-registry.js";
 export { createMedia, mediaIdOf } from "./media/service.js";
-export type { Media, MediaBody, MediaOptions, MediaReadOptions, NodeMedia } from "./media/service.js";
+export type { Media, MediaBody, MediaLike, MediaOptions, MediaReadOptions, NodeMedia } from "./media/service.js";
 export { imageSize } from "./media/sniff.js";
 export { createMemoryLastRuns } from "./interfaces/last-runs.js";
 export type { LastRun, LastRunNode, LastRunStore } from "./interfaces/last-runs.js";

@@ -105,12 +105,22 @@ def _require_dataclass(cls: Any, deco: str) -> None:
 def struct(cls: C) -> C:
     """Makes a ``@dataclass`` a pack struct type named after the class.
 
+    ``ClassVar`` attributes are **static members**: the type fixes their value. A ``@struct``
+    class that subclasses another struct (a built-in like ``Text`` or ``Image``, or your own)
+    **extends** it: it may only give static members values or add new ones, and is accepted
+    wherever its base is.
+
     Example:
         @struct
         @dataclass
         class Character:
-            name: Annotated[str, MaxLength(40)]
+            name: str
             age: int = 0
+            species: ClassVar[str] = "human"
+
+        @struct
+        class Title(Text):
+            max_length = 80
     """
     _require_dataclass(cls, "@struct")
     cls.__briarflow_struct__ = True  # type: ignore[attr-defined]

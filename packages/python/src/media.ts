@@ -14,8 +14,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Rebuilds `value` following its Briarflow type, replacing every value at a media position
- * with what `visit` returns. Values that do not match the type are passed through unchanged
+ * Rebuilds `value` following its Briarflow type, replacing every `binary` value (the `data` of
+ * an Image, Video… or a bare `binary` port) with what `visit` returns. Values that do not match the type are passed through unchanged
  * (the engine and the worker validate types).
  */
 async function mapMedia(value: unknown, type: TypeRef, types: TypeLookup, path: string, visit: Visitor, depth = 0): Promise<unknown> {
@@ -46,7 +46,7 @@ async function mapMedia(value: unknown, type: TypeRef, types: TypeLookup, path: 
 }
 
 /**
- * Replaces every media value inside `values` with what workers receive (python-protocol.md
+ * Replaces every `binary` value inside `values` with what workers receive (python-protocol.md
  * §1.3): `{ uri, mime, bytes?, hash?, meta?, url }`, built by `describe` from the media's entry.
  */
 export async function attachMediaUrls(
@@ -81,7 +81,7 @@ export async function workerMedia(ref: MediaRef, media: NodeMedia, urlFor: (ref:
 }
 
 /**
- * Turns worker outputs at media positions back into media values: `{"$media": {mime, base64,
+ * Turns worker outputs at `binary` positions back into media refs: `{"$media": {mime, base64,
  * filename?, meta?}}` is put into `media`; a passed-through `{ uri: "briar-media://<id>" }`
  * becomes `{ mediaId }`, and an http(s) `uri` becomes a link entry.
  */

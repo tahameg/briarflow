@@ -19,7 +19,6 @@ from briarflow import (
     ExecContext,
     Image,
     Max,
-    MaxLength,
     Min,
     NodeError,
     Port,
@@ -90,7 +89,7 @@ def make_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 @node(title="Uppercase", category="Text")
-def uppercase(text: Annotated[str, MaxLength(10_000)]) -> str:
+def uppercase(text: str) -> str:
     """Returns the text in upper case."""
     return text.upper()
 
@@ -114,8 +113,8 @@ def solid_image(swatch: Swatch, *, ctx: ExecContext) -> Image:
 @node(title="Image info", category="Image")
 def image_info(image: Image, *, ctx: ExecContext) -> ImageInfo:
     """Passes the image through unchanged and reports its mime, size and whether it is a PNG."""
-    head = ctx.media.read(image)[:8] if image.url else b""
-    return ImageInfo(image=image, mime=image.mime, bytes=image.bytes, is_png=head == b"\x89PNG\r\n\x1a\n")
+    head = ctx.media.read(image)[:8] if image.data.url else b""
+    return ImageInfo(image=image, mime=image.mime, bytes=image.size, is_png=head == b"\x89PNG\r\n\x1a\n")
 
 
 @node(title="Repeat text", category="Text", cache=False)

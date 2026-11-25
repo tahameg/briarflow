@@ -56,7 +56,7 @@ class Client:
 
     def execute(self, node_type: str, inputs: dict[str, Any] | None = None, **extra: Any) -> Response:
         token = extra.pop("token", ...)
-        body = {"protocol": 1, "nodeType": node_type, "runId": "run_1", "nodeId": "n_1",
+        body = {"protocol": 2, "nodeType": node_type, "runId": "run_1", "nodeId": "n_1",
                 "attempt": 1, "inputs": inputs or {}, "config": {}, "secrets": {}}
         body.update(extra)
         return self.request("POST", "/briarflow/execute", body, token=token)

@@ -21,18 +21,22 @@ from .typebind import (
     InvalidValue,
     Opt,
     check_port_name,
+    check_struct,
     class_description,
     class_fields,
+    class_statics,
     first_paragraph,
     from_json,
     is_outputs_class,
     is_struct_class,
     named_classes,
     resolve,
+    struct_base,
     to_json,
     to_typeref,
     type_id,
 )
+from .structs import builtin_id
 
 PACK_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 NODE_TYPE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][A-Za-z0-9_]*)+$")
@@ -240,13 +244,25 @@ class Pack:
         out = {"kind": "struct", "id": type_id(cls, self.name), "name": cls.__name__}
         if desc:
             out["description"] = desc
+        base = struct_base(cls)
+        if base is not None:
+            out["extends"] = type_id(base, self.name)
         fields = []
-        for f in class_fields(cls, "struct"):
-            fd: dict[str, Any] = {"name": f.name, "type": to_typeref(f.binding, self.name)}
-            if f.description:
-                fd["description"] = f.description
-            if f.has_default:
-                fd["default"] = to_json(f.default_value(), f.binding, f"{cls.__name__}.{f.name}")
+        if base is None:
+            for f in class_fields(cls, "struct"):
+                fd: dict[str, Any] = {"name": f.wire, "type": to_typeref(f.binding, self.name)}
+                if f.description:
+                    fd["description"] = f.description
+                if f.has_default:
+                    fd["default"] = to_json(f.default_value(), f.binding, f"{cls.__name__}.{f.wire}")
+                fields.append(fd)
+        for st in class_statics(cls).values():
+            if base is not None and not st.own:
+                continue
+            fd = {"name": st.wire, "type": to_typeref(st.binding, self.name), "static": True}
+            if st.description:
+                fd["description"] = st.description
+            fd["default"] = to_json(st.value, st.binding, f"{cls.__name__}.{st.wire}")
             fields.append(fd)
         out["fields"] = fields
         return out
@@ -413,7 +429,7 @@ def _collect_types(explicit: list[type], specs: dict[str, NodeSpec], pack_name: 
     by_name: dict[str, type] = {}
 
     def add(cls: type, where: str) -> None:
-        if id(cls) in seen_ids:
+        if id(cls) in seen_ids or builtin_id(cls) is not None:
             return
         if not (is_struct_class(cls) or (isinstance(cls, type) and issubclass(cls, Enum))):
             raise TypeError(
@@ -438,6 +454,11 @@ def _collect_types(explicit: list[type], specs: dict[str, NodeSpec], pack_name: 
             )
         by_name[n.lower()] = cls
         seen_ids.add(id(cls))
+        if not issubclass(cls, Enum):
+            check_struct(cls, pack_name)
+            base = struct_base(cls)
+            if base is not None:
+                add(base, f"struct {n} extends")
         ordered.append(cls)
         if issubclass(cls, Enum):
             values: set[str] = set()
@@ -461,6 +482,9 @@ def _collect_types(explicit: list[type], specs: dict[str, NodeSpec], pack_name: 
                         json.dumps(dv, allow_nan=False)
                     except (InvalidValue, TypeError, ValueError) as exc:
                         raise ValueError(f"pack {pack_name}: default of {n}.{f.name} is invalid: {exc}") from None
+            for st in class_statics(cls).values():
+                for ref in named_classes(st.binding):
+                    add(ref, f"static member {n}.{st.name} uses")
 
     for cls in explicit:
         add(cls, "types entry")

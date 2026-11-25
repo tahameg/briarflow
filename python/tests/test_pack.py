@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import Annotated, Optional
+from typing import Annotated, ClassVar, Optional
 
 import pytest
 
@@ -9,9 +9,9 @@ from briarflow import (
     ExecContext,
     Image,
     Max,
-    MaxLength,
     Min,
     Port,
+    Text,
     node,
     outputs,
     pack,
@@ -28,12 +28,20 @@ class ArtStyle(str, Enum):
 
 
 @struct
+class Name(Text):
+    """A short name."""
+
+    max_length = 40
+
+
+@struct
 @dataclass
 class Character:
     """A character in the story."""
 
-    name: Annotated[str, MaxLength(40), Port(description="Display name")]
+    name: Annotated[Name, Port(description="Display name")]
     style: ArtStyle = ArtStyle.ANIME
+    kind: ClassVar[str] = "person"
 
 
 @outputs
@@ -76,7 +84,7 @@ def test_helpers() -> None:
 
 def test_manifest_top_level() -> None:
     m = build().manifest()
-    assert m["protocol"] == 1
+    assert m["protocol"] == 2
     assert m["sdk"] == {"name": "briarflow-python", "version": "0.1.0"}
     assert m["pack"] == {"name": "imaging", "version": "0.1.0", "title": "Imaging", "description": "Image tools"}
     json.dumps(m)  # serializable
@@ -88,9 +96,17 @@ def test_manifest_types() -> None:
         {
             "kind": "struct", "id": "imaging.Character", "name": "Character", "description": "A character in the story.",
             "fields": [
-                {"name": "name", "type": {"kind": "primitive", "name": "text", "constraints": {"maxLength": 40}},
-                 "description": "Display name"},
+                {"name": "name", "type": {"kind": "named", "id": "imaging.Name"}, "description": "Display name"},
                 {"name": "style", "type": {"kind": "named", "id": "imaging.ArtStyle"}, "default": "anime"},
+                {"name": "kind", "type": {"kind": "primitive", "name": "string"}, "static": True, "default": "person"},
+            ],
+        },
+        {
+            "kind": "struct", "id": "imaging.Name", "name": "Name", "description": "A short name.",
+            "extends": "briar.Text",
+            "fields": [
+                {"name": "maxLength", "type": {"kind": "optional", "of": {"kind": "primitive", "name": "int"}},
+                 "static": True, "default": 40},
             ],
         },
         {"kind": "enum", "id": "imaging.ArtStyle", "name": "ArtStyle", "description": "Drawing style.",
@@ -111,11 +127,11 @@ def test_manifest_node_descriptor() -> None:
         "icon": None,
         "color": None,
         "inputs": [
-            {"name": "image", "type": {"kind": "primitive", "name": "image"}, "title": "Image"},
+            {"name": "image", "type": {"kind": "named", "id": "briar.Image"}, "title": "Image"},
             {"name": "factor", "type": {"kind": "primitive", "name": "int", "constraints": {"min": 1, "max": 8}},
              "title": "Factor", "default": 2},
         ],
-        "outputs": [{"name": "result", "type": {"kind": "primitive", "name": "image"}, "title": "Result"}],
+        "outputs": [{"name": "result", "type": {"kind": "named", "id": "briar.Image"}, "title": "Result"}],
         "config": [],
         "dynamicPorts": False,
         "secrets": [],
@@ -133,7 +149,7 @@ def test_default_type_title_category_and_outputs_dataclass() -> None:
     assert n["category"] == "Imaging"
     assert n["description"] == ""
     assert n["outputs"] == [
-        {"name": "image", "type": {"kind": "primitive", "name": "image"}, "title": "Image"},
+        {"name": "image", "type": {"kind": "named", "id": "briar.Image"}, "title": "Image"},
         {"name": "width", "type": {"kind": "primitive", "name": "int"}, "title": "Width (px)",
          "description": "Final width"},
     ]
@@ -331,4 +347,89 @@ def test_explicit_types_are_listed_first() -> None:
         return None
 
     p = pack("imaging", "0.1.0", [f], types=[Extra])
-    assert [t["id"] for t in p.manifest()["types"]] == ["imaging.Extra", "imaging.Character", "imaging.ArtStyle"]
+    assert [t["id"] for t in p.manifest()["types"]] == ["imaging.Extra", "imaging.Character", "imaging.Name", "imaging.ArtStyle"]
+
+
+# ---------------------------------------------------------------- extends and static members
+
+
+def test_extending_a_struct_of_the_pack_lists_the_base_first() -> None:
+    @struct
+    @dataclass
+    class Pet:
+        name: str
+        legs: ClassVar[int] = 4
+
+    @struct
+    class Bird(Pet):
+        legs = 2
+        flies: ClassVar[bool] = True
+
+    @node
+    def f(b: Bird) -> None:
+        pass
+
+    types = pack("demo", "1", [f]).manifest()["types"]
+    assert [t["id"] for t in types] == ["demo.Pet", "demo.Bird"]
+    assert types[1] == {
+        "kind": "struct", "id": "demo.Bird", "name": "Bird", "extends": "demo.Pet",
+        "fields": [
+            {"name": "legs", "type": {"kind": "primitive", "name": "int"}, "static": True, "default": 2},
+            {"name": "flies", "type": {"kind": "primitive", "name": "bool"}, "static": True, "default": True},
+        ],
+    }
+
+
+def test_an_extending_struct_cannot_add_instance_fields() -> None:
+    @struct
+    @dataclass
+    class Longer(Text):
+        extra: int = 0
+
+    @node
+    def f(t: Longer) -> None:
+        pass
+
+    with pytest.raises(TypeError, match="can only give static members values; field 'extra' is new"):
+        pack("demo", "1", [f])
+
+
+def test_an_extending_struct_cannot_change_a_static_type() -> None:
+    @struct
+    class Odd(Text):
+        max_length: ClassVar[str] = "ten"  # type: ignore[assignment]
+
+    @node
+    def f(t: Odd) -> None:
+        pass
+
+    with pytest.raises(TypeError, match="can't change its type"):
+        pack("demo", "1", [f])
+
+
+@pytest.mark.parametrize(
+    ("attrs", "message"),
+    [
+        ({"min_length": 5, "max_length": 2}, "minLength=5 is greater than maxLength=2"),
+        ({"pattern": "("}, "does not compile"),
+        ({"max_length": "x"}, "static member"),
+    ],
+)
+def test_wrong_limits_are_refused(attrs: dict, message: str) -> None:
+    Bad = struct(type("Bad", (Text,), dict(attrs)))
+
+    @node
+    def f(t: Bad) -> None:  # type: ignore[valid-type]
+        pass
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        pack("demo", "1", [f])
+
+
+def test_constraints_on_a_struct_point_to_extending_it() -> None:
+    @node
+    def f(t: Annotated[Text, Max(3)]) -> None:
+        pass
+
+    with pytest.raises(TypeError, match="static members: extend it"):
+        pack("demo", "1", [f])

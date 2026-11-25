@@ -1,4 +1,4 @@
-"""The stdlib HTTP worker implementing Briarflow Python protocol v1."""
+"""The stdlib HTTP worker implementing Briarflow Python protocol v2."""
 
 from __future__ import annotations
 
@@ -221,7 +221,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         protocol = body.get("protocol")
         if protocol is None:
-            self._error(400, "protocol.bad_request", "Missing field 'protocol' (expected 1).")
+            self._error(400, "protocol.bad_request", f"Missing field 'protocol' (expected {PROTOCOL_VERSION}).")
             return
         if protocol != PROTOCOL_VERSION or isinstance(protocol, bool):
             self._error(

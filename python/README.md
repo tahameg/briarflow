@@ -24,7 +24,7 @@ class Thumb:
 
 @node(title="Thumbnail", category="Image")
 def thumbnail(image: Image, size: Annotated[int, Min(16), Max(1024)] = 256, *, ctx: ExecContext) -> Thumb:
-    data = ctx.media.read(image)             # GETs the url the bridge attached
+    data = ctx.media.read(image)             # GETs the url the bridge attached to image.data
     ctx.progress(0.5, "scaling")              # raises Cancelled once the run is cancelled
     out = data                                # … your image code here …
     return Thumb(image=ctx.media.create(out, mime="image/png", width=size), width=size)
@@ -39,7 +39,7 @@ if __name__ == "__main__":
 python my_nodes.py
 curl http://127.0.0.1:8765/briarflow/manifest
 curl -N -X POST http://127.0.0.1:8765/briarflow/execute \
-  -d '{"protocol":1,"nodeType":"imaging.uppercase","inputs":{"text":"hi"}}'
+  -d '{"protocol":2,"nodeType":"imaging.uppercase","inputs":{"text":"hi"}}'
 ```
 
 On the TypeScript side: `pythonPack({ url })` or `spawnPythonWorker({ args: ["my_nodes.py"] })`
@@ -49,11 +49,31 @@ from `@briarflow/python`.
 
 | Python | Briarflow |
 |---|---|
-| `str`, `int`, `float`, `bool` | text, int, float, boolean |
-| `Image`, `Video`, `Audio`, `Model3D`, `File` | media primitives (values are `MediaRef`s) |
+| `str`, `int`, `float`, `bool`, `Binary` | the primitives `string`, `int`, `float`, `bool`, `binary` |
+| `Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error` | the built-in structs `briar.*` |
 | `list[T]`, `T \| None` | `list<T>`, `T?` |
 | `@struct` dataclass, `class X(str, Enum)` | pack struct / enum `<pack>.X` |
-| `Annotated[T, MaxLength(40), Port(description=…)]` | constraints and port metadata |
+| `ClassVar[T] = value` on a `@struct` | a static member (the type fixes its value) |
+| `@struct class X(Base)` | `X extends Base`: only gives static members values or adds new ones |
+| `Annotated[int, Min(1), Max(8), Port(description=…)]` | number / list constraints and port metadata |
+
+Unlimited text is a plain `str`. Text with limits, and media with limits, extend a built-in:
+
+```python
+@struct
+class Title(Text):          # accepted wherever Text is
+    max_length = 80
+
+@struct
+class Thumbnail(Image):
+    formats = ("png", "webp")
+    max_width = 512
+```
+
+A node gets `Title(value="…")` and may return a `Title`, a `Text` or a plain `str`. Media values
+hold their bytes in `data` (a `Binary`); `ctx.media.read(image)` reads them and
+`ctx.media.create(bytes, mime=…, width=…, height=…)` makes an `Image` (or `Video`, `Audio`…
+by mime).
 
 Node types default to `<pack>.<camelCase(function_name)>`. A single return type gives one
 output port `result`; an `@outputs` dataclass gives one port per field.

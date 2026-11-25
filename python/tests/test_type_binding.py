@@ -7,26 +7,25 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 import pytest
 
 from briarflow import (
+    ApiKey,
     Audio,
+    Binary,
+    Error,
     File,
-    Formats,
     Image,
+    Json,
     Max,
-    MaxBytes,
     MaxItems,
-    MaxLength,
-    MediaRef,
     Min,
     MinItems,
-    MinLength,
-    MinWidth,
     Model3D,
-    Multiline,
-    Pattern,
     Port,
+    Secret,
+    Text,
     Video,
     struct,
 )
+from briarflow.media import Binary as _Binary
 from briarflow.typebind import resolve, to_typeref
 
 
@@ -57,39 +56,42 @@ def P(name: str, **cons: Any) -> dict[str, Any]:
     return out
 
 
+def N(id_: str) -> dict[str, Any]:
+    return {"kind": "named", "id": id_}
+
+
 TABLE = [
-    (str, P("text")),
+    (str, P("string")),
     (int, P("int")),
     (float, P("float")),
-    (bool, P("boolean")),
-    (Image, P("image")),
-    (Video, P("video")),
-    (Audio, P("audio")),
-    (Model3D, P("model3d")),
-    (File, P("file")),
-    (list[str], {"kind": "list", "of": P("text")}),
+    (bool, P("bool")),
+    (Binary, P("binary")),
+    (Text, N("briar.Text")),
+    (Image, N("briar.Image")),
+    (Video, N("briar.Video")),
+    (Audio, N("briar.Audio")),
+    (Model3D, N("briar.Model3D")),
+    (File, N("briar.File")),
+    (Json, N("briar.Json")),
+    (Secret, N("briar.Secret")),
+    (ApiKey, N("briar.ApiKey")),
+    (Error, N("briar.Error")),
+    (list[str], {"kind": "list", "of": P("string")}),
     (List[int], {"kind": "list", "of": P("int")}),
-    (Optional[str], {"kind": "optional", "of": P("text")}),
-    (str | None, {"kind": "optional", "of": P("text")}),
+    (Optional[str], {"kind": "optional", "of": P("string")}),
+    (str | None, {"kind": "optional", "of": P("string")}),
     (Union[None, int], {"kind": "optional", "of": P("int")}),
-    (list[Image | None], {"kind": "list", "of": {"kind": "optional", "of": P("image")}}),
-    (list[Image] | None, {"kind": "optional", "of": {"kind": "list", "of": P("image")}}),
-    (Character, {"kind": "named", "id": "demo.Character"}),
-    (Style, {"kind": "named", "id": "demo.Style"}),
-    (list[Character], {"kind": "list", "of": {"kind": "named", "id": "demo.Character"}}),
-    (Annotated[str, MaxLength(40)], P("text", maxLength=40)),
-    (
-        Annotated[str, MinLength(1), MaxLength(5), Pattern("[a-z]+"), Multiline()],
-        P("text", minLength=1, maxLength=5, pattern="[a-z]+", multiline=True),
-    ),
+    (list[Image | None], {"kind": "list", "of": {"kind": "optional", "of": N("briar.Image")}}),
+    (list[Image] | None, {"kind": "optional", "of": {"kind": "list", "of": N("briar.Image")}}),
+    (Character, N("demo.Character")),
+    (Style, N("demo.Style")),
+    (list[Character], {"kind": "list", "of": N("demo.Character")}),
     (Annotated[int, Min(1), Max(8)], P("int", min=1, max=8)),
     (Annotated[float, Min(0.5)], P("float", min=0.5)),
-    (Annotated[list[str], MinItems(1), MaxItems(4)], {"kind": "list", "of": P("text"), "minItems": 1, "maxItems": 4}),
-    (Annotated[Image, Formats("png", "jpeg"), MaxBytes(1000)], P("image", formats=["png", "jpeg"], maxBytes=1000)),
-    (Annotated[Image, MinWidth(16)], P("image", minWidth=16)),
+    (Annotated[list[str], MinItems(1), MaxItems(4)], {"kind": "list", "of": P("string"), "minItems": 1, "maxItems": 4}),
     (Optional[Annotated[int, Min(0)]], {"kind": "optional", "of": P("int", min=0)}),
     (Annotated[Optional[int], Min(0)], {"kind": "optional", "of": P("int", min=0)}),
-    (Annotated[str, Port(description="x")], P("text")),
+    (Annotated[str, Port(description="x")], P("string")),
 ]
 
 
@@ -100,7 +102,7 @@ def test_binding_table(ann: Any, expected: dict[str, Any]) -> None:
 
 
 def test_port_metadata_is_returned() -> None:
-    _, port = resolve(Annotated[str, MaxLength(3), Port(title="Name", description="Who")], "t")
+    _, port = resolve(Annotated[str, Port(title="Name", description="Who")], "t")
     assert port is not None and port.title == "Name" and port.description == "Who"
 
 
@@ -115,7 +117,6 @@ UNSUPPORTED = [
     list,
     bytes,
     object,
-    MediaRef,
     IntEnum_,
     Plain,
 ]
@@ -141,13 +142,11 @@ def test_plain_dataclass_hints_at_struct() -> None:
 @pytest.mark.parametrize(
     "ann,msg",
     [
-        (Annotated[int, MaxLength(3)], "cannot be used on int"),
-        (Annotated[str, Min(1)], "cannot be used on text"),
-        (Annotated[str, MinItems(1)], "cannot be used on text"),
+        (Annotated[str, Min(1)], "cannot be used on string"),
+        (Annotated[str, MinItems(1)], "cannot be used on string"),
         (Annotated[list[int], Min(1)], "cannot be used on a list"),
-        (Annotated[Character, MaxLength(3)], "cannot be used on Character"),
-        (Annotated[str, Formats("png")], "cannot be used on text"),
-        (Annotated[Audio, MinWidth(3)], "cannot be used on audio"),
+        (Annotated[Character, Max(3)], "cannot be used on Character"),
+        (Annotated[Image, Max(3)], "limits of Image are its static members"),
     ],
 )
 def test_misplaced_constraints(ann: Any, msg: str) -> None:
@@ -158,16 +157,32 @@ def test_misplaced_constraints(ann: Any, msg: str) -> None:
 def test_contradicting_constraints() -> None:
     with pytest.raises(ValueError, match="min=5 is greater than max=1"):
         resolve(Annotated[int, Min(5), Max(1)], "where")
-    with pytest.raises(ValueError, match="minLength"):
-        resolve(Annotated[str, MinLength(5), MaxLength(1)], "where")
+    with pytest.raises(ValueError, match="minItems"):
+        resolve(Annotated[list[int], MinItems(5), MaxItems(1)], "where")
 
 
 def test_invalid_constraint_definitions() -> None:
     with pytest.raises(ValueError):
-        MaxLength(-1)
-    with pytest.raises(ValueError):
-        Pattern("(")
+        MinItems(-1)
     with pytest.raises(ValueError):
         Min(float("nan"))
-    with pytest.raises(ValueError):
-        Formats()
+
+
+def test_binary_is_the_media_class() -> None:
+    assert Binary is _Binary
+
+
+def test_an_extending_struct_is_a_pack_type() -> None:
+    @struct
+    class Title(Text):
+        max_length = 80
+
+    assert to_typeref(resolve(Title, "t")[0], "demo") == N("demo.Title")
+
+
+def test_a_subclass_without_struct_hints_at_it() -> None:
+    class Title(Text):
+        max_length = 80
+
+    with pytest.raises(TypeError, match="decorate it with @struct"):
+        resolve(Title, "where")
