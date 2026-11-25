@@ -597,6 +597,19 @@ function SignatureRows({ dir, ports, flowId, scope }: { dir: "input" | "output";
           />
         );
         const led = <Led family={p.led} state={dir === "input" ? outputLed(p) : inputLed(p, false)} bar={p.list} />;
+        // A member of a split port is not a signature entry: shown, not edited (collapse it to edit).
+        if (p.member) {
+          return (
+            <div className={dir === "input" ? "bf-node__row bf-node__row--out" : "bf-node__row"} key={p.name} title={`${p.name}: ${p.typeText}`}>
+              {dir === "output" ? handle : null}
+              {dir === "output" ? led : null}
+              {dir === "output" ? <span className="bf-node__label">{p.name}</span> : <span className="bf-node__otype">{p.typeText}</span>}
+              {dir === "output" ? <span className="bf-node__otype">{p.typeText}</span> : <span className="bf-node__label">{p.name}</span>}
+              {dir === "input" ? led : null}
+              {dir === "input" ? handle : null}
+            </div>
+          );
+        }
         return (
           <div className={dir === "input" ? "bf-node__row bf-node__row--sig bf-node__row--out" : "bf-node__row bf-node__row--sig"} key={p.name}>
             {dir === "output" ? handle : null}

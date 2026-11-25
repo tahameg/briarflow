@@ -356,7 +356,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     const pv = (side === "in" ? node.inputs : node.outputs).find((p) => p.name === port);
     const dirSide = side === "in" ? "input" : "output";
     if (pv?.splittable) {
-      items.push({ id: "port:split", label: `Split ${pv.title}`, title: "Show one port per member", order: 55, group: "port", run: () => dispatch({ op: "node.splitPort", flowId, nodeId, side: dirSide, port }) });
+      items.push({ id: "port:split", label: `Split ${port}`, title: "Show one port per member", order: 55, group: "port", run: () => dispatch({ op: "node.splitPort", flowId, nodeId, side: dirSide, port }) });
     }
     if (pv?.member) {
       const of = pv.member.of;
@@ -365,7 +365,7 @@ export function useCanvasMenu(flowId: string | undefined, view: FlowView | undef
     if (input?.hasValue && !node.builtin) {
       items.push({ id: "port:clear", label: `Clear value of ${port}`, order: 50, group: "port", run: () => dispatch({ op: "node.clearValue", flowId, nodeId, port }) });
     }
-    if (node.builtin) {
+    if (node.builtin && !pv?.member) {
       const dir = node.type === FLOW_INPUT_NODE_TYPE ? "input" : "output";
       items.push({
         id: "port:remove",
