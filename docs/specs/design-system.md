@@ -191,16 +191,17 @@ Every port row has two parts:
   - Input row: `socket · LED · label · value`.
   - Output row: `type · label · LED · socket`.
 
-LED color is the **type family** (`ledFamily(type)`; `list<X>` and `X?` take X's family):
+LED color is the **type family** (`ledFamily(type, kindOf)`; `list<X>` and `X?` take X's
+family; a struct that extends a built-in takes the built-in's family, `ShortText` is text):
 
 | Family | Types | LED | Cable core |
 |---|---|---|---|
-| text | text | amber `--bf-led-text` | `--bf-wire-text` |
+| text | string, Text | amber `--bf-led-text` | `--bf-wire-text` |
 | num | int, float | green | |
-| bool | boolean | yellow | |
-| media | image, audio, video, model3d | magenta | |
-| error | error (a failed node's reason) | red | `--bf-wire-error` |
-| data | struct, enum, json, file | frosted white | |
+| bool | bool | yellow | |
+| media | Image, Audio, Video, Model3D | magenta | |
+| error | Error (a failed node's reason) | red | `--bf-wire-error` |
+| data | binary, struct, enum, Json, File, Secret | frosted white | |
 | any | unbound `$T` | warm grey | |
 
 LED **shape**: a 10 px dot for a single value, a 16×6 bar for a list (`isListType`).
@@ -214,13 +215,15 @@ LED **state** (`inputLed` / `outputLed` in `nodeParts.tsx`):
 | on | a cable is plugged in (input wired, output used) | bright dome, 6 + 14 px glow |
 | pulse | data flowing: wired input of a running node | `on`, brightness pulses at 1.1 s |
 
-Type shapes in panels and pickers (type chips, `.bf-port` markers) keep the v1 pastel map:
+Type shapes in panels and pickers (type chips, `.bf-port` markers) keep the pastel map; a
+struct that extends a built-in takes the built-in's pastel:
 
 | Type | Pastel | Shape |
 |---|---|---|
-| text / int / float / boolean | mint / sky / aqua / lime | square |
-| image / video / audio / model3d / file | peach / coral / pink / sand / stone | square |
-| struct / enum | lavender | square / diamond |
+| string / int / float / bool / binary | mint / sky / aqua / lime / stone | square |
+| Text / Json / Secret, ApiKey / Error | mint / yellow / lavender / coral | square |
+| Image / Video / Audio / Model3D / File | peach / coral / pink / sand / stone | square |
+| other struct / enum | lavender | square / diamond |
 
 Lists get a hollow marker, optionals a dashed outline. `briarTheme.typeStyle` implements this
 map. Ports on the canvas use the LED families instead.
@@ -273,12 +276,16 @@ map. Ports on the canvas use the LED families instead.
 
 | Type | Widget |
 |---|---|
-| text | single-line input; `multiline` → 3-row textarea that grows to 8 rows; `widget:"password"` masks |
+| string | single-line input; `widget:"textarea"` → 3-row textarea that grows to 8 rows; `widget:"password"` masks |
+| Text (and structs extending it) | the string input on its `value`; the type's `multiline` static field → textarea; `maxLength` limits the input |
 | int | number input with − / + steppers (step 1), clamps to min/max on blur |
 | float | number input (step 0.1), `widget:"slider"` when both min and max are set |
-| boolean | LED checkbox 14 px: dark amber dome when off, lit amber with glow when checked |
+| bool | LED checkbox 14 px: dark amber dome when off, lit amber with glow when checked |
 | enum | select showing labels |
-| media | **v1:** a chip (thumbnail for image, icon + name for others, mime + size, × to clear) plus a secondary `CHOOSE FILE` button; the chip/button area is also a drop target (brass dashed 1 px border while dragging a file over it). *Later:* 64 px drop zone "Drop file or click". |
+| media structs | a chip (thumbnail for images, icon + name for others, mime + size, × to clear) plus a secondary `CHOOSE FILE` button; the chip/button area is also a drop target (brass dashed 1 px border while dragging a file over it). The upload is checked against the type's `formats` and `maxBytes`. |
+| binary | the same chip, without the struct's facts |
+| Json | JSON editor on its `text` |
+| Secret, ApiKey | the secret picker (names of the kind the type fixes) with **+** |
 | struct | **v1:** on the node a read-only preview `{…}` / `{ name, style }`; in the inspector and run form a JSON textarea (code font) **prefilled with a skeleton** built from the struct's fields (defaults, else `""` / `0` / `false` / `null` / `[]`), pretty-printed on blur, parse errors shown below in danger with line:col. *Later:* button `Edit Character…` opening a form popover. |
 | list | **v1:** preview `3 items` / `empty` on the node; JSON textarea (prefilled `[]`) in inspector and run form, same error rules as struct. *Later:* list editor popover (add / remove / reorder). |
 | optional | small "set" checkbox before the inner widget; unchecked = `null` (muted "none") |

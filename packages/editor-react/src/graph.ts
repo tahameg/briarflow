@@ -3,7 +3,7 @@
  * diagnostics and run status. No React here, so it can be unit tested and reused by other
  * view layers.
  */
-import { mediaKindOfBuiltin } from "@briarflow/core";
+import { mediaKindOfBuiltin, rootOf } from "@briarflow/core";
 import {
   analyzeExec,
   ERROR_OUTPUT,
@@ -189,7 +189,8 @@ export function emptyCatalog(): NodeCatalog {
 
 /** Struct/enum lookup for type styles in a scope. */
 export function kindLookup(scope: TypeScope): NamedKindLookup {
-  return (id) => scope.getType(id)?.decl.kind;
+  const resolve = (id: string) => scope.getType(id)?.decl;
+  return Object.assign((id: string) => resolve(id)?.kind, { root: (id: string) => rootOf(id, resolve) });
 }
 
 /** Title of a node instance as the canvas shows it. */
@@ -274,7 +275,7 @@ export function buildFlowView(
       declaredType: p.declaredType,
       typeText: formatType(p.type, scope),
       style: typeStyle(p.type, kindOf),
-      led: ledFamily(p.type),
+      led: ledFamily(p.type, kindOf),
       list: isListType(p.type),
       links: dir === "out" ? (outgoing.get(`${node.id}\u0000${p.name}`) ?? 0) : 0,
       hasDefault: p.hasDefault,

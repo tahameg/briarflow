@@ -42,7 +42,10 @@ export function tokenVar(token: BriarToken): string {
 }
 
 /** Kind of a named type, used to tell enums (diamond ports) from structs. */
-export type NamedKindLookup = (typeId: string) => "struct" | "enum" | undefined;
+export type NamedKindLookup = ((typeId: string) => "struct" | "enum" | undefined) & {
+  /** The root of a struct's `extends` chain (`ShortText` → `briar.Text`), so it is styled like its base. */
+  root?: (typeId: string) => string;
+};
 
 /** Visual description of a type (design-system.md §6). */
 export interface TypeStyle {
@@ -97,7 +100,7 @@ export function typeStyle(type: TypeRef, kindOf?: NamedKindLookup): TypeStyle {
     }
     case "named": {
       const kind = kindOf?.(type.id);
-      const token = BUILTIN_TOKENS[type.id] ?? "lavender";
+      const token = BUILTIN_TOKENS[kindOf?.root?.(type.id) ?? type.id] ?? "lavender";
       return { token, color: tokenVar(token), shape: kind === "enum" ? "diamond" : "square", hollow: false, optional: false, unbound: false };
     }
     case "list":
@@ -170,15 +173,15 @@ const BUILTIN_LEDS: Record<string, LedFamily> = {
  * ledFamily({ kind: "list", of: { kind: "primitive", name: "int" } }); // "num"
  * ```
  */
-export function ledFamily(type: TypeRef): LedFamily {
+export function ledFamily(type: TypeRef, kindOf?: NamedKindLookup): LedFamily {
   switch (type.kind) {
     case "primitive":
       return PRIMITIVE_LEDS[type.name] ?? "data";
     case "named":
-      return BUILTIN_LEDS[type.id] ?? "data";
+      return BUILTIN_LEDS[kindOf?.root?.(type.id) ?? type.id] ?? "data";
     case "list":
     case "optional":
-      return ledFamily(type.of);
+      return ledFamily(type.of, kindOf);
     case "var":
       return "any";
   }

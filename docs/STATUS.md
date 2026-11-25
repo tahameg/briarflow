@@ -241,9 +241,11 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   `ctx.globals.typeOf`.
 - Std: As string / As bool (one truthiness rule); templates print Text subtypes as text.
 - Editor: Types panel picks what a struct extends, lists inherited fields, toggles static and
-  edits static values; built-in group in the type picker; widgets for Text, media, Json, Secret.
+  edits static values; built-in group in the type picker; widgets for Text (its `maxLength`),
+  media (uploads checked against `formats` and `maxBytes`), Json, Secret; structs that extend a
+  built-in get its color and LED.
 - Python: SDK and bridge on protocol 2; the example pack has `Headline extends Text`.
-- Verified: `npm test` 2322 passed (2 skipped, FS `resolveUrl`), `npm run typecheck` clean,
+- Verified: `npm test` 2324 passed (2 skipped, FS `resolveUrl`), `npm run typecheck` clean,
   `cd python && .venv/bin/python -m pytest` 167 passed, studio `vite build` ok.
 - Not done here: flow control nodes (Branch, Switch, For each, For range), split / collapse
   pins, Break struct improvements, Output "+" (next, Giftibul TG.2).

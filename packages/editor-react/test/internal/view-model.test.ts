@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { applyCommands } from "@briarflow/authoring";
-import { createCatalog, createContextDocument, validateContext } from "@briarflow/core";
+import { createCatalog, createContextDocument, createTypeScope, validateContext } from "@briarflow/core";
 import type { ContextDocument, TypeRef } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
-import { buildFlowView, canConnect, planConnection } from "../../src/graph.js";
+import { buildFlowView, canConnect, kindLookup, planConnection } from "../../src/graph.js";
 import { initialConfig, paletteGroups, snap } from "../../src/palette.js";
 import { isListType, ledFamily, typeStyle } from "../../src/theme.js";
 import { initialValue, widgetKind } from "../../src/values.js";
@@ -129,10 +129,18 @@ describe("ledFamily", () => {
 
   it("groups types by family through lists and optionals", () => {
     const b = (id: string) => ({ kind: "named", id }) as TypeRef;
-    expect([t("string"), t("int"), t("float"), t("bool"), b("briar.Image"), b("briar.Audio"), b("briar.File"), b("briar.Text")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data", "text"]);
+    expect([t("string"), t("int"), t("float"), t("bool"), b("briar.Image"), b("briar.Audio"), b("briar.File"), b("briar.Text")].map((x) => ledFamily(x))).toEqual(["text", "num", "num", "bool", "media", "media", "data", "text"]);
     expect(ledFamily({ kind: "optional", of: { kind: "list", of: t("int") } })).toBe("num");
     expect(ledFamily({ kind: "named", id: "ty_style" })).toBe("data");
     expect(ledFamily({ kind: "var", name: "T" })).toBe("any");
+  });
+
+  it("styles a struct like the built-in it extends", () => {
+    const short = { kind: "struct" as const, id: "ty_short", name: "ShortText", extends: "briar.Text", fields: [] };
+    const scope = createTypeScope({ globalTypes: [short] });
+    const kindOf = kindLookup(scope);
+    expect(ledFamily({ kind: "named", id: "ty_short" }, kindOf)).toBe("text");
+    expect(typeStyle({ kind: "named", id: "ty_short" }, kindOf).token).toBe("mint");
   });
 
   it("marks lists, optional or not", () => {

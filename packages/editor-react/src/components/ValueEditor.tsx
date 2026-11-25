@@ -7,7 +7,7 @@ import { useEffect, useId, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { TypeRef, TypeScope } from "@briarflow/core";
 import { builtinView, formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
-import { mediaValue, type MediaKind, type MediaRef } from "@briarflow/core";
+import { formatToMime, mediaValue, type MediaKind, type MediaRef } from "@briarflow/core";
 import { useMediaEntry } from "../context.js";
 import { SecretPicker } from "./Vault.js";
 
@@ -63,6 +63,7 @@ export function ValueEditor(props: ValueEditorProps) {
           cls={cls}
           value={typeof text === "string" ? text : undefined}
           multiline={view?.statics.get("multiline") === true}
+          maxLength={numberOrUndefined(view?.statics.get("maxLength"))}
           onCommit={(v) => props.onCommit({ value: v })}
         />
       );
@@ -107,9 +108,16 @@ export function ValueEditor(props: ValueEditorProps) {
     case "optional":
       return <OptionalValue {...props} />;
     case "media": {
-      const kind = builtinView(props.type, props.scope)?.mediaKind ?? "file";
+      const view = builtinView(props.type, props.scope);
+      const kind = view?.mediaKind ?? "file";
       const data = typeof props.value === "object" && props.value !== null ? (props.value as { data?: unknown }).data : undefined;
-      return <MediaValue {...props} value={data} onUpload={(ref, file) => describeUpload(kind, ref, file).then(props.onCommit)} />;
+      const formats = view?.statics.get("formats");
+      const limits = {
+        mimes: Array.isArray(formats) ? formats.map((f) => formatToMime(String(f))) : [],
+        maxBytes: numberOrUndefined(view?.statics.get("maxBytes")),
+        kind,
+      };
+      return <MediaValue {...props} value={data} limits={limits} onUpload={(ref, file) => describeUpload(kind, ref, file).then(props.onCommit)} />;
     }
     case "binary":
       return <MediaValue {...props} onUpload={async (ref) => props.onCommit(ref)} />;
@@ -154,7 +162,28 @@ function SecretValue(props: ValueEditorProps) {
   );
 }
 
-function TextValue(props: ValueEditorProps & { cls: (base: string) => string; multiline?: boolean }) {
+const numberOrUndefined = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/** What a media struct type allows (its static fields), checked before uploading. */
+interface UploadLimits {
+  mimes: readonly string[];
+  maxBytes: number | undefined;
+  kind: MediaKind;
+}
+
+function uploadProblem(file: File, limits: UploadLimits | undefined): string | undefined {
+  if (!limits) return undefined;
+  const mime = file.type.toLowerCase();
+  const prefix = { image: "image/", video: "video/", audio: "audio/", model3d: "model/", file: "" }[limits.kind];
+  if (mime !== "" && prefix !== "" && !mime.startsWith(prefix) && !(limits.kind === "model3d" && mime === "application/octet-stream")) {
+    return `${file.name} is ${mime}, not a${limits.kind === "image" || limits.kind === "audio" ? "n" : ""} ${limits.kind}.`;
+  }
+  if (limits.mimes.length > 0 && mime !== "" && !limits.mimes.includes(mime)) return `${file.name} is ${mime}; this type takes ${limits.mimes.join(", ")}.`;
+  if (limits.maxBytes !== undefined && file.size > limits.maxBytes) return `${file.name} is ${formatBytes(file.size)}; this type takes at most ${formatBytes(limits.maxBytes)}.`;
+  return undefined;
+}
+
+function TextValue(props: ValueEditorProps & { cls: (base: string) => string; multiline?: boolean; maxLength?: number | undefined }) {
   const { value, onCommit, widget, label, disabled, placeholder, cls } = props;
   const text = typeof value === "string" ? value : "";
   const [draft, setDraft] = useState(text);
@@ -172,6 +201,7 @@ function TextValue(props: ValueEditorProps & { cls: (base: string) => string; mu
         value={draft}
         disabled={disabled}
         placeholder={placeholder}
+        maxLength={props.maxLength}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={stop}
@@ -186,6 +216,7 @@ function TextValue(props: ValueEditorProps & { cls: (base: string) => string; mu
       value={draft}
       disabled={disabled}
       placeholder={placeholder}
+      maxLength={props.maxLength}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -274,8 +305,8 @@ function OptionalValue(props: ValueEditorProps) {
   );
 }
 
-function MediaValue(props: ValueEditorProps & { onUpload: (ref: MediaRef, file: File) => Promise<void> }) {
-  const { value, onUpload, onClear, label, disabled, mediaUrl, uploadMedia, compact } = props;
+function MediaValue(props: ValueEditorProps & { onUpload: (ref: MediaRef, file: File) => Promise<void>; limits?: UploadLimits }) {
+  const { value, onUpload, onClear, label, disabled, mediaUrl, uploadMedia, compact, limits } = props;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const ref = isMediaRef(value) ? value : undefined;
@@ -300,10 +331,16 @@ function MediaValue(props: ValueEditorProps & { onUpload: (ref: MediaRef, file: 
             type="file"
             className="bf-visually-hidden"
             aria-label={`Upload ${label}`}
+            accept={limits && limits.mimes.length > 0 ? limits.mimes.join(",") : undefined}
             disabled={disabled || busy}
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
+              const problem = uploadProblem(file, limits);
+              if (problem) {
+                setError(problem);
+                return;
+              }
               setBusy(true);
               setError(undefined);
               try {
