@@ -4,6 +4,9 @@
 import {
   ENUM_VALUE_PATTERN,
   collectNamedIds,
+  extendsStruct,
+  isBuiltinId,
+  structProblems,
   type ContextDocument,
   type EnumDecl,
   type EnumMember,
@@ -23,6 +26,7 @@ import {
   checkNotRecursive,
   checkTypeName,
   checkValue,
+  failWith,
   getFlow,
   getType,
   localTypesIn,
@@ -52,7 +56,7 @@ const resolvedAs = (p: Payload): Command => p as unknown as Command;
 
 /** One place that references a type. */
 export interface TypeUsage {
-  kind: "field" | "input" | "output" | "variable" | "global" | "node";
+  kind: "field" | "extends" | "input" | "output" | "variable" | "global" | "node";
   flowId?: string;
   /** Id of the using entity (struct, flow, variable, global, node). */
   id: string;
@@ -70,6 +74,9 @@ export function findTypeUsages(doc: ContextDocument, catalog: NodeCatalog, typeI
   const structFields = (types: readonly TypeDecl[], flowId?: string) => {
     for (const t of types) {
       if (t.kind !== "struct" || t.id === typeId) continue;
+      if (t.extends === typeId) {
+        out.push({ kind: "extends", ...(flowId ? { flowId } : {}), id: t.id, name: t.name, text: `struct "${t.name}", which extends it` });
+      }
       for (const f of t.fields) {
         if (refs(f.type, typeId)) {
           out.push({ kind: "field", ...(flowId ? { flowId } : {}), id: t.id, name: `${t.name}.${f.name}`, text: `field "${t.name}.${f.name}"` });
@@ -135,6 +142,9 @@ function inUse(decl: TypeDecl, usages: TypeUsage[], extra = ""): never {
 // ---------------------------------------------------------------------------------------------
 
 function struct(ctx: Ctx, typeId: string): { loc: TypeLocation; decl: StructDecl } {
+  if (isBuiltinId(typeId)) {
+    fail("type.read_only", `Type "${typeId}" is built in and cannot be changed. Define a struct that extends it instead.`, { id: typeId });
+  }
   const loc = getType(ctx, typeId);
   if (loc.decl.kind !== "struct") fail("type.not_struct", `Type "${loc.decl.name}" is an enum; fields belong to structs.`, { typeId });
   return { loc, decl: loc.decl };
@@ -175,6 +185,33 @@ function checkFieldDefault(ctx: Ctx, scope: TypeScopeRef, structName: string, fi
   checkValue(ctx, field.default, field.type, scopeOf(ctx, scope), `${structName}.${field.name}`, { defaultOf: `field "${structName}.${field.name}"` });
 }
 
+/**
+ * Rejects a change that breaks the rules of `extends` and static fields (types.md §1.3), for the
+ * struct and for every struct that extends it.
+ */
+function checkStructRules(ctx: Ctx, typeId: string): void {
+  if (ctx.restore) return;
+  const scopes: { decl: StructDecl; scope: TypeScopeRef }[] = [];
+  for (const t of ctx.doc.types) if (t.kind === "struct") scopes.push({ decl: t, scope: { kind: "global" } });
+  for (const f of ctx.doc.flows) for (const t of f.types) if (t.kind === "struct") scopes.push({ decl: t, scope: { kind: "flow", flowId: f.id } });
+  for (const { decl, scope } of scopes) {
+    const sc = scopeOf(ctx, scope);
+    if (decl.id !== typeId && !extendsStruct(decl.id, typeId, (id) => sc.getType(id)?.decl)) continue;
+    const [problem] = structProblems(decl, sc, { typeId: decl.id });
+    if (problem) failWith(problem);
+  }
+}
+
+/** Resolves the struct a struct extends (a name, shorthand or id); global structs may not extend local ones. */
+function extendsTarget(ctx: Ctx, scope: TypeScopeRef, structName: string, input: unknown): string {
+  const type = resolveTypeInput(ctx, input, scopeOf(ctx, scope), `"${structName}" extends`, "extends");
+  if (type.kind !== "named" || scopeOf(ctx, scope).getType(type.id)?.decl.kind !== "struct") {
+    fail("type.extends_not_struct", `"${structName}" can only extend a struct (e.g. Text or Image), not ${JSON.stringify(input)}.`, { field: "extends" });
+  }
+  if (scope.kind === "global") checkGlobalVisibility(ctx, type, `"${structName}" extends`);
+  return type.id;
+}
+
 function checkMemberValue(value: string): void {
   if (value.length > 64 || !ENUM_VALUE_PATTERN.test(value)) {
     fail(
@@ -213,6 +250,7 @@ export function typeDefineStruct(ctx: Ctx, p: Payload): Effect {
   const index = clamp((p["index"] as number | undefined) ?? list.length, 0, list.length);
   let decl: StructDecl = { kind: "struct", id, name, fields: [] };
   if (typeof p["description"] === "string") decl.description = p["description"];
+  if (p["extends"] !== undefined && p["extends"] !== null) decl.extends = extendsTarget(ctx, scope, name, p["extends"]);
   putTypes(ctx, scope, insertAt(list, index, decl));
   const loc: TypeLocation = { decl, scope, index };
   const fields: FieldDecl[] = [];
@@ -229,16 +267,23 @@ export function typeDefineStruct(ctx: Ctx, p: Payload): Effect {
     const field: FieldDecl = { name: fname, type: fieldType(ctx, scope, name, fname, f["type"], `fields[${i}].type`) };
     if (typeof f["description"] === "string") field.description = f["description"];
     if (f["default"] !== undefined) field.default = f["default"];
+    if (f["static"] === true) field.static = true;
     fields.push(field);
   });
   decl = { ...decl, fields };
   putType(ctx, loc, decl);
   checkNotRecursive(ctx, id);
   for (const f of fields) checkFieldDefault(ctx, scope, name, f);
+  checkStructRules(ctx, id);
   return {
     created: { typeId: id },
     inverse: [{ op: "type.delete", typeId: id }],
-    resolved: resolvedAs({ ...p, id, ...(p["fields"] !== undefined ? { fields: fields.map((f) => ({ ...f })) } : {}) }),
+    resolved: resolvedAs({
+      ...p,
+      id,
+      ...(decl.extends === undefined ? {} : { extends: { kind: "named", id: decl.extends } }),
+      ...(p["fields"] !== undefined ? { fields: fields.map((f) => ({ ...f })) } : {}),
+    }),
     touched: "none",
   };
 }
@@ -302,6 +347,7 @@ function defineCommand(decl: TypeDecl, scope: TypeScopeRef, index: number): Comm
     index,
   };
   if (decl.description !== undefined) c["description"] = decl.description;
+  if (decl.kind === "struct" && decl.extends !== undefined) c["extends"] = { kind: "named", id: decl.extends };
   if (decl.kind === "struct") c["fields"] = decl.fields.map((f) => ({ ...f }));
   else c["members"] = decl.members.map((m) => ({ ...m }));
   return c as unknown as Command;
@@ -356,6 +402,7 @@ export function typeMoveScope(ctx: Ctx, p: Payload): Effect {
     const flow = getFlow(ctx, loc.scope.flowId);
     const deps = new Map<string, TypeDecl>();
     for (const f of decl.fields) for (const t of localTypesIn(flow, f.type)) if (t.id !== decl.id) deps.set(t.id, t);
+    if (decl.extends !== undefined) for (const t of localTypesIn(flow, { kind: "named", id: decl.extends })) deps.set(t.id, t);
     if (deps.size > 0) {
       const names = [...deps.values()].map((t) => `"${t.name}"`).join(", ");
       fail(
@@ -384,6 +431,7 @@ function addFieldCommand(typeId: string, f: FieldDecl, index: number): Command {
   const c: Payload = { op: "type.field.add", typeId, name: f.name, type: f.type, index };
   if (f.description !== undefined) c["description"] = f.description;
   if (f.default !== undefined) c["default"] = f.default;
+  if (f.static) c["static"] = true;
   return c as unknown as Command;
 }
 
@@ -400,10 +448,12 @@ export function fieldAdd(ctx: Ctx, p: Payload): Effect {
   const field: FieldDecl = { name, type: fieldType(ctx, loc.scope, decl.name, name, p["type"], "type") };
   if (typeof p["description"] === "string") field.description = p["description"];
   if (p["default"] !== undefined) field.default = p["default"];
+  if (p["static"] === true) field.static = true;
   const index = clamp((p["index"] as number | undefined) ?? decl.fields.length, 0, decl.fields.length);
   putType(ctx, loc, { ...decl, fields: insertAt(decl.fields, index, field) });
   checkNotRecursive(ctx, decl.id);
   checkFieldDefault(ctx, loc.scope, decl.name, field);
+  checkStructRules(ctx, decl.id);
   return {
     inverse: [{ op: "type.field.remove", typeId: decl.id, field: name }],
     resolved: resolvedAs({ ...p, type: field.type }),
@@ -411,10 +461,27 @@ export function fieldAdd(ctx: Ctx, p: Payload): Effect {
   };
 }
 
+/** A renamed static field keeps the values that structs extending its struct give it. */
+function renameInheritedStatic(ctx: Ctx, baseId: string, old: string, name: string): void {
+  const rename = (types: readonly TypeDecl[], sc: () => ReturnType<typeof scopeOf>): readonly TypeDecl[] =>
+    types.map((t) => {
+      if (t.kind !== "struct" || t.id === baseId || !extendsStruct(t.id, baseId, (id) => sc().getType(id)?.decl)) return t;
+      if (!t.fields.some((f) => f.static && f.name === old)) return t;
+      return { ...t, fields: t.fields.map((f) => (f.static && f.name === old ? { ...f, name } : f)) };
+    });
+  const global = { kind: "global" } as const;
+  putTypes(ctx, global, rename(ctx.doc.types, () => scopeOf(ctx, global)));
+  for (const f of ctx.doc.flows) {
+    const flowScope = { kind: "flow", flowId: f.id } as const;
+    putTypes(ctx, flowScope, rename(f.types, () => scopeOf(ctx, flowScope)));
+  }
+}
+
 export function fieldRemove(ctx: Ctx, p: Payload): Effect {
   const { loc, decl } = struct(ctx, p["typeId"] as string);
   const i = fieldIndex(ctx, decl, p["field"] as string);
   putType(ctx, loc, { ...decl, fields: removeAt(decl.fields, i) });
+  checkStructRules(ctx, decl.id);
   return { inverse: [addFieldCommand(decl.id, decl.fields[i] as FieldDecl, i)], resolved: resolvedAs(p), touched: "all" };
 }
 
@@ -432,8 +499,9 @@ export function fieldRename(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
     old,
   );
   const before = ctx.doc;
-  ctx.doc = rewriteStoredValues(ctx.doc, ctx.catalog, ports, renameStructKey(decl.id, old, name));
-  putType(ctx, loc, { ...decl, fields: decl.fields.map((f, k) => (k === i ? { ...f, name } : f)) });
+  if (decl.fields[i]?.static) renameInheritedStatic(ctx, decl.id, old, name);
+  else ctx.doc = rewriteStoredValues(ctx.doc, ctx.catalog, ports, renameStructKey(decl.id, old, name));
+  putType(ctx, { ...loc, decl: getType(ctx, decl.id).decl }, { ...decl, fields: decl.fields.map((f, k) => (k === i ? { ...f, name } : f)) });
   ctx.doc = followPortRename(before, ctx.doc, "all", ports, old, name);
   return { inverse: [{ op: "type.field.rename", typeId: decl.id, field: name, name: old }], resolved: resolvedAs(p), touched: "all" };
 }
@@ -445,6 +513,7 @@ export function fieldSetType(ctx: Ctx, p: Payload): Effect {
   const type = fieldType(ctx, loc.scope, decl.name, field.name, p["type"], "type");
   putType(ctx, loc, { ...decl, fields: decl.fields.map((f, k) => (k === i ? { ...f, type } : f)) });
   checkNotRecursive(ctx, decl.id);
+  checkStructRules(ctx, decl.id);
   return {
     inverse: [{ op: "type.field.setType", typeId: decl.id, field: field.name, type: field.type }],
     resolved: resolvedAs({ ...p, type }),
@@ -480,6 +549,7 @@ export function fieldSetDefault(ctx: Ctx, p: Payload): Effect {
   const next = { ...field, default: p["value"] };
   checkFieldDefault(ctx, loc.scope, decl.name, next);
   putType(ctx, loc, { ...decl, fields: decl.fields.map((f, k) => (k === i ? next : f)) });
+  checkStructRules(ctx, decl.id);
   const inverse: Command =
     field.default === undefined
       ? { op: "type.field.clearDefault", typeId: decl.id, field: field.name }
@@ -493,8 +563,38 @@ export function fieldClearDefault(ctx: Ctx, p: Payload): Effect {
   const field = decl.fields[i] as FieldDecl;
   if (field.default === undefined) return { inverse: [], resolved: resolvedAs(p), touched: "none" };
   putType(ctx, loc, { ...decl, fields: decl.fields.map((f, k) => (k === i ? withKey(f, "default", undefined) : f)) });
+  checkStructRules(ctx, decl.id);
   return {
     inverse: [{ op: "type.field.setDefault", typeId: decl.id, field: field.name, value: field.default }],
+    resolved: resolvedAs(p),
+    touched: "all",
+  };
+}
+
+export function typeSetExtends(ctx: Ctx, p: Payload): Effect {
+  const { loc, decl } = struct(ctx, p["typeId"] as string);
+  const raw = p["extends"];
+  const next = raw === null || raw === undefined ? undefined : extendsTarget(ctx, loc.scope, decl.name, raw);
+  if (next === decl.extends) return { inverse: [], resolved: resolvedAs(p), touched: "none" };
+  putType(ctx, loc, withKey(decl, "extends", next));
+  checkStructRules(ctx, decl.id);
+  return {
+    inverse: [{ op: "type.setExtends", typeId: decl.id, extends: decl.extends === undefined ? null : { kind: "named", id: decl.extends } }],
+    resolved: resolvedAs({ ...p, extends: next === undefined ? null : { kind: "named", id: next } }),
+    touched: "all",
+  };
+}
+
+export function fieldSetStatic(ctx: Ctx, p: Payload): Effect {
+  const { loc, decl } = struct(ctx, p["typeId"] as string);
+  const i = fieldIndex(ctx, decl, p["field"] as string);
+  const field = decl.fields[i] as FieldDecl;
+  const on = p["static"] === true;
+  if ((field.static === true) === on) return { inverse: [], resolved: resolvedAs(p), touched: "none" };
+  putType(ctx, loc, { ...decl, fields: decl.fields.map((f, k) => (k === i ? withKey(f, "static", on ? true : undefined) : f)) });
+  checkStructRules(ctx, decl.id);
+  return {
+    inverse: [{ op: "type.field.setStatic", typeId: decl.id, field: field.name, static: !on }],
     resolved: resolvedAs(p),
     touched: "all",
   };

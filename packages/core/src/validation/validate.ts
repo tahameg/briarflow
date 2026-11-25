@@ -3,8 +3,6 @@
  * problems; returns diagnostics in a deterministic order (structure, types, signature,
  * variables, nodes, edges, cycles, variable ordering; document order inside each group).
  */
-import { extendsProblems, structLayout, type ExtendsProblem } from "../types/layout.js";
-import { limitProblems } from "../types/limits.js";
 import type { ContextDocument, FlowDocument, TypeDecl } from "../documents/model.js";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, VARIABLE_NODE_TYPES } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
@@ -26,6 +24,7 @@ import { nodeLabel } from "./labels.js";
 import { resolveFlowPorts } from "./ports.js";
 import { computeVariableOrder } from "./variables.js";
 import { analyzeExec } from "./exec.js";
+import { structProblems } from "./structs.js";
 
 const VARIABLE_TYPES: readonly string[] = Object.values(VARIABLE_NODE_TYPES);
 
@@ -438,24 +437,9 @@ function checkTypeDecls(
         details: { chain },
       });
     }
-    const resolve = (id: string) => scope.getType(id)?.decl;
-    const extendsIssues = extendsProblems(t, resolve);
-    for (const p of extendsIssues) out.push(extendsDiagnostic(p, t, at, scope));
-    if (extendsIssues.length === 0) {
-      for (const p of limitProblems(structLayout(t, resolve))) {
-        out.push({ severity: "error", code: "type.invalid_constraint", message: constraintMessage(p, `"${t.name}"`), path: { ...at, field: p.constraint }, details: { constraint: p.constraint } });
-      }
-    }
+    out.push(...structProblems(t, scope, at));
     for (const f of t.fields) {
       const fat = { ...at, field: f.name };
-      if (f.static && f.default === undefined && f.type.kind !== "optional") {
-        out.push({
-          severity: "error",
-          code: "type.static_without_value",
-          message: `Static field "${t.name}.${f.name}" has no value. Give it one, or make its type optional.`,
-          path: fat,
-        });
-      }
       const ok = checkTypeRef(f.type, `Field "${t.name}.${f.name}"`, scope, fat, out, localOwner);
       if (ok && !chain && f.default !== undefined) {
         const d = validateValue(f.default, f.type, scope, { path: `${t.name}.${f.name}`, at: fat });
@@ -474,14 +458,3 @@ function checkTypeDecls(
   return out;
 }
 
-function extendsDiagnostic(p: ExtendsProblem, t: TypeDecl, at: DiagnosticPath, scope: TypeScope): Diagnostic {
-  const target = p.target === undefined ? "" : (scope.getType(p.target)?.decl.name ?? p.target);
-  const message = {
-    "type.extends_unknown": `"${t.name}" extends type id ${p.target ?? ""}, which no longer exists. Pick another struct.`,
-    "type.extends_not_struct": `"${t.name}" extends "${target}", which is not a struct. Only structs can be extended.`,
-    "type.extends_cycle": `"${t.name}" extends itself through ${(p.chain ?? []).map((id) => scope.getType(id)?.decl.name ?? id).join(" → ")}.`,
-    "type.extends_instance_field": `"${t.name}.${p.field ?? ""}" is not static. A struct that extends another may only add or set static fields.`,
-    "type.extends_override": `"${t.name}.${p.field ?? ""}" sets an inherited static field with another type. Keep the type it has in the base.`,
-  }[p.code];
-  return { severity: "error", code: p.code, message, path: p.field === undefined ? at : { ...at, field: p.field } };
-}

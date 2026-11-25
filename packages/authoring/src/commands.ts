@@ -27,7 +27,10 @@ export interface FieldInputDecl {
   name: string;
   type: TypeInput;
   description?: string;
+  /** For a static field: its value. */
   default?: unknown;
+  /** A static field (types.md §1.3): the type fixes its value. */
+  static?: boolean;
 }
 
 /** An enum member in a payload: `"anime"` or `{ value: "pixel", label: "Pixel art" }`. */
@@ -65,6 +68,11 @@ export interface TypeDefineStructCommand extends CommandBase {
   name: string;
   id?: string;
   description?: string;
+  /**
+   * The struct it extends (types.md §1.3): a name, shorthand or id, e.g. `"Text"`. Its own
+   * fields may then only be static fields.
+   */
+  extends?: TypeInput;
   fields?: readonly FieldInputDecl[];
   /** Position in the target list (default: end; clamped). Used by inverse commands to restore order. */
   index?: number;
@@ -110,6 +118,8 @@ export interface TypeFieldAddCommand extends CommandBase {
   type: TypeInput;
   description?: string;
   default?: unknown;
+  /** A static field (its value is `default`). */
+  static?: boolean;
   /** Insert position; default = end. Clamped to `[0, n]`. */
   index?: number;
 }
@@ -148,6 +158,19 @@ export interface TypeFieldSetDefaultCommand extends CommandBase {
   typeId: string;
   field: string;
   value: unknown;
+}
+/** Sets or clears the struct a struct extends (`null` = none). */
+export interface TypeSetExtendsCommand extends CommandBase {
+  op: "type.setExtends";
+  typeId: string;
+  extends: TypeInput | null;
+}
+/** Makes a field static (the type fixes its value, its `default`) or an instance field. */
+export interface TypeFieldSetStaticCommand extends CommandBase {
+  op: "type.field.setStatic";
+  typeId: string;
+  field: string;
+  static: boolean;
 }
 export interface TypeFieldClearDefaultCommand extends CommandBase {
   op: "type.field.clearDefault";
@@ -562,6 +585,8 @@ export type Command =
   | TypeDefineEnumCommand
   | TypeRenameCommand
   | TypeSetDescriptionCommand
+  | TypeSetExtendsCommand
+  | TypeFieldSetStaticCommand
   | TypeDeleteCommand
   | TypeMoveScopeCommand
   | TypeFieldAddCommand
@@ -641,6 +666,8 @@ export const COMMAND_OPS: readonly CommandOp[] = [
   "type.defineEnum",
   "type.rename",
   "type.setDescription",
+  "type.setExtends",
+  "type.field.setStatic",
   "type.delete",
   "type.moveScope",
   "type.field.add",

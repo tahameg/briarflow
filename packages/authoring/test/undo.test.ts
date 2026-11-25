@@ -60,6 +60,28 @@ const CORPUS: Case[] = [
   { name: "type.field.setDefault", batch: [{ op: "type.field.setDefault", typeId: "ty_char", field: "age", value: 41 }] },
   { name: "type.field.setDefault new", batch: [{ op: "type.field.setDefault", typeId: "ty_char", field: "name", value: "N" }] },
   { name: "type.field.clearDefault", batch: [{ op: "type.field.clearDefault", typeId: "ty_char", field: "age" }] },
+  {
+    name: "type.defineStruct extending Text, with a static field",
+    batch: [{ op: "type.defineStruct", scope: G, id: "ty_short", name: "ShortText", extends: "Text", fields: [{ name: "maxLength", type: "int?", static: true, default: 80 }] }],
+  },
+  {
+    name: "type.setExtends and type.field.setStatic",
+    doc: () =>
+      build(richDoc(), [
+        { op: "type.defineStruct", scope: G, id: "ty_lim", name: "Limited", fields: [] },
+        { op: "type.defineStruct", scope: G, id: "ty_pet", name: "Pet", fields: [{ name: "name", type: "string" }, { name: "legs", type: "int", default: 4 }] },
+      ]),
+    batch: [
+      { op: "type.setExtends", typeId: "ty_lim", extends: "Text" },
+      { op: "type.field.add", typeId: "ty_lim", name: "maxLength", type: "int?", default: 10, static: true },
+      { op: "type.field.setStatic", typeId: "ty_pet", field: "legs", static: true },
+    ],
+  },
+  {
+    name: "type.delete of a struct that extends another",
+    doc: () => build(richDoc(), [{ op: "type.defineStruct", scope: G, id: "ty_short", name: "ShortText", extends: "Text", fields: [{ name: "maxLength", type: "int?", static: true, default: 80 }] }]),
+    batch: [{ op: "type.delete", typeId: "ty_short" }],
+  },
   { name: "type.enum.addMember", batch: [{ op: "type.enum.addMember", typeId: "ty_style", value: "sketch", label: "Sketch", index: 0 }] },
   { name: "type.enum.removeMember (soft)", batch: [{ op: "type.enum.removeMember", typeId: "ty_style", value: "anime" }] },
   { name: "type.enum.removeMember with label", batch: [{ op: "type.enum.removeMember", typeId: "ty_style", value: "pixel" }] },

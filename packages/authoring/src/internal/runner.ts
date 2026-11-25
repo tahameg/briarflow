@@ -23,6 +23,8 @@ const HANDLERS: Record<CommandOp, Handler> = {
   "type.defineEnum": t.typeDefineEnum,
   "type.rename": t.typeRename,
   "type.setDescription": t.typeSetDescription,
+  "type.setExtends": t.typeSetExtends,
+  "type.field.setStatic": t.fieldSetStatic,
   "type.delete": t.typeDelete,
   "type.moveScope": t.typeMoveScope,
   "type.field.add": t.fieldAdd,

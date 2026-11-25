@@ -264,6 +264,7 @@ export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort } from ".
 export { computeVariableOrder } from "./validation/variables.js";
 export type { ImplicitEdge, VariableAccessPlan, VariableOrder, VariableTarget } from "./validation/variables.js";
 export { validateContext, validateFlow } from "./validation/validate.js";
+export { structProblems } from "./validation/structs.js";
 
 // Extension interfaces
 export type {
