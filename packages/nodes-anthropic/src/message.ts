@@ -21,7 +21,7 @@ export function claudeMessage(options: AnthropicPackOptions) {
         description: "Sampling temperature. Leave empty: current models reject custom values.",
       },
     },
-    outputs: { text: t.text(), usage: t.ref(Usage), stopReason: t.text(), model: t.text() },
+    outputs: { text: t.string(), usage: t.ref(Usage), stopReason: t.string(), model: t.string() },
     async run({ inputs, config, ctx }) {
       const res = await sendClaude(ctx, options, {
         config,

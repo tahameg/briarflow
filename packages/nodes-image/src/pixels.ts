@@ -2,7 +2,7 @@
  * Decoded images: RGBA pixels, 8 bits per channel. PNG and JPEG are read and written with pure
  * JavaScript codecs; other formats are rejected with `image.unsupported_format`.
  */
-import { NodeError, type ExecContext, type MediaRef } from "@briarflow/core";
+import { mediaRefOf, mediaValue, NodeError, type ExecContext, type ImageValue, type MediaRef, type MediaValue } from "@briarflow/core";
 import { convertIndexedToRgb, decode as decodePng, encode as encodePng } from "fast-png";
 import jpeg from "jpeg-js";
 
@@ -141,7 +141,8 @@ function remember(id: string, p: Pixels): void {
 }
 
 /** Reads and decodes an image input. Treat the pixels as read-only: they may be shared. */
-export async function readPixels(ref: MediaRef, ctx: ExecContext): Promise<Pixels> {
+export async function readPixels(image: MediaRef | MediaValue, ctx: ExecContext): Promise<Pixels> {
+  const ref = mediaRefOf(image);
   const hit = decoded.get(ref.mediaId);
   if (hit) {
     decoded.delete(ref.mediaId);
@@ -155,16 +156,18 @@ export async function readPixels(ref: MediaRef, ctx: ExecContext): Promise<Pixel
 }
 
 /** Stores encoded bytes as an image with its size in `meta`. */
-export function storeImage(ctx: ExecContext, bytes: Uint8Array, mime: string, width: number, height: number, name: string): Promise<MediaRef> {
-  return ctx.media.put(bytes, { mime, filename: `${name}.${mime === "image/jpeg" ? "jpg" : "png"}`, meta: { width, height } });
+export async function storeImage(ctx: ExecContext, bytes: Uint8Array, mime: string, width: number, height: number, name: string): Promise<ImageValue> {
+  const filename = `${name}.${mime === "image/jpeg" ? "jpg" : "png"}`;
+  const ref = await ctx.media.put(bytes, { mime, filename, meta: { width, height } });
+  return mediaValue("image", ref, { mime, bytes: bytes.byteLength, meta: { width, height, filename } });
 }
 
 /** Encodes and stores pixels. PNG output keeps the pixels decoded for the next node; JPEG changes them. */
-export async function storePixels(ctx: ExecContext, p: Pixels, format: OutputFormat, quality: number, name: string): Promise<MediaRef> {
+export async function storePixels(ctx: ExecContext, p: Pixels, format: OutputFormat, quality: number, name: string): Promise<ImageValue> {
   const { bytes, mime } = encodeImage(p, format, quality);
-  const ref = await storeImage(ctx, bytes, mime, p.width, p.height, name);
-  if (format === "png") remember(ref.mediaId, p);
-  return ref;
+  const image = await storeImage(ctx, bytes, mime, p.width, p.height, name);
+  if (format === "png") remember(image.data.mediaId, p);
+  return image;
 }
 
 /** Brightness (Rec. 601 luma) of pixel `i`, 0–255. Gray images give their gray value. */

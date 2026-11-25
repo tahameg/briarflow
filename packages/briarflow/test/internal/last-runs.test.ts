@@ -18,8 +18,8 @@ function setup(extra: Partial<BriarOptions> = {}): Briar {
 async function imageFlow(briar: Briar): Promise<string> {
   const ctx = await briar.contexts.create({ name: "Pics", id: "ctx_pics" });
   const flow = ctx.flows.create("Picture");
-  flow.inputs.add("prompt", "text");
-  flow.outputs.add("image", "image");
+  flow.inputs.add("prompt", "string");
+  flow.outputs.add("image", "Image");
   const img = flow.nodes.add("mock.image", { id: "n_img", values: { width: 8, height: 8 } });
   flow.connect(flow.input.port("prompt"), img.port("prompt"));
   flow.connect(img.port("image"), flow.output.port("image"));

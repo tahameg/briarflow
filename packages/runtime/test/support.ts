@@ -113,8 +113,8 @@ const nodes = [
   /** Pass-through text, cached. */
   defineNode({
     type: "probe.echo",
-    inputs: { value: { type: t.text(), default: "x" } },
-    outputs: { value: t.text() },
+    inputs: { value: { type: t.string(), default: "x" } },
+    outputs: { value: t.string() },
     run: ({ inputs, node }) => {
       enter(node.id);
       leave();
@@ -126,11 +126,11 @@ const nodes = [
     type: "probe.wait",
     cache: false,
     inputs: {
-      value: { type: t.text(), default: "" },
-      key: { type: t.text(), default: "" },
-      ignoreSignal: { type: t.boolean(), default: false },
+      value: { type: t.string(), default: "" },
+      key: { type: t.string(), default: "" },
+      ignoreSignal: { type: t.bool(), default: false },
     },
-    outputs: { value: t.text() },
+    outputs: { value: t.string() },
     async run({ inputs, node, ctx }) {
       enter(node.id);
       try {
@@ -146,8 +146,8 @@ const nodes = [
     type: "probe.single",
     cache: false,
     concurrency: 1,
-    inputs: { key: { type: t.text(), default: "" } },
-    outputs: { value: t.text() },
+    inputs: { key: { type: t.string(), default: "" } },
+    outputs: { value: t.string() },
     async run({ inputs, node, ctx }) {
       enter(node.id);
       try {
@@ -160,8 +160,8 @@ const nodes = [
   /** Counts its executions; cached; cacheVersion "1". */
   defineNode({
     type: "probe.count",
-    inputs: { value: { type: t.text(), default: "x" }, n: { type: t.int(), default: 0 } },
-    outputs: { value: t.text() },
+    inputs: { value: { type: t.string(), default: "x" }, n: { type: t.int(), default: 0 } },
+    outputs: { value: t.string() },
     run: ({ inputs, node }) => {
       enter(node.id);
       leave();
@@ -173,8 +173,8 @@ const nodes = [
     type: "probe.throw",
     cache: false,
     retry: 2,
-    inputs: { kind: { type: t.text(), default: "plain" }, x: { type: t.optional(t.text()), default: null } },
-    outputs: { value: t.text() },
+    inputs: { kind: { type: t.string(), default: "plain" }, x: { type: t.optional(t.string()), default: null } },
+    outputs: { value: t.string() },
     run({ inputs, node }): { value: string } {
       enter(node.id);
       leave();
@@ -229,7 +229,7 @@ const nodes = [
     cache: false,
     timeoutMs: 50,
     retry: { maxAttempts: 2, initialDelayMs: 10, jitter: false },
-    inputs: { slowAttempts: { type: t.int(), default: 1 }, ignoreSignal: { type: t.boolean(), default: true } },
+    inputs: { slowAttempts: { type: t.int(), default: 1 }, ignoreSignal: { type: t.bool(), default: true } },
     outputs: { attempt: t.int() },
     async run({ inputs, ctx, node }) {
       enter(node.id);
@@ -248,8 +248,8 @@ const nodes = [
     type: "probe.badOut",
     cache: false,
     retry: 2,
-    inputs: { mode: t.text() },
-    outputs: { value: t.int({ min: 0 }), maybe: t.optional(t.text()) },
+    inputs: { mode: t.string() },
+    outputs: { value: t.int({ min: 0 }), maybe: t.optional(t.string()) },
     run({ inputs, node }) {
       enter(node.id);
       leave();
@@ -274,8 +274,8 @@ const nodes = [
     type: "probe.secret",
     cache: false,
     secrets: ["API_KEY"],
-    inputs: { askOther: { type: t.boolean(), default: false } },
-    outputs: { value: t.text() },
+    inputs: { askOther: { type: t.bool(), default: false } },
+    outputs: { value: t.string() },
     async run({ inputs, ctx }) {
       if (inputs.askOther) await ctx.secrets.get("OTHER");
       return { value: `key:${await ctx.secrets.get("API_KEY")}` };
@@ -284,8 +284,8 @@ const nodes = [
   /** Reads ctx.globals / ctx.variables by name (empty = skip); cached. */
   defineNode({
     type: "probe.state",
-    inputs: { global: { type: t.text(), default: "" }, variable: { type: t.text(), default: "" } },
-    outputs: { value: t.text() },
+    inputs: { global: { type: t.string(), default: "" }, variable: { type: t.string(), default: "" } },
+    outputs: { value: t.string() },
     run({ inputs, ctx, node }) {
       enter(node.id);
       leave();
@@ -299,8 +299,8 @@ const nodes = [
   defineNode({
     type: "probe.ctx",
     cache: false,
-    inputs: { url: { type: t.text(), default: "" } },
-    outputs: { value: t.text() },
+    inputs: { url: { type: t.string(), default: "" } },
+    outputs: { value: t.string() },
     async run({ inputs, ctx, node, config }) {
       probe.seen.push({
         runId: ctx.runId,
@@ -325,8 +325,8 @@ const nodes = [
   defineNode({
     type: "probe.progress",
     cache: false,
-    inputs: { values: { type: t.list(t.float()), default: [] }, message: { type: t.text(), default: "" }, wait: { type: t.boolean(), default: true }, nanFirst: { type: t.boolean(), default: false } },
-    outputs: { value: t.text() },
+    inputs: { values: { type: t.list(t.float()), default: [] }, message: { type: t.string(), default: "" }, wait: { type: t.bool(), default: true }, nanFirst: { type: t.bool(), default: false } },
+    outputs: { value: t.string() },
     async run({ inputs, ctx, node }) {
       if (inputs.nanFirst) ctx.progress(Number.NaN, "nan");
       for (const f of inputs.values) ctx.progress(f, inputs.message || undefined);
@@ -339,7 +339,7 @@ const nodes = [
     type: "probe.lateProgress",
     cache: false,
     timeoutMs: 20,
-    outputs: { value: t.text() },
+    outputs: { value: t.string() },
     run({ ctx, node }) {
       void probe.gate(node.id).promise.then(() => ctx.progress(0.9, "late"));
       return new Promise<{ value: string }>(() => {}); // never settles; timeout ends it
@@ -474,5 +474,5 @@ export function tick(): Promise<void> {
 }
 
 /** Text field helper. */
-export const text = { kind: "primitive", name: "text" } as const;
+export const text = { kind: "primitive", name: "string" } as const;
 export const int = { kind: "primitive", name: "int" } as const;

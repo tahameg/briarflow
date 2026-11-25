@@ -42,7 +42,10 @@ export function tokenVar(token: BriarToken): string {
 }
 
 /** Kind of a named type, used to tell enums (diamond ports) from structs. */
-export type NamedKindLookup = (typeId: string) => "struct" | "enum" | undefined;
+export type NamedKindLookup = ((typeId: string) => "struct" | "enum" | undefined) & {
+  /** The root of a struct's `extends` chain (`ShortText` → `briar.Text`), so it is styled like its base. */
+  root?: (typeId: string) => string;
+};
 
 /** Visual description of a type (design-system.md §6). */
 export interface TypeStyle {
@@ -60,17 +63,25 @@ export interface TypeStyle {
 }
 
 const PRIMITIVE_TOKENS: Record<string, BriarToken> = {
-  text: "mint",
+  string: "mint",
   int: "sky",
   float: "aqua",
-  boolean: "lime",
-  json: "yellow",
-  secret: "lavender",
-  image: "peach",
-  video: "coral",
-  audio: "pink",
-  model3d: "sand",
-  file: "stone",
+  bool: "lime",
+  binary: "stone",
+};
+
+/** Built-in structs keep the colors their kinds always had (types.md §1.2). */
+const BUILTIN_TOKENS: Record<string, BriarToken> = {
+  "briar.Text": "mint",
+  "briar.Json": "yellow",
+  "briar.Secret": "lavender",
+  "briar.ApiKey": "lavender",
+  "briar.Image": "peach",
+  "briar.Video": "coral",
+  "briar.Audio": "pink",
+  "briar.Model3D": "sand",
+  "briar.File": "stone",
+  "briar.Error": "coral",
 };
 
 /**
@@ -78,7 +89,7 @@ const PRIMITIVE_TOKENS: Record<string, BriarToken> = {
  *
  * @example
  * ```ts
- * typeStyle({ kind: "list", of: { kind: "primitive", name: "text" } }); // mint, hollow
+ * typeStyle({ kind: "list", of: { kind: "primitive", name: "string" } }); // mint, hollow
  * ```
  */
 export function typeStyle(type: TypeRef, kindOf?: NamedKindLookup): TypeStyle {
@@ -89,7 +100,8 @@ export function typeStyle(type: TypeRef, kindOf?: NamedKindLookup): TypeStyle {
     }
     case "named": {
       const kind = kindOf?.(type.id);
-      return { token: "lavender", color: tokenVar("lavender"), shape: kind === "enum" ? "diamond" : "square", hollow: false, optional: false, unbound: false };
+      const token = BUILTIN_TOKENS[kindOf?.root?.(type.id) ?? type.id] ?? "lavender";
+      return { token, color: tokenVar(token), shape: kind === "enum" ? "diamond" : "square", hollow: false, optional: false, unbound: false };
     }
     case "list":
       return { ...typeStyle(type.of, kindOf), hollow: true };
@@ -129,24 +141,28 @@ export function nodeAccent(color: NodeColor | null | undefined, category: string
 }
 
 /**
- * LED color family of a port (woodshop nodes): text amber, numbers green, boolean yellow,
- * media magenta, error red, structured (struct, enum, json, file) frosted white, unbound `$T` "any".
+ * LED color family of a port (woodshop nodes): strings and Text amber, numbers green, bools
+ * yellow, media structs magenta, Error red, other structured types (struct, enum, Json, File,
+ * binary) frosted white, unbound `$T` "any".
  * The CSS colors are `--bf-led-<family>`.
  */
 export type LedFamily = "text" | "num" | "bool" | "media" | "data" | "error" | "any";
 
 const PRIMITIVE_LEDS: Record<string, LedFamily> = {
-  text: "text",
+  string: "text",
   int: "num",
   float: "num",
-  boolean: "bool",
-  json: "data",
-  secret: "data",
-  image: "media",
-  video: "media",
-  audio: "media",
-  model3d: "media",
-  error: "error",
+  bool: "bool",
+  binary: "data",
+};
+
+const BUILTIN_LEDS: Record<string, LedFamily> = {
+  "briar.Text": "text",
+  "briar.Image": "media",
+  "briar.Video": "media",
+  "briar.Audio": "media",
+  "briar.Model3D": "media",
+  "briar.Error": "error",
 };
 
 /**
@@ -157,15 +173,15 @@ const PRIMITIVE_LEDS: Record<string, LedFamily> = {
  * ledFamily({ kind: "list", of: { kind: "primitive", name: "int" } }); // "num"
  * ```
  */
-export function ledFamily(type: TypeRef): LedFamily {
+export function ledFamily(type: TypeRef, kindOf?: NamedKindLookup): LedFamily {
   switch (type.kind) {
     case "primitive":
       return PRIMITIVE_LEDS[type.name] ?? "data";
     case "named":
-      return "data";
+      return BUILTIN_LEDS[kindOf?.root?.(type.id) ?? type.id] ?? "data";
     case "list":
     case "optional":
-      return ledFamily(type.of);
+      return ledFamily(type.of, kindOf);
     case "var":
       return "any";
   }

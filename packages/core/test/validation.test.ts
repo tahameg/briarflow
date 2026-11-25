@@ -169,7 +169,7 @@ describe("diagnostic codes: counter-examples", () => {
   });
 
   it("variable.read_before_write is not raised for optional or list variables, nor with a default", () => {
-    for (const type of [ir.optional(ir.text()), ir.list(ir.text())]) {
+    for (const type of [ir.optional(ir.string()), ir.list(ir.string())]) {
       const doc = kitContext({
         variables: [{ id: "var_x", name: "x", type, access: "public" }],
         nodes: [node("n_get", "briar.variable.get", { x: 0, y: 0 }, { config: { variableId: "var_x" } })],
@@ -177,7 +177,7 @@ describe("diagnostic codes: counter-examples", () => {
       expect(flowCodes(doc)).not.toContain("variable.read_before_write");
     }
     const withDefault = kitContext({
-      variables: [{ id: "var_x", name: "x", type: ir.text(), access: "public", default: "d" }],
+      variables: [{ id: "var_x", name: "x", type: ir.string(), access: "public", default: "d" }],
       nodes: [node("n_get", "briar.variable.get", { x: 0, y: 0 }, { config: { variableId: "var_x" } })],
     });
     expect(flowCodes(withDefault)).not.toContain("variable.read_before_write");
@@ -191,7 +191,7 @@ describe("diagnostic codes: counter-examples", () => {
   it("readonly globals with a value can be read; readwrite globals can be written", () => {
     const doc = kitContext({
       globals: [
-        { id: "gv_ro", name: "brand", type: ir.text(), access: "readonly", value: "Acme" },
+        { id: "gv_ro", name: "brand", type: ir.string(), access: "readonly", value: "Acme" },
         { id: "gv_rw", name: "count", type: ir.int(), access: "readwrite", value: 0 },
       ],
       nodes: [
@@ -205,7 +205,7 @@ describe("diagnostic codes: counter-examples", () => {
   });
 
   it("variable.unused is a warning for private variables only", () => {
-    const doc = kitContext({ variables: [{ id: "var_p", name: "pub", type: ir.text(), access: "public", default: "" }] });
+    const doc = kitContext({ variables: [{ id: "var_p", name: "pub", type: ir.string(), access: "public", default: "" }] });
     expect(flowCodes(doc)).not.toContain("variable.unused");
   });
 
@@ -234,7 +234,7 @@ describe("messages", () => {
     const fixture = brokenFixtures.find((f) => f.label.startsWith("flow output retyped"))!;
     const [d] = withCode(validateFlow(fixture.doc(), PORTRAIT_FLOW_ID, testCatalog()), "edge.type_mismatch");
     expect(d!.message).toContain("text");
-    expect(d!.message).toContain("image");
+    expect(d!.message).toContain("Image");
     expect(d!.message).toContain("prompt");
   });
 
@@ -318,7 +318,7 @@ describe("resolveFlowPorts", () => {
     expect(input.outputs.map((p) => [p.name, p.type])).toEqual([["character", ir.named(CHARACTER_ID)]]);
     const output = ports.nodes.get("n_out")!;
     expect(output.outputs).toEqual([]);
-    expect(output.inputs.map((p) => [p.name, p.type])).toEqual([["prompt", ir.text()]]);
+    expect(output.inputs.map((p) => [p.name, p.type])).toEqual([["prompt", ir.string()]]);
   });
 
   it("dynamic ports from config (struct.break, text.template) with recomputed bindings", () => {
@@ -333,8 +333,8 @@ describe("resolveFlowPorts", () => {
     const tpl = ports.nodes.get("n_tpl")!;
     expect(tpl.inputs.map((p) => p.name)).toEqual(["name", "style"]);
     expect(tpl.inputs.map((p) => p.declaredType)).toEqual([ir.var("T1"), ir.var("T2")]);
-    expect(tpl.inputs.map((p) => p.type)).toEqual([ir.text(), ir.named(ART_STYLE_ID)]);
-    expect(tpl.typeBindings).toEqual({ T1: ir.text(), T2: ir.named(ART_STYLE_ID) });
+    expect(tpl.inputs.map((p) => p.type)).toEqual([ir.string(), ir.named(ART_STYLE_ID)]);
+    expect(tpl.typeBindings).toEqual({ T1: ir.string(), T2: ir.named(ART_STYLE_ID) });
     expect(tpl.outputs.map((p) => [p.name, p.title])).toEqual([["text", "Text"]]);
   });
 
@@ -354,13 +354,13 @@ describe("resolveFlowPorts", () => {
       f.edges.reverse();
     });
     const tpl = resolveFlowPorts(doc, PORTRAIT_FLOW_ID, testCatalog()).nodes.get("n_tpl")!;
-    expect(tpl.typeBindings).toEqual({ T1: ir.text(), T2: ir.named(ART_STYLE_ID) });
+    expect(tpl.typeBindings).toEqual({ T1: ir.string(), T2: ir.named(ART_STYLE_ID) });
   });
 
   it("removing the last constraining edge unbinds the var", () => {
     const doc = editFlow(portraitContext(), PORTRAIT_FLOW_ID, (f) => void (f.edges = f.edges.filter((e) => e.id !== "e_3")));
     const tpl = resolveFlowPorts(doc, PORTRAIT_FLOW_ID, testCatalog()).nodes.get("n_tpl")!;
-    expect(tpl.typeBindings).toEqual({ T1: ir.text() });
+    expect(tpl.typeBindings).toEqual({ T1: ir.string() });
     expect(tpl.inputs[1]!.type).toEqual(ir.var("T2"));
   });
 
@@ -370,8 +370,8 @@ describe("resolveFlowPorts", () => {
       edges: [edge("e_1", "n_get.item", "n_o.value")],
     });
     const get = resolveFlowPorts(doc, KIT_FLOW_ID, testCatalog()).nodes.get("n_get")!;
-    expect(get.typeBindings).toEqual({ T: ir.text() });
-    expect(get.outputs[0]!.type).toEqual(ir.optional(ir.text()));
+    expect(get.typeBindings).toEqual({ T: ir.string() });
+    expect(get.outputs[0]!.type).toEqual(ir.optional(ir.string()));
   });
 
   it("an edge from an unbound generic neighbour contributes nothing", () => {
@@ -467,14 +467,14 @@ describe("validateNodeConfig", () => {
   });
 
   it("cfg.type accepts IR and rejects garbage", () => {
-    const ok = validateNodeConfig(def("briar.constant"), { type: ir.list(ir.text()) }, portrait(), PORTRAIT_FLOW_ID, testCatalog());
-    expect(ok).toEqual({ ok: true, config: { type: ir.list(ir.text()) } });
+    const ok = validateNodeConfig(def("briar.constant"), { type: ir.list(ir.string()) }, portrait(), PORTRAIT_FLOW_ID, testCatalog());
+    expect(ok).toEqual({ ok: true, config: { type: ir.list(ir.string()) } });
     const bad = validateNodeConfig(def("briar.constant"), { type: "list<" }, portrait(), PORTRAIT_FLOW_ID, testCatalog());
     expect(bad.ok).toBe(false);
   });
 
   it("writable global on a readonly global → variable.write_to_readonly", () => {
-    const doc = kitContext({ globals: [{ id: "gv_ro", name: "brand", type: ir.text(), access: "readonly", value: "A" }] });
+    const doc = kitContext({ globals: [{ id: "gv_ro", name: "brand", type: ir.string(), access: "readonly", value: "A" }] });
     const result = validateNodeConfig(def("briar.global.set"), { globalId: "gv_ro" }, doc, KIT_FLOW_ID, testCatalog());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(codes(result.diagnostics)).toContain("variable.write_to_readonly");
@@ -520,8 +520,8 @@ describe("computeVariableOrder (variables.md §4)", () => {
   it("writers are totally ordered by data paths; each get reads the last writer before it", () => {
     // in.a → set1 → (value) → set2 ; get1 upstream of set2 (feeds it via same) ; get2 free
     const doc = kitContext({
-      inputs: [{ name: "a", type: ir.text() }],
-      variables: [{ id: "var_x", name: "x", type: ir.text(), access: "public", default: "" }],
+      inputs: [{ name: "a", type: ir.string() }],
+      variables: [{ id: "var_x", name: "x", type: ir.string(), access: "public", default: "" }],
       nodes: [
         node("n_set1", "briar.variable.set", { x: 100, y: 0 }, { config: { variableId: "var_x" } }),
         node("n_pass", "kit.passText", { x: 200, y: 0 }),

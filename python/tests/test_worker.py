@@ -127,6 +127,11 @@ demo = pack(
 REF = {"uri": "briar-media://m_1", "mime": "image/png", "bytes": 3, "hash": "b" * 64}
 
 
+def img(data: dict) -> dict:
+    """An Image value on the wire around a binary ``data``."""
+    return {"data": data, "mime": "image/png", "name": None, "size": 3, "width": None, "height": None}
+
+
 @pytest.fixture
 def client(serve_pack):
     return serve_pack(demo)
@@ -135,13 +140,13 @@ def client(serve_pack):
 def test_health(client) -> None:
     r = client.get("/briarflow/health")
     assert r.status == 200
-    assert r.json() == {"ok": True, "protocol": 1, "pack": {"name": "demo", "version": "0.1.0"}}
-    assert r.headers["x-briarflow-protocol"] == "1"
+    assert r.json() == {"ok": True, "protocol": 2, "pack": {"name": "demo", "version": "0.1.0"}}
+    assert r.headers["x-briarflow-protocol"] == "2"
 
 
 def test_manifest(client) -> None:
     r = client.get("/briarflow/manifest")
-    assert r.status == 200 and r.headers["x-briarflow-protocol"] == "1"
+    assert r.status == 200 and r.headers["x-briarflow-protocol"] == "2"
     assert r.json() == demo.manifest()
 
 
@@ -154,7 +159,7 @@ def test_execute_streams_progress_log_and_result(client) -> None:
     r = client.execute("demo.add", {"a": 2, "b": 3})
     assert r.status == 200
     assert r.headers["content-type"] == "application/x-ndjson"
-    assert r.headers["x-briarflow-protocol"] == "1"
+    assert r.headers["x-briarflow-protocol"] == "2"
     assert r.lines == [
         {"type": "progress", "fraction": 0.5, "message": "adding"},
         {"type": "log", "level": "info", "message": "inputs seen", "data": {"a": 2, "b": 3}},
@@ -226,14 +231,15 @@ def test_secrets_only_declared_names(client) -> None:
 
 
 def test_media_passthrough_drops_url(client) -> None:
-    r = client.execute("demo.passthrough", {"image": dict(REF, url="http://127.0.0.1:9/media/t")})
-    assert r.lines[-1]["outputs"] == {"result": REF}
+    r = client.execute("demo.passthrough", {"image": img(dict(REF, url="http://127.0.0.1:9/media/t"))})
+    assert r.lines[-1]["outputs"] == {"result": img(REF)}
 
 
 def test_media_created_is_dollar_media(client) -> None:
     out = client.execute("demo.makeImage", {"size": 3}).lines[-1]["outputs"]["result"]
-    assert out == [{"$media": {"mime": "image/png", "base64": base64.b64encode(b"\x00\x00\x00").decode(),
-                               "filename": "z.png", "meta": {"width": 3}}}]
+    data = {"$media": {"mime": "image/png", "base64": base64.b64encode(b"\x00\x00\x00").decode(),
+                       "filename": "z.png", "meta": {"width": 3}}}
+    assert out == [{"data": data, "mime": "image/png", "name": "z.png", "size": 3, "width": 3, "height": None}]
 
 
 def test_media_read_via_url(client) -> None:
@@ -253,10 +259,10 @@ def test_media_read_via_url(client) -> None:
     threading.Thread(target=media.serve_forever, daemon=True).start()
     try:
         url = f"http://127.0.0.1:{media.server_address[1]}/media/tok_1"
-        r = client.execute("demo.readMedia", {"image": dict(REF, url=url)})
+        r = client.execute("demo.readMedia", {"image": img(dict(REF, url=url))})
         assert r.lines[-1] == {"type": "result", "outputs": {"result": len(payload)}}
         # no url -> clear NodeError
-        r = client.execute("demo.readMedia", {"image": REF})
+        r = client.execute("demo.readMedia", {"image": img(REF)})
         assert r.lines[-1]["code"] == "node.invalid_input"
     finally:
         media.shutdown()
@@ -271,7 +277,7 @@ def test_unknown_node(client) -> None:
     assert r.status == 404
     err = r.json()["error"]
     assert err["code"] == "protocol.unknown_node" and "demo.missing" in err["message"]
-    assert r.headers["x-briarflow-protocol"] == "1"
+    assert r.headers["x-briarflow-protocol"] == "2"
 
 
 def test_bad_json(client) -> None:
@@ -282,9 +288,9 @@ def test_bad_json(client) -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        {"protocol": 1},
-        {"protocol": 1, "nodeType": "demo.add", "inputs": []},
-        {"protocol": 1, "nodeType": "demo.add", "inputs": {}, "attempt": 0},
+        {"protocol": 2},
+        {"protocol": 2, "nodeType": "demo.add", "inputs": []},
+        {"protocol": 2, "nodeType": "demo.add", "inputs": {}, "attempt": 0},
         {"nodeType": "demo.add", "inputs": {"a": 1}},
         [1, 2],
     ],
@@ -295,7 +301,7 @@ def test_bad_request_fields(client, body) -> None:
 
 
 def test_unsupported_protocol_version(client) -> None:
-    r = client.execute("demo.add", {"a": 1}, protocol=2)
+    r = client.execute("demo.add", {"a": 1}, protocol=1)
     assert r.status == 409 and r.json()["error"]["code"] == "protocol.unsupported_version"
 
 
@@ -326,7 +332,7 @@ def test_auth_token(serve_pack) -> None:
     for path in ("/briarflow/health", "/briarflow/manifest"):
         r = c.get(path, token=None)
         assert r.status == 401 and r.json()["error"]["code"] == "protocol.unauthorized"
-        assert r.headers["x-briarflow-protocol"] == "1"
+        assert r.headers["x-briarflow-protocol"] == "2"
         assert c.get(path, token="wrong").status == 401
         assert c.get(path).status == 200
     assert c.execute("demo.add", {"a": 1}, token=None).status == 401
@@ -340,7 +346,7 @@ def test_keep_alive_across_requests(client) -> None:
     conn = http.client.HTTPConnection(client.worker.host, client.worker.port, timeout=5)
     try:
         for i in range(3):
-            body = json.dumps({"protocol": 1, "nodeType": "demo.add", "inputs": {"a": i}})
+            body = json.dumps({"protocol": 2, "nodeType": "demo.add", "inputs": {"a": i}})
             conn.request("POST", "/briarflow/execute", body=body)
             res = conn.getresponse()
             lines = [json.loads(x) for x in res.read().splitlines()]

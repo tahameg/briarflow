@@ -229,6 +229,27 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
 - Python bridge: wire protocol unchanged; the bridge maps `{ mediaId }` to and from the worker's
   `{ uri, mime, …, url }`.
 
+### Types v2 (2026-11-25, DECISIONS #60–#66)
+- Primitives `int float bool string binary`; built-in structs `Text`, `Image`, `Video`, `Audio`,
+  `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error` (types.md §1); static fields and
+  `extends`; limits of Text and media are static fields; format 2 with a migration from 1.
+- Core: layouts, `structProblems` (shared by validation and commands), `isTruthy`,
+  `completeMediaValues`, extends-aware assignability / join / meet; `defineStruct(…, { extends })`.
+- Authoring: `type.defineStruct` takes `extends` and static fields; `type.setExtends`,
+  `type.field.setStatic` (72 commands).
+- Runtime: media inputs get facts they lack from their entries; `ctx.variables.typeOf`,
+  `ctx.globals.typeOf`.
+- Std: As string / As bool (one truthiness rule); templates print Text subtypes as text.
+- Editor: Types panel picks what a struct extends, lists inherited fields, toggles static and
+  edits static values; built-in group in the type picker; widgets for Text (its `maxLength`),
+  media (uploads checked against `formats` and `maxBytes`), Json, Secret; structs that extend a
+  built-in get its color and LED.
+- Python: SDK and bridge on protocol 2; the example pack has `Headline extends Text`.
+- Verified: `npm test` 2324 passed (2 skipped, FS `resolveUrl`), `npm run typecheck` clean,
+  `cd python && .venv/bin/python -m pytest` 167 passed, studio `vite build` ok.
+- Not done here: flow control nodes (Branch, Switch, For each, For range), split / collapse
+  pins, Break struct improvements, Output "+" (next, Giftibul TG.2).
+
 ### After MVP (next)
 - Platform architecture proposal (scopes, sessions, plugins and the plugin registry, flow
   versions, the studio as a component): `docs/proposals/platform-architecture.md`.

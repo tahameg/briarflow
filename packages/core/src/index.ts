@@ -57,28 +57,50 @@ export {
 } from "./util/names.js";
 
 // Type system
-export { MEDIA_PRIMITIVE_NAMES, PRIMITIVE_NAMES, SECRET_KINDS } from "./types/ir.js";
+export { MEDIA_KINDS, PRIMITIVE_NAMES, SECRET_KINDS } from "./types/ir.js";
 export type {
-  ImageConstraints,
   ListTypeRef,
-  MediaConstraints,
+  MediaKind,
   MediaMeta,
-  MediaPrimitiveName,
-  ErrorValue,
   MediaRef,
   NamedTypeRef,
   NumberConstraints,
   OptionalTypeRef,
   PrimitiveName,
   PrimitiveTypeRef,
-  SecretConstraints,
   SecretKind,
-  SecretRef,
-  TextConstraints,
-  TimedMediaConstraints,
   TypeRef,
   VarTypeRef,
 } from "./types/ir.js";
+export {
+  BUILTIN,
+  BUILTIN_NAMESPACE,
+  BUILTIN_TYPES,
+  BUILTIN_TYPE_NAMES,
+  builtinType,
+  isBuiltinId,
+  jsonText,
+  mediaBuiltinOf,
+  mediaRefOf,
+  mediaValue,
+  mediaKindOfBuiltin,
+  parseJsonText,
+  textValue,
+} from "./types/builtins.js";
+export type {
+  AudioValue,
+  ErrorValue,
+  ImageValue,
+  JsonText,
+  MediaInfo,
+  MediaValue,
+  SecretValue,
+  TextValue,
+  VideoValue,
+} from "./types/builtins.js";
+export { extendsProblems, extendsStruct, rootOf, structLayout, withBuiltins } from "./types/layout.js";
+export type { DeclResolver, ExtendsProblem, StaticField, StructLayout } from "./types/layout.js";
+export { isTruthy } from "./values/truthy.js";
 export { isTypeSpec, t } from "./types/builder.js";
 export type { EnumType, ListOptions, StructType, TypeBuilder, TypeSpec, UnknownValue, ValueOf } from "./types/builder.js";
 export { defineEnum, defineStruct } from "./types/define-type.js";
@@ -105,7 +127,7 @@ export { typeConstraintDiagnostics } from "./types/constraints.js";
 export { collectNamedIds, containsVar, mapNamedIds, typeRefShapeProblem } from "./types/walk.js";
 export type { ParseTypeOptions, ParseTypeResult } from "./types/shorthand.js";
 export { isAssignable, stripConstraints, typeEquals } from "./types/assignability.js";
-export { mediaExtension, memberAt, memberPaths, readMember, typeMembers, writeMember } from "./types/members.js";
+export { memberAt, memberPaths, readMember, typeMembers, writeMember } from "./types/members.js";
 export type { MemberPath, TypeMember, TypeResolver } from "./types/members.js";
 export { bindTypeVars, collectOneOf, collectTypeVars, joinTypes, meetTypes, substituteTypeVars } from "./types/generics.js";
 export type { BindTypeVarsResult, BindingConflict, GenericConnection, TypeBindings } from "./types/generics.js";
@@ -127,8 +149,8 @@ export {
 // Values and JSON Schema
 export { emptyValue } from "./values/empty.js";
 export { normalizeValue, validateValue } from "./values/validate.js";
-export { findMedia, typeHasMedia } from "./values/media-walk.js";
-export type { FoundMedia } from "./values/media-walk.js";
+export { completeMediaValues, findMedia, typeHasMedia } from "./values/media-walk.js";
+export type { FoundMedia, MediaEntryFacts } from "./values/media-walk.js";
 export type { NormalizeResult, ValueCheckOptions } from "./values/validate.js";
 export { flowSignatureSchema, toJsonSchema } from "./schema/json-schema.js";
 export type { FlowSignatureSchema, JsonSchema, JsonSchemaOptions } from "./schema/json-schema.js";
@@ -242,6 +264,7 @@ export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort } from ".
 export { computeVariableOrder } from "./validation/variables.js";
 export type { ImplicitEdge, VariableAccessPlan, VariableOrder, VariableTarget } from "./validation/variables.js";
 export { validateContext, validateFlow } from "./validation/validate.js";
+export { structProblems } from "./validation/structs.js";
 
 // Extension interfaces
 export type {
@@ -256,7 +279,7 @@ export type { BlobRef, MediaStore, PutMediaInfo, StoredMedia } from "./interface
 export { createMemoryMediaRegistry, mediaExists, normalizeMediaEntry, ownerMatches, ownerOf } from "./interfaces/media-registry.js";
 export type { MediaEntry, MediaOwner, MediaRegistry, MediaSource, MemoryMediaRegistryOptions, NewMediaEntry } from "./interfaces/media-registry.js";
 export { createMedia, mediaIdOf } from "./media/service.js";
-export type { Media, MediaBody, MediaOptions, MediaReadOptions, NodeMedia } from "./media/service.js";
+export type { Media, MediaBody, MediaLike, MediaOptions, MediaReadOptions, NodeMedia } from "./media/service.js";
 export { imageSize } from "./media/sniff.js";
 export { createMemoryLastRuns } from "./interfaces/last-runs.js";
 export type { LastRun, LastRunNode, LastRunStore } from "./interfaces/last-runs.js";

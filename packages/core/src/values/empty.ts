@@ -4,8 +4,8 @@
 import type { TypeRef } from "../types/ir.js";
 
 /**
- * Empty value of a type: `""` for text, `0` for numbers (moved into `min`/`max`), `false` for
- * booleans, `[]` for lists, `null` for everything else (structs, enums, media, optionals,
+ * Empty value of a type: `""` for strings, `0` for numbers (moved into `min`/`max`), `false`
+ * for bools, `[]` for lists, `null` for everything else (structs, enums, binary, optionals,
  * generics).
  *
  * @example
@@ -18,9 +18,9 @@ export function emptyValue(type: TypeRef): unknown {
   if (type.kind === "list") return [];
   if (type.kind !== "primitive") return null;
   switch (type.name) {
-    case "text":
+    case "string":
       return "";
-    case "boolean":
+    case "bool":
       return false;
     case "int":
     case "float": {

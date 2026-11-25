@@ -71,10 +71,10 @@ describe("Get / Set", () => {
     const { engine } = makeEngine({ packs: packs() });
     const d = doc({
       outputs: [
-        { name: "early", type: ir.text() },
-        { name: "late", type: ir.text() },
+        { name: "early", type: ir.string() },
+        { name: "late", type: ir.string() },
       ],
-      variables: [{ id: "var_x", name: "x", type: ir.text(), access: "public", default: "start" }],
+      variables: [{ id: "var_x", name: "x", type: ir.string(), access: "public", default: "start" }],
       nodes: [
         n("n_get0", "briar.variable.get", { config: { variableId: "var_x" } }),
         n("n_set1", "briar.variable.set", { config: { variableId: "var_x" }, values: { value: "one" } }),
@@ -100,15 +100,15 @@ describe("Get / Set", () => {
     const { engine } = makeEngine({ packs: packs() });
     const d = doc({
       outputs: [
-        { name: "opt", type: ir.optional(ir.text()) },
-        { name: "list", type: ir.list(ir.text()) },
+        { name: "opt", type: ir.optional(ir.string()) },
+        { name: "list", type: ir.list(ir.string()) },
       ],
       variables: [
         { id: "var_d", name: "withDefault", type: ir.int(), access: "public", default: 7 },
-        { id: "var_o", name: "opt", type: ir.optional(ir.text()), access: "public" },
-        { id: "var_l", name: "list", type: ir.list(ir.text()), access: "public" },
-        { id: "var_u", name: "unset", type: ir.text(), access: "public" },
-        { id: "var_p", name: "hidden", type: ir.text(), access: "private", default: "p" },
+        { id: "var_o", name: "opt", type: ir.optional(ir.string()), access: "public" },
+        { id: "var_l", name: "list", type: ir.list(ir.string()), access: "public" },
+        { id: "var_u", name: "unset", type: ir.string(), access: "public" },
+        { id: "var_p", name: "hidden", type: ir.string(), access: "private", default: "p" },
       ],
       nodes: [
         n("n_go", "briar.variable.get", { config: { variableId: "var_o" } }),
@@ -149,8 +149,8 @@ describe("Get / Set", () => {
   it("variable nodes are never retried and never take a concurrency slot", async () => {
     const { engine } = makeEngine({ packs: packs(), concurrency: 1 });
     const d = doc({
-      outputs: [{ name: "out", type: ir.text() }],
-      variables: [{ id: "var_x", name: "x", type: ir.text(), access: "private", default: "v" }],
+      outputs: [{ name: "out", type: ir.string() }],
+      variables: [{ id: "var_x", name: "x", type: ir.string(), access: "private", default: "v" }],
       nodes: [n("n_w", "probe.wait"), n("n_get", "briar.variable.get", { config: { variableId: "var_x" } })],
       edges: [e("n_get.value", "n_out.out")],
     });
@@ -171,14 +171,14 @@ describe("globals", () => {
   const globalsDoc = () =>
     doc({
       globals: [
-        { id: "gv_style", name: "style", type: ir.text(), access: "readonly", value: "noir" },
+        { id: "gv_style", name: "style", type: ir.string(), access: "readonly", value: "noir" },
         { id: "gv_count", name: "count", type: ir.int(), access: "readwrite", value: 1 },
-        { id: "gv_never", name: "untouched", type: ir.text(), access: "readwrite", value: "same" },
+        { id: "gv_never", name: "untouched", type: ir.string(), access: "readwrite", value: "same" },
       ],
       outputs: [
         { name: "before", type: ir.int() },
         { name: "after", type: ir.int() },
-        { name: "style", type: ir.text() },
+        { name: "style", type: ir.string() },
       ],
       nodes: [
         n("n_gstyle", "briar.global.get", { config: { globalId: "gv_style" } }),
@@ -231,9 +231,9 @@ describe("ctx.globals / ctx.variables", () => {
     const { engine } = makeEngine({ packs: packs() });
     // The set nodes run first (their outputs feed n_s), yet n_s sees the run-start values.
     const d = doc({
-      globals: [{ id: "gv_g", name: "g", type: ir.text(), access: "readwrite", value: "snapshot" }],
-      variables: [{ id: "var_v", name: "v", type: ir.text(), access: "private", default: "default" }],
-      outputs: [{ name: "out", type: ir.text() }],
+      globals: [{ id: "gv_g", name: "g", type: ir.string(), access: "readwrite", value: "snapshot" }],
+      variables: [{ id: "var_v", name: "v", type: ir.string(), access: "private", default: "default" }],
+      outputs: [{ name: "out", type: ir.string() }],
       nodes: [
         n("n_setg", "briar.global.set", { config: { globalId: "gv_g" }, values: { value: "g" } }),
         n("n_setv", "briar.variable.set", { config: { variableId: "var_v" }, values: { value: "v" } }),
@@ -254,8 +254,8 @@ describe("ctx.globals / ctx.variables", () => {
         { id: "var_o", name: "o", type: ir.optional(ir.int()), access: "private" },
       ],
       outputs: [
-        { name: "l", type: ir.text() },
-        { name: "o", type: ir.text() },
+        { name: "l", type: ir.string() },
+        { name: "o", type: ir.string() },
       ],
       nodes: [
         n("n_l", "probe.state", { values: { variable: "l" } }),

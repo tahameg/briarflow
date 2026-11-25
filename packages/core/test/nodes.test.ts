@@ -10,6 +10,7 @@ import {
   createCatalog,
   defineEnum,
   defineNode,
+  mediaValue,
   definePack,
   defineStruct,
   t,
@@ -33,8 +34,8 @@ const any = (def: unknown) => def as AnyNodeDefinition;
 describe("defineNode defaults", () => {
   const def = defineNode({
     type: "openai.chatCompletion",
-    inputs: { maxTokens: t.int(), prompt: { type: t.text(), title: "Your prompt" } },
-    outputs: { text: t.text() },
+    inputs: { maxTokens: t.int(), prompt: { type: t.string(), title: "Your prompt" } },
+    outputs: { text: t.string() },
     run: () => ({ text: "" }),
   });
 
@@ -73,7 +74,7 @@ describe("defineNode defaults", () => {
       concurrency: 2,
       deprecated: "Use acme.v2",
       outputs: { image: t.image() },
-      run: () => ({ image: { mediaId: "med_1" } }),
+      run: () => ({ image: mediaValue("image", { mediaId: "med_1" }, { mime: "image/png" }) }),
     });
     expect(explicit).toMatchObject({
       title: "Generate image",
@@ -118,7 +119,7 @@ describe("defineNode defaults", () => {
   });
 
   it("run is kept and callable", async () => {
-    const shout = defineNode({ type: "demo.shout", inputs: { text: t.text() }, outputs: { text: t.text() }, run: ({ inputs }) => ({ text: inputs.text.toUpperCase() }) });
+    const shout = defineNode({ type: "demo.shout", inputs: { text: t.string() }, outputs: { text: t.string() }, run: ({ inputs }) => ({ text: inputs.text.toUpperCase() }) });
     const out = await shout.run({ inputs: { text: "hi" }, config: {}, node: { id: "n_1", type: "demo.shout", position: { x: 0, y: 0 } }, ctx: {} as never });
     expect(out).toEqual({ text: "HI" });
   });
@@ -131,14 +132,14 @@ describe("defineNode validation (node_def.invalid)", () => {
     ["type with uppercase namespace", () => defineNode({ type: "Text.tmpl", run }), "type"],
     ["type with uppercase name", () => defineNode({ type: "text.Tmpl", run }), "type"],
     ["type with a dash", () => defineNode({ type: "text.my-node", run }), "type"],
-    ["input name starting with a digit", () => defineNode({ type: "demo.bad", inputs: { "1abc": t.text() }, run }), "1abc"],
-    ["input name with a dash", () => defineNode({ type: "demo.bad", inputs: { "max-tokens": t.text() }, run }), "max-tokens"],
-    ["output name invalid", () => defineNode({ type: "demo.bad", outputs: { "a b": t.text() }, run: () => ({ "a b": "" }) }), "a b"],
-    ["reserved input name", () => defineNode({ type: "demo.bad", inputs: { constructor: t.text() }, run }), "constructor"],
-    ["reserved output name", () => defineNode({ type: "demo.bad", outputs: { prototype: t.text() }, run: () => ({ prototype: "" }) }), "prototype"],
+    ["input name starting with a digit", () => defineNode({ type: "demo.bad", inputs: { "1abc": t.string() }, run }), "1abc"],
+    ["input name with a dash", () => defineNode({ type: "demo.bad", inputs: { "max-tokens": t.string() }, run }), "max-tokens"],
+    ["output name invalid", () => defineNode({ type: "demo.bad", outputs: { "a b": t.string() }, run: () => ({ "a b": "" }) }), "a b"],
+    ["reserved input name", () => defineNode({ type: "demo.bad", inputs: { constructor: t.string() }, run }), "constructor"],
+    ["reserved output name", () => defineNode({ type: "demo.bad", outputs: { prototype: t.string() }, run: () => ({ prototype: "" }) }), "prototype"],
     [
       "output default",
-      () => defineNode({ type: "demo.bad", outputs: { out: { type: t.text(), default: "x" } }, run: () => ({ out: "" }) }),
+      () => defineNode({ type: "demo.bad", outputs: { out: { type: t.string(), default: "x" } }, run: () => ({ out: "" }) }),
       "out",
     ],
     ["input default violating a constraint", () => defineNode({ type: "demo.bad", inputs: { n: { type: t.int({ min: 0 }), default: -1 } }, run }), "n"],
@@ -168,7 +169,7 @@ describe("defineNode validation (node_def.invalid)", () => {
   });
 
   it("message names the node type", () => {
-    const error = catchError(() => defineNode({ type: "text.tmpl", inputs: { "1x": t.text() }, run: () => ({}) })) as Error;
+    const error = catchError(() => defineNode({ type: "text.tmpl", inputs: { "1x": t.string() }, run: () => ({}) })) as Error;
     expect(error.message).toContain("text.tmpl");
   });
 });
@@ -335,7 +336,7 @@ describe("toNodeDescriptor", () => {
       deprecated: null,
     });
     expect(d.inputs.map((p) => p.name)).toEqual(["text", "marks"]);
-    expect(d.inputs[0]).toMatchObject({ name: "text", type: { kind: "primitive", name: "text" }, title: "Text" });
+    expect(d.inputs[0]).toMatchObject({ name: "text", type: { kind: "primitive", name: "string" }, title: "Text" });
     expect("default" in d.inputs[0]!).toBe(false);
     expect(d.inputs[1]).toMatchObject({
       name: "marks",
@@ -344,7 +345,7 @@ describe("toNodeDescriptor", () => {
       description: "How many ! to add.",
       default: 1,
     });
-    expect(d.outputs).toEqual([expect.objectContaining({ name: "text", type: { kind: "primitive", name: "text" }, title: "Text" })]);
+    expect(d.outputs).toEqual([expect.objectContaining({ name: "text", type: { kind: "primitive", name: "string" }, title: "Text" })]);
   });
 
   it("keeps a null default (present, not omitted)", () => {

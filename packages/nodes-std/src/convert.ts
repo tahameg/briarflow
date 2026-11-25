@@ -2,34 +2,35 @@
  * Conversion nodes (docs/specs/node-api.md §9): pure, `conversion: true`, so the editor
  * inserts them when a wire joins two types they convert between.
  *
- * - As text and As boolean take any value and never fail.
+ * - As string and As bool take any value and never fail.
  * - As JSON takes text and does not parse it (fields are parsed when read).
  * - As int, As float and As JSON array take text or json and fail when it does not read.
  */
-import { defineEnum, defineNode, NodeError, t, type JsonValue } from "@briarflow/core";
-import { jsonToText, openJson } from "./json-path.js";
+import { BUILTIN, defineEnum, defineNode, isTruthy, jsonText, NodeError, rootOf, t } from "@briarflow/core";
+import type { DeclResolver, TypeRef } from "@briarflow/core";
+import { isJsonText, jsonToText, openJson } from "./json-path.js";
 import { valueToText } from "./text-utils.js";
 
-const TEXT_OR_JSON = { oneOf: [t.text(), t.json()] };
+const TEXT_OR_JSON = { oneOf: [t.string(), t.json()] };
 
 /** Pack enum `briar.RoundingMode`. */
 export const RoundingMode = defineEnum("RoundingMode", ["round", "floor", "ceil", "trunc"], {
   description: "How a number with a fraction becomes a whole number. round = half away from zero.",
 });
 
-/** `convert.toText` (As text): any value → text (toText rules); never fails. */
+/** `convert.toText` (As string): any value → string (toText rules); never fails. */
 export const convertToText = defineNode({
   type: "convert.toText",
   pure: true,
   conversion: true,
-  title: "As text",
+  title: "As string",
   category: "Convert",
   icon: "type",
   color: "peach",
   description: "Turns any value into text and never fails. A JSON string becomes its text, lists, structs and other JSON become compact JSON, media becomes its URI.",
   inputs: { value: t.var("T") },
-  outputs: { text: t.text() },
-  run: ({ inputs, node }) => ({ text: valueToText(inputs.value, node.typeBindings?.["T"]) }),
+  outputs: { text: t.string() },
+  run: ({ inputs, node, ctx }) => ({ text: valueToText(inputs.value, node.typeBindings?.["T"], (id) => ctx.resolveType(id)) }),
 });
 
 const INT_PATTERN = /^[+-]?\d+$/;
@@ -42,8 +43,18 @@ function invalidNumber(text: string, what: string): NodeError {
   });
 }
 
+/** A Json value's document (its text when that is not JSON); other values as they are. */
+function unwrapJson(value: unknown): unknown {
+  if (!isJsonText(value)) return value;
+  try {
+    return JSON.parse(value.text) as unknown;
+  } catch {
+    return value.text;
+  }
+}
+
 function readNumber(value: unknown, what: string, pattern: RegExp, ok: (n: number) => boolean): number {
-  const text = jsonToText(value);
+  const text = jsonToText(unwrapJson(value));
   const s = text.trim();
   const n = Number(s);
   if (!pattern.test(s) || !ok(n)) throw invalidNumber(text, what);
@@ -80,30 +91,34 @@ export const convertAsFloat = defineNode({
   run: ({ inputs }) => ({ value: readNumber(inputs.value, "a number", FLOAT_PATTERN, Number.isFinite) }),
 });
 
-const FALSE_TEXT = new Set(["", "false", "0", "no", "off", "null"]);
-
-/** Truth of any value: no value, false, 0 and "false"-like text are false; the rest is true. */
-export function truthOf(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0 && !Number.isNaN(value);
-  if (typeof value === "string") return !FALSE_TEXT.has(value.trim().toLowerCase());
-  return true;
+/**
+ * Truth of any value, the one rule Briarflow uses (types.md §7.1, {@link isTruthy}): false, 0,
+ * "", an empty list, an empty Text, null and no value are false; the rest is true. A Json value
+ * is read first (`{ text: "0" }` is false).
+ */
+export function truthOf(given: unknown, type?: TypeRef, resolve?: DeclResolver): boolean {
+  if (type !== undefined && isJsonType(type, resolve)) return isTruthy(unwrapJson(given));
+  return isTruthy(given, type, resolve);
 }
+
+const isJsonType = (type: TypeRef, resolve?: DeclResolver): boolean => {
+  const inner = type.kind === "optional" ? type.of : type;
+  return inner.kind === "named" && (resolve ? rootOf(inner.id, resolve) : inner.id) === BUILTIN.Json;
+};
 
 /** `convert.asBoolean`: any value → boolean; never fails. */
 export const convertAsBoolean = defineNode({
   type: "convert.asBoolean",
   pure: true,
   conversion: true,
-  title: "As boolean",
+  title: "As bool",
   category: "Convert",
   icon: "toggle-left",
   color: "peach",
-  description: 'Turns any value into true or false and never fails. False: no value (null), 0, and text such as "", "false", "0", "no", "off". Everything else is true.',
+  description: "Turns any value into true or false and never fails. False: false, 0, empty text, an empty list, no value. Everything else is true.",
   inputs: { value: t.var("T") },
-  outputs: { value: t.boolean() },
-  run: ({ inputs }) => ({ value: truthOf(inputs.value) }),
+  outputs: { value: t.bool() },
+  run: ({ inputs, node, ctx }) => ({ value: truthOf(inputs.value, node.typeBindings?.["T"], (id) => ctx.resolveType(id)) }),
 });
 
 /** `convert.asJson`: text → json, as it is (no parsing; fields are parsed when read). */
@@ -116,9 +131,9 @@ export const convertAsJson = defineNode({
   icon: "braces",
   color: "peach",
   description: 'Treats text as JSON, e.g. {"name": "Aria"}. It does not check the text: Get field reads it and fails when it is not valid JSON.',
-  inputs: { text: t.text() },
+  inputs: { text: t.string() },
   outputs: { json: t.json() },
-  run: ({ inputs }) => ({ json: inputs.text }),
+  run: ({ inputs }) => ({ json: { text: inputs.text } }),
 });
 
 /** `convert.asJsonArray`: text or json holding an array → list of json. */
@@ -140,7 +155,7 @@ export const convertAsJsonArray = defineNode({
         details: { wanted: "array" },
       });
     }
-    return { items: value as readonly JsonValue[] };
+    return { items: value.map((v) => jsonText(v)) };
   },
 });
 

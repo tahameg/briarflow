@@ -129,8 +129,9 @@ export function setAt(root: unknown, segments: readonly PathSegment[], value: un
   return write(root, 0);
 }
 
-/** Parses JSON text found where a step goes in; other values pass through. */
-export function openJson(value: unknown, here: string): unknown {
+/** Parses JSON text (a string or a Json value `{ text }`) found where a step goes in; other values pass through. */
+export function openJson(given: unknown, here: string): unknown {
+  const value = isJsonText(given) ? given.text : given;
   if (typeof value !== "string") return value;
   try {
     return JSON.parse(value) as unknown;
@@ -140,6 +141,11 @@ export function openJson(value: unknown, here: string): unknown {
       details: { text: value.slice(0, 200) },
     });
   }
+}
+
+/** Is `value` a Json value (`{ text }` and nothing else)? */
+export function isJsonText(value: unknown): value is { text: string } {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 1 && typeof (value as { text?: unknown }).text === "string";
 }
 
 /** JSON as text: a string as it is, anything else as compact JSON; `null` for no value. */

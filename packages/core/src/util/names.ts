@@ -20,7 +20,10 @@ export const NODE_TYPE_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][A-Za-z0-9_]*)+$/;
 
 /** Type names that may not be used (case-sensitive). */
 export const RESERVED_TYPE_NAMES: readonly string[] = [
-  "Text", "Int", "Float", "Boolean", "Image", "Video", "Audio", "Model3d", "Model3D", "File", "List", "Optional",
+  // Built-in types (types.md §1.2)
+  "Text", "Image", "Video", "Audio", "Model3D", "File", "Json", "SecretKind", "Secret", "ApiKey", "Error",
+  // Primitive names with a capital, and type constructors
+  "Int", "Float", "Bool", "String", "Binary", "Boolean", "Model3d", "List", "Optional",
 ];
 /** Field/port/variable names that may not be used. */
 export const RESERVED_FIELD_NAMES: readonly string[] = ["__proto__", "constructor", "prototype"];

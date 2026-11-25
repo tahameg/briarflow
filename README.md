@@ -10,7 +10,7 @@ Flows are saved as plain JSON, so the exact same pipeline runs **in-process as a
 
 ## Features
 
-- **End-to-end static typing** — Primitives (`text`, `int`, `float`, `boolean`), user-defined `struct` and `enum` types, `list`, `optional`, generics (`$T`), and first-class media types (`image`, `video`, `audio`, `model3d`, `file`). Invalid wires, configs, and inputs are caught before execution.
+- **End-to-end static typing** — Five primitives (`int`, `float`, `bool`, `string`, `binary`), `struct` and `enum` types, `list`, `optional` and generics (`$T`). Text, media, JSON, secrets and errors are built-in structs (`Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `Error`); a struct can extend another and fix its static fields, so `ShortText extends Text { maxLength = 80 }` is a type of its own. Invalid wires, configs, and inputs are caught before execution.
 - **Explicit execution, automatic pure data** — Side-effecting steps follow an explicit execution line (with `on fail` error branches), while pure nodes (templates, struct access, image transforms) evaluate lazily on demand.
 - **Built for unreliable AI workloads** — Retries with exponential backoff, per-node timeouts, `AbortSignal` cancellation, concurrency limits, real-time progress events, and last-run media carry-over so unchanged steps don't re-run unnecessarily.
 - **Ready-to-use node packs** — Built-in standard nodes (text templates, structs, lists, JSON, conversions, variables), pure-JS image manipulation (resize, crop, rotate, split/merge channels, PNG/JPEG convert), OpenAI (Responses & Images APIs), Anthropic (Claude messages & structured outputs), and deterministic mock nodes for offline development and testing.
@@ -30,6 +30,7 @@ Briarflow is built around a few deliberate ideas:
 4. **Inward dependencies, web-standard primitives.** `@briarflow/core` depends on nothing. All shared packages (`core`, `authoring`, `runtime`, `nodes-std`, `nodes-mock`, `nodes-openai`, `nodes-anthropic`, `client`, `editor`) stick to standard Web APIs (`fetch`, `Promise`, `AbortSignal`, `AsyncIterable`, `ReadableStream`, `Uint8Array`) — no `node:*` imports, no React, no RxJS, no `EventEmitter`.
 5. **Small, testable extension contracts.** Storage targets, media stores, secret vaults, and node packs are small interfaces backed by reusable conformance test suites in `@briarflow/testing`.
 6. **Human-friendly errors.** Validation diagnostics and runtime errors use stable error codes and plain sentences explaining what went wrong, where it happened, and how to fix it.
+7. **Every type is built from a few primitives.** No special-case types and no settings bolted onto types: text with a length limit is a struct that extends `Text`, not a `text` with options. Limits are static fields of the type, so the same rules check values, wires, schemas and editors everywhere.
 
 ---
 
@@ -131,9 +132,9 @@ const briar = createBriar({ packs: [mockPack] });
 
 const ctx = await briar.contexts.create({ name: "Demo" });
 const flow = ctx.flows.create("Poster");
-flow.inputs.add("topic", "text");
-flow.outputs.add("caption", "text");
-flow.outputs.add("poster", "image");
+flow.inputs.add("topic", "string");
+flow.outputs.add("caption", "string");
+flow.outputs.add("poster", "Image");
 
 const llm = flow.nodes.add("mock.llm");
 const image = flow.nodes.add("mock.image");

@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  BUILTIN_TYPES,
   createTypeScope,
   formatType,
   parseType,
@@ -23,10 +24,10 @@ import {
   struct,
 } from "@briarflow/testing";
 
-const character = struct("ty_c1", "Character", [field("name", ir.text())]);
+const character = struct("ty_c1", "Character", [field("name", ir.string())]);
 const style = enumType("ty_s1", "ArtStyle", ["anime"]);
-const chatMessage = struct("openai.ChatMessage", "ChatMessage", [field("content", ir.text())]);
-const otherChatMessage = struct("other.ChatMessage", "ChatMessage", [field("body", ir.text())]);
+const chatMessage = struct("openai.ChatMessage", "ChatMessage", [field("content", ir.string())]);
+const otherChatMessage = struct("other.ChatMessage", "ChatMessage", [field("body", ir.string())]);
 const role = enumType("openai.Role", "Role", ["user"]);
 
 function baseScope(): TypeScope {
@@ -51,10 +52,10 @@ function parseFail(text: string, options: Parameters<typeof parseType>[1] = {}) 
 describe("parseType: examples of types.md §2", () => {
   // [shorthand, IR, allowVars, printed form when shorter than the input]
   const examples: [string, TypeRef, boolean?, string?][] = [
-    ["text", { kind: "primitive", name: "text" }],
+    ["string", { kind: "primitive", name: "string" }],
     ["Character?", { kind: "optional", of: { kind: "named", id: "ty_c1" } }],
     ["list<Character?>", { kind: "list", of: { kind: "optional", of: { kind: "named", id: "ty_c1" } } }],
-    ["list<image>[..4]", { kind: "list", of: { kind: "primitive", name: "image" }, maxItems: 4 }],
+    ["list<Image>[..4]", { kind: "list", of: { kind: "named", id: "briar.Image" }, maxItems: 4 }],
     ["openai.ChatMessage", { kind: "named", id: "openai.ChatMessage" }, false, "ChatMessage"],
     ["list<$T>", { kind: "list", of: { kind: "var", name: "T" } }, true],
   ];
@@ -66,23 +67,40 @@ describe("parseType: examples of types.md §2", () => {
     expect(parseOk(formatType(expected, scope), scope, allowVars)).toEqual(expected);
   });
 
-  it.each(["text", "int", "float", "boolean", "image", "video", "audio", "model3d", "file"] as const)("primitive %s", (name) => {
+  it.each(["int", "float", "bool", "string", "binary"] as const)("primitive %s", (name) => {
     expect(parseOk(name)).toEqual({ kind: "primitive", name });
     expect(formatType({ kind: "primitive", name })).toBe(name);
+  });
+
+  it.each(["Text", "Image", "Video", "Audio", "Model3D", "File", "Json", "Secret", "ApiKey", "Error"] as const)("built-in %s", (name) => {
+    expect(parseOk(name)).toEqual({ kind: "named", id: `briar.${name}` });
+    expect(formatType({ kind: "named", id: `briar.${name}` })).toBe(name);
+    expect(parseOk(name, baseScope())).toEqual({ kind: "named", id: `briar.${name}` });
+  });
+
+  it.each([
+    ["text", "use string"],
+    ["boolean", "use bool"],
+    ["image", "use Image"],
+    ["json", "use Json"],
+  ])("old name %s says what replaced it", (name, hint) => {
+    const diagnostic = parseFail(name);
+    expect(diagnostic.code).toBe("type.syntax");
+    expect(diagnostic.message).toContain(hint);
   });
 });
 
 describe("parseType: grammar details", () => {
   it("? binds to the whole preceding base", () => {
-    expect(parseOk("list<image>?")).toEqual({ kind: "optional", of: { kind: "list", of: { kind: "primitive", name: "image" } } });
-    expect(parseOk("list<image?>")).toEqual({ kind: "list", of: { kind: "optional", of: { kind: "primitive", name: "image" } } });
+    expect(parseOk("list<Image>?")).toEqual({ kind: "optional", of: { kind: "list", of: { kind: "named", id: "briar.Image" } } });
+    expect(parseOk("list<Image?>")).toEqual({ kind: "list", of: { kind: "optional", of: { kind: "named", id: "briar.Image" } } });
   });
 
   it("list bounds", () => {
-    expect(parseOk("list<text>[1..]")).toEqual({ kind: "list", of: { kind: "primitive", name: "text" }, minItems: 1 });
-    expect(parseOk("list<text>[..4]")).toEqual({ kind: "list", of: { kind: "primitive", name: "text" }, maxItems: 4 });
-    expect(parseOk("list<text>[2..2]")).toEqual({ kind: "list", of: { kind: "primitive", name: "text" }, minItems: 2, maxItems: 2 });
-    expect(parseOk("list<text>[..]")).toEqual({ kind: "list", of: { kind: "primitive", name: "text" } });
+    expect(parseOk("list<string>[1..]")).toEqual({ kind: "list", of: { kind: "primitive", name: "string" }, minItems: 1 });
+    expect(parseOk("list<string>[..4]")).toEqual({ kind: "list", of: { kind: "primitive", name: "string" }, maxItems: 4 });
+    expect(parseOk("list<string>[2..2]")).toEqual({ kind: "list", of: { kind: "primitive", name: "string" }, minItems: 2, maxItems: 2 });
+    expect(parseOk("list<string>[..]")).toEqual({ kind: "list", of: { kind: "primitive", name: "string" } });
   });
 
   it("allows spaces where the grammar has ws", () => {
@@ -100,7 +118,7 @@ describe("parseType: grammar details", () => {
   });
 
   it("formatType does not print primitive constraints", () => {
-    expect(formatType({ kind: "primitive", name: "text", constraints: { maxLength: 3 } })).toBe("text");
+    expect(formatType({ kind: "primitive", name: "string" })).toBe("string");
     expect(formatType({ kind: "list", of: { kind: "primitive", name: "int", constraints: { min: 0 } }, maxItems: 2 })).toBe("list<int>[..2]");
   });
 
@@ -110,7 +128,7 @@ describe("parseType: grammar details", () => {
 });
 
 describe("parseType: errors", () => {
-  it.each(["T??", "text??", "list<>", "list<text", "list text>", "te%xt", "list<text>>", "", "   ", "list<text>[a..]", "Text-x", "open ai.X"])(
+  it.each(["T??", "string??", "list<>", "list<string", "list string>", "te%xt", "list<string>>", "", "   ", "list<string>[a..]", "Text-x", "open ai.X"])(
     "%j → type.syntax with the position",
     (text) => {
       const diagnostic = parseFail(text);
@@ -120,13 +138,13 @@ describe("parseType: errors", () => {
   );
 
   it("type.syntax message quotes the input and gives examples", () => {
-    const diagnostic = parseFail("list<text");
-    expect(diagnostic.message).toContain('"list<text"');
+    const diagnostic = parseFail("list<string");
+    expect(diagnostic.message).toContain('"list<string"');
     expect(diagnostic.message).toContain("Example of valid types");
   });
 
-  it("list<text>[3..1] → type.invalid_constraint", () => {
-    expect(parseFail("list<text>[3..1]").code).toBe("type.invalid_constraint");
+  it("list<string>[3..1] → type.invalid_constraint", () => {
+    expect(parseFail("list<string>[3..1]").code).toBe("type.invalid_constraint");
   });
 
   it("$T without allowVars → type.var_not_allowed", () => {
@@ -209,12 +227,13 @@ describe("name resolution (types.md §3)", () => {
     expect(scope.getType("Character")).toBeUndefined();
   });
 
-  it("all() lists local, then global, then pack", () => {
+  it("all() lists local, then global, then built-in, then pack", () => {
     const scope = createTypeScope({ localTypes: [struct("ty_l", "L", [])], globalTypes: [character, style], packTypes: [role] });
     expect(scope.all().map((s) => [s.origin, s.decl.id])).toEqual([
       ["local", "ty_l"],
       ["global", "ty_c1"],
       ["global", "ty_s1"],
+      ...BUILTIN_TYPES.map((d) => ["builtin", d.id]),
       ["pack", "openai.Role"],
     ]);
   });

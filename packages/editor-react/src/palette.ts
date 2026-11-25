@@ -62,7 +62,7 @@ export function initialConfig(def: AnyNodeDefinition | undefined, doc: ContextDo
         if (field.choices?.[0] !== undefined) out[key] = field.choices[0];
         break;
       case "type":
-        out[key] = "text";
+        out[key] = "string";
         break;
       case "typeId": {
         const decl = scope.all().find((t) => field.typeKind === undefined || field.typeKind === "any" || t.decl.kind === field.typeKind);

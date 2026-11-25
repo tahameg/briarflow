@@ -1,26 +1,34 @@
 # Media: registry, loader, transient artifacts and last runs
 
-Status: implemented 2026-10-25. Replaces the "media value = MediaRef with a uri" model of
-types.md §8 (v1) and `readMedia` of storage.md §2.6.
+Status: implemented 2026-10-25; values as media structs since 2026-11-25 (types v2). Replaces
+`readMedia` of storage.md §2.6.
 
 ## 1. Media values
 
-The value of every media primitive (`image`, `video`, `audio`, `model3d`, `file`) is the id of an
-entry in the **media registry**:
+The value of the `binary` primitive is the id of an entry in the **media registry**:
 
 ```json
 { "mediaId": "med_3kq9x2LmP0aZ" }
 ```
 
-Nothing else travels with the value: no uri, mime, size or dimensions. Those belong to the
-entry. Documents, wires, run events, run results and REST bodies all carry `{ mediaId }`.
+The built-in media structs (`Image`, `Video`, `Audio`, `Model3D`, `File`, types.md §1.2) hold
+that `binary` in `data`, next to the facts a node reads without the registry:
 
-- Validation of a value (types.md §8) checks the shape only: an object with exactly the key
-  `mediaId`, matching `^[A-Za-z0-9_-]{1,128}$` → else `media.invalid_ref`. The old shape
-  (`{ uri, mime, … }`) is rejected with a message that says to upload the file again.
-- Whether the entry exists, its mime and the type's constraints (`formats`, `maxBytes`,
-  `minWidth`, …) are checked when a node reads it (§4).
+```json
+{ "data": { "mediaId": "med_3kq9x2LmP0aZ" }, "mime": "image/png", "name": "cat.png", "size": 20480, "width": 512, "height": 512 }
+```
+
+The registry entry stays authoritative. Before a node runs, facts a value lacks (an empty
+`mime`, as in values migrated from format 1, or a `null` size, name, width, height, duration,
+fps) are filled from its entry (`completeMediaValues`).
+
+- Validation of a `binary` (types.md §8) checks the shape only: an object with exactly the key
+  `mediaId`, matching `^[A-Za-z0-9_-]{1,128}$` → else `media.invalid_ref`.
+- Whether the entry exists, its mime against the struct's kind and the struct's limits (its
+  static fields `formats`, `maxBytes`, `minWidth`, …) are checked when a node reads it (§4).
 - `toText` of a media value is its media id.
+- `mediaValue(kind, ref, { mime, bytes, meta })` (core) makes a media struct value from what a
+  node put: `return { image: mediaValue("image", ref, { mime: "image/png", meta: { width, height } }) }`.
 
 ## 2. The registry
 
@@ -91,12 +99,13 @@ interface NodeMedia {
   entry(ref): Promise<MediaEntry>;          // media.not_found when gone
   read(ref, { maxBytes? }?): Promise<Uint8Array>;  // treat as read-only (may be shared)
 }
+// ref: a binary ({ mediaId }), a media struct value (its data is used) or a bare id.
 ```
 
-Before a catalog node runs, the engine looks up every media value in its inputs (typed places;
-vars and json are searched by shape): a missing entry fails the node with `media.not_found`, a
-mime that does not fit the port with `media.kind_mismatch`, a broken constraint with
-`node.invalid_input` (`checkMediaEntry`).
+Before a catalog node runs, the engine looks up every `binary` in its inputs (typed places;
+vars and Json are searched by shape): a missing entry fails the node with `media.not_found`; for
+a `binary` inside a media struct, a mime that does not fit the struct's kind fails with
+`media.kind_mismatch` and a broken limit with `node.invalid_input` (`checkMediaEntry`).
 
 Packs may keep decoded forms in memory by media id too (the image pack keeps decoded pixels,
 256 MB, and leaves the pixels of the PNGs it makes there), since ids never change meaning.
@@ -152,7 +161,8 @@ interface LastRun {
 
 ## 7. Python workers
 
-The wire protocol (python-protocol.md) is unchanged: the bridge expands each `{ mediaId }` into
-`{ uri: "briar-media://<id>", mime, bytes?, hash?, meta?, url }` (the link's own URL, or the
-loopback media server). On the way back, `$media` outputs become transient entries, a
-`briar-media://<id>` uri becomes `{ mediaId: id }`, and an http(s) uri becomes a link entry.
+The bridge (python-protocol.md, protocol 2) expands each `binary` (`{ mediaId }`, also the
+`data` of a media struct) into `{ uri: "briar-media://<id>", mime, bytes?, hash?, meta?, url }`
+(the link's own URL, or the loopback media server). On the way back, `$media` values at
+`binary` positions become transient entries, a `briar-media://<id>` uri becomes
+`{ mediaId: id }`, and an http(s) uri becomes a link entry.

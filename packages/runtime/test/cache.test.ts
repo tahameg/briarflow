@@ -43,7 +43,7 @@ describe("computeCacheKey", () => {
       { pack: "mock@0.1.1" },
       { cacheVersion: "2" },
       { config: { x: 1 } },
-      { typeBindings: { T: { kind: "primitive", name: "text" } } },
+      { typeBindings: { T: { kind: "primitive", name: "string" } } },
       { inputs: { prompt: "hi", seed: 1 } },
     ];
     const keys = await Promise.all(variants.map((v) => computeCacheKey({ ...keyInput(), ...v })));
@@ -95,7 +95,7 @@ function spyCache(inner: RunCache = createMemoryCache()) {
 
 const countDoc = (value = "v", nodeId = "n_c", extra: object = {}) =>
   doc({
-    outputs: [{ name: "out", type: ir.text() }],
+    outputs: [{ name: "out", type: ir.string() }],
     nodes: [n(nodeId, "probe.count", { values: { value }, ...extra })],
     edges: [e(`${nodeId}.value`, "n_out.out")],
   });
@@ -154,9 +154,9 @@ describe("engine cache", () => {
     const spy = spyCache();
     const { engine } = makeEngine({ cache: spy.cache });
     const d = doc({
-      inputs: [{ name: "t", type: ir.text() }],
-      outputs: [{ name: "out", type: ir.text() }],
-      variables: [{ id: "var_v", name: "v", type: ir.text(), access: "public" }],
+      inputs: [{ name: "t", type: ir.string() }],
+      outputs: [{ name: "out", type: ir.string() }],
+      variables: [{ id: "var_v", name: "v", type: ir.string(), access: "public" }],
       nodes: [
         n("n_set", "briar.variable.set", { config: { variableId: "var_v" } }),
         n("n_get", "briar.variable.get", { config: { variableId: "var_v" } }),
@@ -184,8 +184,8 @@ describe("engine cache", () => {
     const { engine } = makeEngine({ cache: spy.cache });
     const d = (values: Record<string, unknown>) =>
       doc({
-        globals: [{ id: "gv_g", name: "g", type: ir.text(), access: "readonly", value: "G" }],
-        variables: [{ id: "var_v", name: "v", type: ir.text(), access: "private", default: "V" }],
+        globals: [{ id: "gv_g", name: "g", type: ir.string(), access: "readonly", value: "G" }],
+        variables: [{ id: "var_v", name: "v", type: ir.string(), access: "private", default: "V" }],
         nodes: [n("n_s", "probe.state", { values })],
       });
     await engine.run({ context: d({ global: "g" }), flowId: FLOW_ID }).result;
@@ -235,17 +235,17 @@ describe("engine cache", () => {
     const { engine, media } = makeEngine({ cache: spy.cache });
     const d = doc({
       inputs: [{ name: "img", type: ir.image() }],
-      outputs: [{ name: "out", type: ir.text() }],
+      outputs: [{ name: "out", type: ir.string() }],
       nodes: [n("n_t", "convert.toText")],
       edges: [e("n_in.img", "n_t.value"), e("n_t.text", "n_out.out")],
     });
     const run = (img: object) => engine.run({ context: d, flowId: FLOW_ID, inputs: { img } }).result;
     const a = await media.put(new Uint8Array([1]), { mime: "image/png" });
     const b = await media.put(new Uint8Array([1]), { mime: "image/png" });
-    await run({ mediaId: a.id });
-    await run({ mediaId: a.id });
+    await run({ data: { mediaId: a.id }, mime: "image/png" });
+    await run({ data: { mediaId: a.id }, mime: "image/png" });
     expect(spy.gets[0]).toBe(spy.gets[1]);
-    await run({ mediaId: b.id });
+    await run({ data: { mediaId: b.id }, mime: "image/png" });
     expect(spy.gets[2]).not.toBe(spy.gets[0]);
   });
 });

@@ -355,7 +355,7 @@ export function nodeSetVariant(ctx: Ctx, p: Payload): Effect {
 function mismatchHint(from: TypeRef, to: TypeRef): string {
   const target = to.kind === "optional" ? to.of : to;
   if (from.kind === "list" && isAssignable(from.of, to)) return " Use list.get to pick one item.";
-  if (target.kind === "primitive" && target.name === "text") return " Use convert.toText to turn it into text.";
+  if (target.kind === "primitive" && target.name === "string") return " Use convert.toText to turn it into a string.";
   return "";
 }
 
@@ -427,8 +427,8 @@ export function edgeConnect(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
     }
     const fp = after.nodes.get(from.node)?.outputs.find((x) => x.name === from.port);
     const tp = after.nodes.get(to.node)?.inputs.find((x) => x.name === to.port);
-    if (fp && tp && !containsVar(fp.type) && !containsVar(tp.type) && !isAssignable(fp.type, tp.type)) {
-      const scope = scopeForFlow(ctx.doc, flow.id, ctx.catalog);
+    const scope = scopeForFlow(ctx.doc, flow.id, ctx.catalog);
+    if (fp && tp && !containsVar(fp.type) && !containsVar(tp.type) && !isAssignable(fp.type, tp.type, (id) => scope.getType(id)?.decl)) {
       fail(
         "edge.type_mismatch",
         `Cannot connect ${label(ctx, fromNode)}.${fp.name} (${formatType(fp.type, scope)}) to ${label(ctx, toNode)}.${tp.name} (${formatType(tp.type, scope)}).${mismatchHint(fp.type, tp.type)}`,

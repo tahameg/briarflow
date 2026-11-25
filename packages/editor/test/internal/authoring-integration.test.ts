@@ -10,8 +10,8 @@ import { CLOCK, FakeBackend } from "./fakes.js";
 
 const shout = defineNode({
   type: "words.shout",
-  inputs: { text: t.text() },
-  outputs: { text: t.text() },
+  inputs: { text: t.string() },
+  outputs: { text: t.string() },
   run: ({ inputs }) => ({ text: inputs.text }),
 });
 const catalog = createCatalog([definePack({ name: "words", version: "0.1.0", nodes: [shout] })]);

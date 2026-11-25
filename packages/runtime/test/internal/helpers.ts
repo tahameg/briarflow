@@ -28,11 +28,12 @@ import { stdPack } from "@briarflow/nodes-std";
 import { createEngine, type EngineOptions } from "@briarflow/runtime";
 
 export const ir = {
-  text: (c?: object): TypeRef => (c ? ({ kind: "primitive", name: "text", constraints: c } as TypeRef) : { kind: "primitive", name: "text" }),
+  string: (): TypeRef => ({ kind: "primitive", name: "string" }),
+  text: (): TypeRef => ({ kind: "named", id: "briar.Text" }),
   int: (c?: object): TypeRef => (c ? ({ kind: "primitive", name: "int", constraints: c } as TypeRef) : { kind: "primitive", name: "int" }),
   float: (): TypeRef => ({ kind: "primitive", name: "float" }),
-  boolean: (): TypeRef => ({ kind: "primitive", name: "boolean" }),
-  image: (): TypeRef => ({ kind: "primitive", name: "image" }),
+  bool: (): TypeRef => ({ kind: "primitive", name: "bool" }),
+  image: (): TypeRef => ({ kind: "named", id: "briar.Image" }),
   list: (of: TypeRef): TypeRef => ({ kind: "list", of }),
   optional: (of: TypeRef): TypeRef => ({ kind: "optional", of }),
   named: (id: string): TypeRef => ({ kind: "named", id }),
@@ -83,7 +84,7 @@ export function flow(spec: FlowSpec): FlowDocument {
 export function context(flows: FlowDocument[], extra: { types?: TypeDecl[]; globals?: GlobalVariable[] } = {}): ContextDocument {
   return {
     format: "briarflow.context",
-    formatVersion: 1,
+    formatVersion: 2,
     id: "ctx_t",
     name: "Test",
     revision: 3,

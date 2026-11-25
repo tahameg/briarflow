@@ -4,7 +4,8 @@
 import type { NodeInstance, TypeDecl } from "../documents/model.js";
 import type { Logger } from "../interfaces/logger.js";
 import type { NodeMedia } from "../media/service.js";
-import type { SecretRef } from "../types/ir.js";
+import type { SecretValue } from "../types/builtins.js";
+import type { TypeRef } from "../types/ir.js";
 
 /**
  * Per-execution services for a node. Created by the engine; tests use `runNode` from
@@ -36,14 +37,14 @@ export interface ExecContext {
      * name throws `node.secret_not_allowed`; a name missing from the vault throws
      * `node.missing_secret`.
      */
-    read(ref: SecretRef): Promise<string>;
+    read(ref: SecretValue | string): Promise<string>;
   };
   /** Settings of the node's pack (`definePack({ settings })`), by name; the declared default when unset. */
   readonly settings: { get(name: string): Promise<unknown> };
   /** Run-start snapshot of globals, by name. Unknown → `NodeError("variable.unknown")`. Read-only. */
-  readonly globals: { get(name: string): unknown };
+  readonly globals: { get(name: string): unknown; typeOf?(name: string): TypeRef | undefined };
   /** Run-start values of flow variables, by name. Read-only. */
-  readonly variables: { get(name: string): unknown };
+  readonly variables: { get(name: string): unknown; typeOf?(name: string): TypeRef | undefined };
   /** Injectable fetch (engine option); use it instead of the global. */
   readonly fetch: typeof fetch;
   /**

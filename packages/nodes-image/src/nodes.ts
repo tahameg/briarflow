@@ -2,7 +2,7 @@
  * The image nodes. Every node reads its image inputs (PNG / JPEG), works on RGBA pixels and
  * stores the result as a new image (PNG by default) with its width and height in `meta`.
  */
-import { cfg, defineNode, NodeError, t, variant, type ExecContext, type MediaRef } from "@briarflow/core";
+import { cfg, defineNode, NodeError, t, variant, type ExecContext, type ImageValue } from "@briarflow/core";
 import { blank, copyPixels, encodeGray, luma, readPixels, storeImage, storePixels, type OutputFormat, type Pixels } from "./pixels.js";
 
 const common = { pure: true, category: "Image", icon: "image", color: "lavender" } as const;
@@ -34,7 +34,7 @@ function sameSize(images: readonly Pixels[], names: readonly string[]): { width:
   return { width: first.width, height: first.height };
 }
 
-async function compose(refs: readonly MediaRef[], names: readonly string[], config: OutputConfig, ctx: ExecContext) {
+async function compose(refs: readonly ImageValue[], names: readonly string[], config: OutputConfig, ctx: ExecContext) {
   const channels = await Promise.all(refs.map((r) => readPixels(r, ctx)));
   const { width, height } = sameSize(channels, names);
   const out = blank(width, height);
@@ -95,10 +95,10 @@ export const imageMake = defineNode({
 
 const CHANNEL_NAMES = ["red", "green", "blue", "alpha"] as const;
 
-async function split(ref: MediaRef, count: 3 | 4, ctx: ExecContext) {
+async function split(ref: ImageValue, count: 3 | 4, ctx: ExecContext) {
   const p = await readPixels(ref, ctx);
   const n = p.width * p.height;
-  const out: Record<string, MediaRef> = {};
+  const out: Record<string, ImageValue> = {};
   for (let c = 0; c < count; c++) {
     const values = new Uint8Array(n);
     for (let i = 0; i < n; i++) values[i] = p.data[i * 4 + c]!;

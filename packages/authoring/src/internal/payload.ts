@@ -73,7 +73,8 @@ const execEdges: Check = (v, path) => {
   }
   return ok;
 };
-const fieldDecl = shape({ name: str, type: typeInput }, { description: str, default: any });
+const typeInputOrNull: Check = (v, path) => (v === null ? ok : typeInput(v, path));
+const fieldDecl = shape({ name: str, type: typeInput }, { description: str, default: any, static: bool });
 const member: Check = (v, path) => (typeof v === "string" ? ok : shape({ value: str }, { label: str })(v, path));
 const stringRecord: Check = (v, path) => {
   if (!isObject(v)) return p(path, "must be an object");
@@ -98,13 +99,15 @@ const desc = { description: strOrNull };
 const SCHEMAS: Record<Exclude<CommandOp, "edge.disconnect">, OpSchema> = {
   "context.rename": { req: { name: str } },
   "context.setDescription": { req: desc },
-  "type.defineStruct": { req: { scope, name: str }, opt: { id: str, description: str, fields: arrayOf(fieldDecl), index: int } },
+  "type.defineStruct": { req: { scope, name: str }, opt: { id: str, description: str, extends: typeInput, fields: arrayOf(fieldDecl), index: int } },
   "type.defineEnum": { req: { scope, name: str }, opt: { id: str, description: str, members: arrayOf(member), index: int } },
   "type.rename": { req: { ...typeId, name: str } },
   "type.setDescription": { req: { ...typeId, ...desc } },
+  "type.setExtends": { req: { ...typeId, extends: typeInputOrNull } },
+  "type.field.setStatic": { req: { ...typeField, static: bool } },
   "type.delete": { req: typeId },
   "type.moveScope": { req: { ...typeId, to: scope }, opt: { index: int } },
-  "type.field.add": { req: { ...typeId, name: str, type: typeInput }, opt: { description: str, default: any, index: int } },
+  "type.field.add": { req: { ...typeId, name: str, type: typeInput }, opt: { description: str, default: any, static: bool, index: int } },
   "type.field.remove": { req: typeField },
   "type.field.rename": { req: { ...typeField, name: str } },
   "type.field.setType": { req: { ...typeField, type: typeInput } },

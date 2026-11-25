@@ -5,7 +5,7 @@ import { createEditorStore } from "../../src/index.js";
 import type { KeyValueStorage } from "../../src/index.js";
 import { CLOCK, FakeBackend, baseDoc, tick } from "./fakes.js";
 
-const echo = defineNode({ type: "debug.echo", title: "Echo", inputs: { text: t.text() }, outputs: { text: t.text() }, run: ({ inputs }) => inputs });
+const echo = defineNode({ type: "debug.echo", title: "Echo", inputs: { text: t.string() }, outputs: { text: t.string() }, run: ({ inputs }) => inputs });
 const catalog = createCatalog([definePack({ name: "debug", version: "1.0.0", nodes: [echo] })]);
 
 function memoryStorage(): KeyValueStorage & { data: Map<string, string> } {
@@ -26,7 +26,7 @@ async function setup(storage?: KeyValueStorage) {
   });
   await store.ready;
   store.dispatch([
-    { op: "flow.input.add", flowId: "flow_a", name: "topic", type: "text" },
+    { op: "flow.input.add", flowId: "flow_a", name: "topic", type: "string" },
     { op: "node.add", flowId: "flow_a", type: "debug.echo", position: { x: 0, y: 0 }, id: "n_e" },
   ]);
   await store.flush();

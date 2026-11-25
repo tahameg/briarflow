@@ -1,10 +1,9 @@
-import { MEDIA_URI_SCHEME, NodeError, isMediaRef, mediaIdFromUri } from "@briarflow/core";
+import { MEDIA_URI_SCHEME, NodeError, isMediaRef, mediaIdFromUri, structLayout, withBuiltins } from "@briarflow/core";
 import type { MediaEntry, MediaRef, NodeMedia, TypeDecl, TypeRef } from "@briarflow/core";
 
 /** Max decoded size of one `$media` output item (python-protocol.md §1.3). */
 export const MAX_MEDIA_OUT_BYTES = 100 * 1024 * 1024;
 
-const MEDIA_NAMES = new Set(["image", "video", "audio", "model3d", "file"]);
 
 export type TypeLookup = ReadonlyMap<string, TypeDecl>;
 
@@ -15,25 +14,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Rebuilds `value` following its Briarflow type, replacing every value at a media position
- * with what `visit` returns. Values that do not match the type are passed through unchanged
+ * Rebuilds `value` following its Briarflow type, replacing every `binary` value (the `data` of
+ * an Image, Video… or a bare `binary` port) with what `visit` returns. Values that do not match the type are passed through unchanged
  * (the engine and the worker validate types).
  */
 async function mapMedia(value: unknown, type: TypeRef, types: TypeLookup, path: string, visit: Visitor, depth = 0): Promise<unknown> {
   if (value === null || value === undefined || depth > 64) return value;
   switch (type.kind) {
     case "primitive":
-      return MEDIA_NAMES.has(type.name) ? visit(value, path) : value;
+      return type.name === "binary" ? visit(value, path) : value;
     case "optional":
       return mapMedia(value, type.of, types, path, visit, depth + 1);
     case "list":
       if (!Array.isArray(value)) return value;
       return Promise.all(value.map((item, i) => mapMedia(item, type.of, types, `${path}[${i}]`, visit, depth + 1)));
     case "named": {
-      const decl = types.get(type.id);
+      const resolve = withBuiltins((id) => types.get(id));
+      const decl = resolve(type.id);
       if (decl?.kind !== "struct" || !isRecord(value)) return value;
       const out: Record<string, unknown> = { ...value };
-      for (const field of decl.fields) {
+      for (const field of structLayout(decl, resolve).fields) {
         if (field.name in value) {
           out[field.name] = await mapMedia(value[field.name], field.type, types, `${path}.${field.name}`, visit, depth + 1);
         }
@@ -46,7 +46,7 @@ async function mapMedia(value: unknown, type: TypeRef, types: TypeLookup, path: 
 }
 
 /**
- * Replaces every media value inside `values` with what workers receive (python-protocol.md
+ * Replaces every `binary` value inside `values` with what workers receive (python-protocol.md
  * §1.3): `{ uri, mime, bytes?, hash?, meta?, url }`, built by `describe` from the media's entry.
  */
 export async function attachMediaUrls(
@@ -81,7 +81,7 @@ export async function workerMedia(ref: MediaRef, media: NodeMedia, urlFor: (ref:
 }
 
 /**
- * Turns worker outputs at media positions back into media values: `{"$media": {mime, base64,
+ * Turns worker outputs at `binary` positions back into media refs: `{"$media": {mime, base64,
  * filename?, meta?}}` is put into `media`; a passed-through `{ uri: "briar-media://<id>" }`
  * becomes `{ mediaId }`, and an http(s) `uri` becomes a link entry.
  */

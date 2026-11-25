@@ -7,7 +7,7 @@ import type { TypeRef } from "../types/ir.js";
 /** Value of `ContextDocument.format`. */
 export const CONTEXT_FORMAT = "briarflow.context";
 /** Current `ContextDocument.formatVersion`. */
-export const CONTEXT_FORMAT_VERSION = 1;
+export const CONTEXT_FORMAT_VERSION = 2;
 
 /** Node type of the single input node of every flow. Built into core. */
 export const FLOW_INPUT_NODE_TYPE = "briar.input";
@@ -36,8 +36,17 @@ export interface FieldDecl {
   name: string;
   type: TypeRef;
   description?: string;
-  /** A field/input with a default may be omitted by callers (types.md Deviation 1). */
+  /**
+   * A field/input with a default may be omitted by callers (types.md Deviation 1). For a
+   * static field: its value.
+   */
   default?: unknown;
+  /**
+   * A static field (types.md §1.3): its value belongs to the type, not to each value. Values
+   * never hold it; members read it from the type; an extending struct may give it another value.
+   * Struct fields only.
+   */
+  static?: boolean;
 }
 
 /** A struct type declaration. */
@@ -47,6 +56,12 @@ export interface StructDecl {
   id: string;
   name: string;
   description?: string;
+  /**
+   * The struct this one extends (its id), if any (types.md §1.3). It inherits every field; its
+   * own fields may only be static: new ones, or ones that give an inherited static field
+   * another value. A value of this struct can go wherever the base is expected.
+   */
+  extends?: string;
   fields: readonly FieldDecl[];
 }
 

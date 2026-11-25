@@ -11,12 +11,14 @@ import {
   stripConstraints,
   substituteTypeVars,
   typeEquals,
+  type DeclResolver,
   type GenericConnection,
+  type StructDecl,
   type TypeRef,
 } from "@briarflow/core";
 import { ir } from "@briarflow/testing";
 
-const text = ir.text();
+const text = ir.string();
 const int = ir.int();
 const float = ir.float();
 const X = ir.named("ty_x");
@@ -27,15 +29,15 @@ describe("isAssignable (types.md §4 table)", () => {
     // primitive p
     ["text → text", text, text, true],
     ["int → int", int, int, true],
-    ["boolean → boolean", ir.boolean(), ir.boolean(), true],
+    ["boolean → boolean", ir.bool(), ir.bool(), true],
     ["image → image", ir.image(), ir.image(), true],
     ["int → float", int, float, true],
     ["float → float", float, float, true],
     ["float → int", float, int, false],
     ["text → float", text, float, false],
-    ["boolean → float", ir.boolean(), float, false],
+    ["boolean → float", ir.bool(), float, false],
     ["int → text (no implicit text)", int, text, false],
-    ["boolean → text", ir.boolean(), text, false],
+    ["boolean → text", ir.bool(), text, false],
     ["text → int", text, int, false],
     ["text → named", text, X, false],
     ["text → list<text>", text, ir.list(text), false],
@@ -87,9 +89,9 @@ describe("isAssignable (types.md §4 table)", () => {
   });
 
   it("ignores constraints and list bounds", () => {
-    expect(isAssignable(ir.text({ maxLength: 10 }), ir.text({ maxLength: 5 }))).toBe(true);
+    expect(isAssignable(ir.string(), ir.string())).toBe(true);
     expect(isAssignable(ir.int({ min: -5 }), ir.float({ min: 0 }))).toBe(true);
-    expect(isAssignable(ir.image({ formats: ["gif"] }), ir.image({ formats: ["png"] }))).toBe(true);
+    expect(isAssignable(ir.image(), ir.image())).toBe(true);
     expect(isAssignable(ir.list(text, { maxItems: 10 }), ir.list(text, { maxItems: 1 }))).toBe(true);
   });
 });
@@ -105,8 +107,8 @@ describe("typeEquals / stripConstraints", () => {
   });
 
   it("respects constraints unless ignoreConstraints", () => {
-    expect(typeEquals(ir.text({ maxLength: 3 }), text)).toBe(false);
-    expect(typeEquals(ir.text({ maxLength: 3 }), text, { ignoreConstraints: true })).toBe(true);
+    expect(typeEquals(ir.int(), ir.int({ min: 0 }))).toBe(false);
+    expect(typeEquals(ir.int(), ir.int({ min: 0 }), { ignoreConstraints: true })).toBe(true);
     expect(typeEquals(ir.list(text, { maxItems: 1 }), ir.list(text))).toBe(false);
     expect(typeEquals(ir.list(text, { maxItems: 1 }), ir.list(text), { ignoreConstraints: true })).toBe(true);
   });
@@ -116,7 +118,7 @@ describe("typeEquals / stripConstraints", () => {
   });
 
   it("stripConstraints removes constraints and bounds recursively", () => {
-    const input = ir.optional(ir.list(ir.list(ir.text({ maxLength: 3 }), { minItems: 1 }), { maxItems: 4 }));
+    const input = ir.optional(ir.list(ir.list(ir.string(), { minItems: 1 }), { maxItems: 4 }));
     const before = structuredClone(input);
     expect(stripConstraints(input)).toEqual(ir.optional(ir.list(ir.list(text))));
     expect(input).toEqual(before);
@@ -161,6 +163,46 @@ describe("joinTypes / meetTypes (types.md §5.2)", () => {
     expect(meetTypes(ir.list(int), ir.list(float))).toEqual(ir.list(int));
     expect(meetTypes(text, int)).toBeUndefined();
     expect(meetTypes(X, Y)).toBeUndefined();
+  });
+});
+
+describe("extends in join, meet and bindings (types.md §4, §5.2)", () => {
+  const sub = (id: string, base: string): StructDecl => ({ kind: "struct", id, name: id, extends: base, fields: [] });
+  const decls = new Map<string, StructDecl>([
+    ["ty_short", sub("ty_short", "briar.Text")],
+    ["ty_long", sub("ty_long", "briar.Text")],
+    ["ty_tiny", sub("ty_tiny", "ty_short")],
+  ]);
+  const resolve: DeclResolver = (id) => decls.get(id);
+  const Text = ir.named("briar.Text");
+  const Short = ir.named("ty_short");
+  const Long = ir.named("ty_long");
+  const Tiny = ir.named("ty_tiny");
+
+  it("join goes up to the nearest common base; meet down to the extending one", () => {
+    expect(joinTypes(Short, Text, resolve)).toEqual(Text);
+    expect(joinTypes(Short, Long, resolve)).toEqual(Text);
+    expect(joinTypes(Tiny, Short, resolve)).toEqual(Short);
+    expect(joinTypes(ir.list(Tiny), ir.list(Long), resolve)).toEqual(ir.list(Text));
+    expect(meetTypes(Short, Text, resolve)).toEqual(Short);
+    expect(meetTypes(Text, Tiny, resolve)).toEqual(Tiny);
+    expect(meetTypes(Short, Long, resolve)).toBeUndefined();
+    // without a resolver structs are only equal or not
+    expect(joinTypes(Short, Text)).toBeUndefined();
+  });
+
+  it("binds T from structs that extend one another", () => {
+    const T = ir.var("T");
+    const conns: GenericConnection[] = [
+      { port: "a", direction: "input", pattern: T, other: Short },
+      { port: "b", direction: "input", pattern: T, other: Long },
+      { port: "out", direction: "output", pattern: T, other: Text },
+    ];
+    expect(bindTypeVars(conns, resolve)).toEqual({ ok: true, bindings: { T: Text } });
+    expect(bindTypeVars([{ port: "out", direction: "output", pattern: ir.optional(T), other: ir.optional(Text) }, { port: "a", direction: "input", pattern: T, other: Short }], resolve)).toEqual({
+      ok: true,
+      bindings: { T: Short },
+    });
   });
 });
 
@@ -226,7 +268,7 @@ describe("bindTypeVars (types.md §5)", () => {
   });
 
   it("constraints are dropped from bindings", () => {
-    expectBindings([input("a", T, ir.text({ maxLength: 3 }))], { T: text });
+    expectBindings([input("a", T, ir.string())], { T: text });
     expectBindings([input("l", ir.list(T), ir.list(ir.int({ min: 0 }), { maxItems: 2 }))], { T: int });
   });
 

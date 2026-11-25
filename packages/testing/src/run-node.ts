@@ -35,17 +35,18 @@ import {
   type OutputsOf,
   type ResolvedPort,
   type TypeDecl,
-  type TypeRef,
-} from "@briarflow/core";
+  type TypeRef, BUILTIN, extendsStruct, type DeclResolver } from "@briarflow/core";
 
-function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): void {
+/** Names of the vault secrets a value gives the node: Secret values and values of structs extending Secret. */
+function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>, resolve: DeclResolver): void {
   if (value === null || value === undefined) return;
-  if (type.kind === "optional") return collectSecretRefs(value, type.of, out);
+  if (type.kind === "optional") return collectSecretRefs(value, type.of, out, resolve);
   if (type.kind === "list" && Array.isArray(value)) {
-    for (const item of value) collectSecretRefs(item, type.of, out);
+    for (const item of value) collectSecretRefs(item, type.of, out, resolve);
     return;
   }
-  if (type.kind === "primitive" && type.name === "secret" && typeof value === "string") out.add(value);
+  const name = typeof value === "object" ? (value as { name?: unknown }).name : undefined;
+  if (type.kind === "named" && extendsStruct(type.id, BUILTIN.Secret, resolve) && typeof name === "string") out.add(name);
 }
 
 /** One captured `ctx.progress` call (clamped like the engine; no throttling). */
@@ -312,7 +313,9 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
       logs.push({ level, message, data: full });
       options.logger?.[level](message, full);
     };
+  const typesOf = (kind: "global" | "variable") => new Map<string, TypeRef>((kind === "global" ? doc.globals : flow.variables).map((x) => [x.name, x.type]));
   const reader = (kind: "global" | "variable", map: Map<string, unknown>) => ({
+    typeOf: (name: string): TypeRef | undefined => typesOf(kind).get(name),
     get(name: string): unknown {
       usedState = true;
       if (!map.has(name)) {
@@ -330,7 +333,8 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
     });
   const signal = options.signal ?? new AbortController().signal;
   const allowedSecrets = new Set<string>();
-  for (const port of resolved.inputs) collectSecretRefs(values[port.name], portType(port), allowedSecrets);
+  const resolveDecl: DeclResolver = (id) => scope.getType(id)?.decl;
+  for (const port of resolved.inputs) collectSecretRefs(values[port.name], portType(port), allowedSecrets, resolveDecl);
   const packSettings = catalog.packOf(definition.type)?.settings ?? [];
   const ctx: ExecContext = {
     signal,
@@ -358,7 +362,8 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
         }
         return value;
       },
-      async read(ref: string) {
+      async read(given: string | { name: string }) {
+        const ref = typeof given === "object" && given !== null ? given.name : given;
         if (!allowedSecrets.has(ref)) {
           throw new NodeError("node.secret_not_allowed", `Node ${title} asked for secret "${ref}", which none of its inputs or settings gives it.`, { details: { secret: ref } });
         }
@@ -375,7 +380,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
         if (!decl) throw new NodeError("node.unknown_setting", `Node ${title} asked for setting "${name}", which its pack does not declare.`, { details: { setting: name } });
         const given = options.settings?.[name];
         const value = given === undefined || given === null ? (decl.default ?? null) : given;
-        collectSecretRefs(value, decl.type, allowedSecrets);
+        collectSecretRefs(value, decl.type, allowedSecrets, resolveDecl);
         return value;
       },
     },

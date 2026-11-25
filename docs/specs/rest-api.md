@@ -77,7 +77,7 @@ their snapshot); global writes of such runs are dropped.
 - `commands` must be a non-empty array of ≤ 1000 commands (`400 request.invalid_body`).
 - 422 example:
   ```json
-  { "error": { "code": "edge.type_mismatch", "message": "Cannot connect Prompt.text (text) to Generate image.size (Size). …",
+  { "error": { "code": "edge.type_mismatch", "message": "Cannot connect Prompt.text (string) to Generate image.size (Size). …",
                "details": { "commandIndex": 3, "op": "edge.connect" } } }
   ```
 

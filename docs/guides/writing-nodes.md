@@ -46,11 +46,11 @@ export const shout = defineNode({
   title: "Shout",
   description: "Uppercases text and adds exclamation marks.",
   inputs: {
-    text: t.text(),
+    text: t.string(),
     marks: { type: t.int({ min: 0, max: 10 }), default: 1, description: "How many ! to add." },
   },
   outputs: {
-    text: t.text(),
+    text: t.string(),
   },
   run({ inputs }) {
     return { text: inputs.text.toUpperCase() + "!".repeat(inputs.marks) };
@@ -69,17 +69,36 @@ Things to notice:
 
 | Builder | Value in `run` |
 |---|---|
-| `t.text({ maxLength, multiline })` | `string` |
+| `t.string()` | `string` |
 | `t.int({ min, max })`, `t.float()` | `number` |
-| `t.boolean()` | `boolean` |
-| `t.image()`, `t.video()`, `t.audio()`, `t.model3d()`, `t.file()` | `MediaRef` (`{ mediaId }`, the id of a media registry entry) |
+| `t.bool()` | `boolean` |
+| `t.binary()` | `MediaRef` (`{ mediaId }`, the id of a media registry entry) |
+| `t.text()` | `{ value: string }` — the built-in struct Text, for what people type |
+| `t.image()`, `t.video()`, `t.audio()`, `t.model3d()`, `t.file()` | `{ data: MediaRef, mime, name, size, width, height… }` |
+| `t.json()`, `t.secret()`, `t.apiKey()`, `t.error()` | `{ text }`, `{ name }`, `{ name }`, `{ code, message… }` |
 | `t.list(x, { maxItems })` | array |
 | `t.optional(x)` | value or `null` |
 | `t.ref(MyStruct)` | the struct's object type |
 | `t.var("T")` | `unknown` — generic, the editor binds it when wired |
 
-Constraints (`maxLength`, `min`, `formats`…) are checked when values enter your node, so you
-don't have to re-check them.
+Unlimited text is a plain `t.string()`. Text with limits, or media with limits, is a struct that
+extends a built-in and sets its **static fields** (the type fixes them; values don't carry them):
+
+```ts
+export const Headline = defineStruct("Headline", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
+export const Thumbnail = defineStruct(
+  "Thumbnail",
+  {
+    formats: { type: t.list(t.string()), static: true, default: ["png", "webp"] },
+    maxWidth: { type: t.optional(t.int()), static: true, default: 512 },
+  },
+  { extends: t.image() },
+);
+// inputs: { title: t.ref(Headline) } → inputs.title.value is a string of at most 80 characters
+```
+
+Constraints and limits (`min`, `maxLength`, `formats`…) are checked when values enter your
+node, so you don't have to re-check them. A `Headline` is accepted wherever a `Text` is.
 
 ## 5. Pack types
 
@@ -108,7 +127,7 @@ import { Stats, Tone } from "./types.js";
 export const count = defineNode({
   type: "words.count",
   title: "Count words",
-  inputs: { text: t.text({ multiline: true }) },
+  inputs: { text: { type: t.string(), widget: "textarea" } },
   outputs: { stats: t.ref(Stats) },
   run({ inputs }) {
     const words = inputs.text.trim().split(/\s+/).filter(Boolean).length;
@@ -150,8 +169,8 @@ async run({ inputs, ctx }) {
   const res = await ctx.fetch(url, { signal: ctx.signal, headers: { authorization: `Bearer ${key}` } });
   if (res.status === 429) throw new NodeError("node.rate_limited", "Slow down", { retryable: true });
   const bytes = new Uint8Array(await res.arrayBuffer());
-  const image = await ctx.media.put(bytes, { mime: "image/png" });   // keep media for this run, get { mediaId }
-  return { image };
+  const ref = await ctx.media.put(bytes, { mime: "image/png" });     // keep media for this run, get { mediaId }
+  return { image: mediaValue("image", ref, { mime: "image/png", bytes: bytes.length }) };   // an Image around it
 }
 ```
 
@@ -178,7 +197,7 @@ runs.
 ```ts
 import { cfg, defineNode, t, variant } from "@briarflow/core";
 
-const prompt = { prompt: t.text({ multiline: true }) };  // ports every variant has
+const prompt = { prompt: { type: t.string(), widget: "textarea" } };  // ports every variant has
 
 export const paint = defineNode({
   type: "acme.paint",
@@ -196,7 +215,7 @@ export const paint = defineNode({
       studio: variant({
         title: "Studio",
         config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
-        inputs: { ...prompt, negative: t.optional(t.text()) },
+        inputs: { ...prompt, negative: t.optional(t.string()) },
         outputs: { image: t.image(), seed: t.int() },
         run: async ({ inputs, config, ctx }) => studio(inputs, config.steps, ctx),
       }),

@@ -92,6 +92,11 @@ function fakeCtx(store: MemoryMediaStore, secrets: Record<string, string> = {}):
 
 const NODE: NodeInstance = { id: "n_1", type: "imaging.x", position: { x: 0, y: 0 } } as unknown as NodeInstance;
 
+/** An Image value around a stored ref (what the engine hands nodes). */
+function imageOf(ref: MediaRef, size: number | null = null): Record<string, unknown> {
+  return { data: ref, mime: "image/png", name: null, size, width: null, height: null };
+}
+
 function pngBytes(): Uint8Array {
   return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 }
@@ -137,17 +142,24 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
   it("spawns the worker and reads the manifest", () => {
     expect(worker.status).toBe("ready");
     expect(worker.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-    expect(manifest.protocol).toBe(1);
+    expect(manifest.protocol).toBe(2);
     expect(manifest.pack).toMatchObject({ name: "imaging", version: "0.1.0" });
     expect(manifest.nodes.map((n) => n.type)).toEqual([
       "imaging.uppercase",
+      "imaging.shoutHeadline",
       "imaging.solidImage",
       "imaging.imageInfo",
       "imaging.repeat",
       "imaging.countSlowly",
       "imaging.sign",
     ]);
-    expect(manifest.types.map((d) => d.id)).toEqual(["imaging.Swatch", "imaging.Color"]);
+    expect(manifest.types.map((d) => d.id)).toEqual(["imaging.Headline", "imaging.Swatch", "imaging.Color"]);
+    expect(manifest.types[0]).toMatchObject({ kind: "struct", extends: "briar.Text", fields: [{ name: "maxLength", static: true, default: 40 }] });
+  });
+
+  it("runs a node whose port extends Text", async () => {
+    const c = fakeCtx(new MemoryMediaStore());
+    expect(await exec("imaging.shoutHeadline", { title: { value: "brief" } }, c)).toEqual({ result: { value: "BRIEF" } });
   });
 
   it("runs a plain node", async () => {
@@ -167,7 +179,9 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     expect(c.logs[0]?.[0]).toBe("info");
     expect(c.logs[0]?.[1]).toBe("encoded png");
     expect(c.logs[0]?.[2]).toMatchObject({ bytes: expect.any(Number) });
-    const ref = out.result as MediaRef;
+    const image = out.result as { data: MediaRef; mime: string; name: string; width: number; height: number };
+    expect(image).toMatchObject({ mime: "image/png", name: "briar.png", width: 3, height: 2 });
+    const ref = image.data;
     expect(Object.keys(ref)).toEqual(["mediaId"]);
     expect(await media.entry(ref)).toMatchObject({ mime: "image/png", meta: { width: 3, height: 2, filename: "briar.png" }, owner: { runId: "run_1" } });
     expect([...(await media.bytes(ref)).slice(0, 8)]).toEqual([...pngBytes().slice(0, 8)]);
@@ -177,8 +191,8 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     const media = new MemoryMediaStore();
     const ref = await media.put(pngBytes(), { mime: "image/png" });
     const c = fakeCtx(media);
-    const out = await exec("imaging.imageInfo", { image: ref }, c);
-    expect(out).toEqual({ image: ref, mime: "image/png", bytes: 12, is_png: true });
+    const out = await exec("imaging.imageInfo", { image: imageOf(ref, 12) }, c);
+    expect(out).toEqual({ image: imageOf(ref, 12), mime: "image/png", bytes: 12, is_png: true });
   });
 
   it("hands link entries to the worker by their own URL", async () => {
@@ -189,8 +203,8 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
     try {
       const { url } = await loopback.register(served, media.media.forNode({}));
       const linked = await media.link(url, "image/png");
-      const out = await exec("imaging.imageInfo", { image: linked }, fakeCtx(media));
-      expect(out).toMatchObject({ image: linked, is_png: true });
+      const out = await exec("imaging.imageInfo", { image: imageOf(linked) }, fakeCtx(media));
+      expect(out).toMatchObject({ image: imageOf(linked), is_png: true });
     } finally {
       await loopback.close();
     }
@@ -257,7 +271,7 @@ describe.skipIf(!hasVenv)("python bridge against the example worker", () => {
       expect(pack.kind).toBe("nodePack");
       expect(pack.name).toBe("imaging");
       expect(pack.version).toBe("0.1.0");
-      expect(pack.types.map((d) => d.id)).toEqual(["imaging.Swatch", "imaging.Color"]);
+      expect(pack.types.map((d) => d.id)).toEqual(["imaging.Headline", "imaging.Swatch", "imaging.Color"]);
       const sign = pack.nodes.find((n) => n.type === "imaging.sign");
       expect(sign?.secrets).toEqual(["IMAGING_KEY"]);
       const repeat = pack.nodes.find((n) => n.type === "imaging.repeat");
@@ -387,7 +401,7 @@ describe.skipIf(!hasVenv)("spawnPythonWorker lifecycle", () => {
       await worker.restart();
       expect(worker.status).toBe("ready");
       const health = await fetch(`${worker.url}/briarflow/health`);
-      expect(await health.json()).toMatchObject({ ok: true, protocol: 1, pack: { name: "imaging" } });
+      expect(await health.json()).toMatchObject({ ok: true, protocol: 2, pack: { name: "imaging" } });
     } finally {
       await worker.stop();
     }
@@ -424,24 +438,24 @@ describe("pythonPack without a worker", () => {
 
   it("rejects other protocol versions", async () => {
     const fakeFetch = (async () =>
-      new Response(JSON.stringify({ protocol: 2, pack: { name: "x", version: "1.0.0" }, types: [], nodes: [] }))) as typeof fetch;
+      new Response(JSON.stringify({ protocol: 1, pack: { name: "x", version: "1.0.0" }, types: [], nodes: [] }))) as typeof fetch;
     await expect(pythonPack({ url: "http://worker", fetch: fakeFetch })).rejects.toMatchObject({
       code: "python.unsupported_protocol",
     });
   });
 
   it("rejects a malformed manifest with pack.invalid", async () => {
-    const fakeFetch = (async () => new Response(JSON.stringify({ protocol: 1, pack: { name: "x" }, nodes: {} }))) as typeof fetch;
+    const fakeFetch = (async () => new Response(JSON.stringify({ protocol: 2, pack: { name: "x" }, nodes: {} }))) as typeof fetch;
     await expect(pythonPack({ url: "http://worker", fetch: fakeFetch })).rejects.toMatchObject({ code: "pack.invalid" });
   });
 });
 
 describe("NDJSON stream handling (fake worker)", () => {
   const manifest: PythonManifest = {
-    protocol: 1,
+    protocol: 2,
     pack: { name: "fake", version: "1.0.0" },
     types: [
-      { kind: "struct", id: "fake.Pic", name: "Pic", fields: [{ name: "img", type: { kind: "primitive", name: "image" } }] },
+      { kind: "struct", id: "fake.Pic", name: "Pic", fields: [{ name: "img", type: { kind: "named", id: "briar.Image" } }] },
     ],
     nodes: [
       {
@@ -453,7 +467,7 @@ describe("NDJSON stream handling (fake worker)", () => {
         icon: null,
         color: null,
         inputs: [{ name: "pics", type: { kind: "list", of: { kind: "named", id: "fake.Pic" } }, title: "Pics" }],
-        outputs: [{ name: "result", type: { kind: "optional", of: { kind: "primitive", name: "image" } }, title: "Result" }],
+        outputs: [{ name: "result", type: { kind: "optional", of: { kind: "named", id: "briar.Image" } }, title: "Result" }],
         config: [],
         dynamicPorts: false,
         secrets: [],
@@ -498,15 +512,17 @@ describe("NDJSON stream handling (fake worker)", () => {
     const ref = await media.link("https://cdn.example/m_1", "image/png");
     const b64 = Buffer.from("hello").toString("base64");
     const { runtime, requests } = fakeWorker([
-      `{"type":"result","outputs":{"result":{"$media":{"mime":"text/plain","base64":"${b64}","filename":"h.txt"}}}}\n`,
+      `{"type":"result","outputs":{"result":{"data":{"$media":{"mime":"image/png","base64":"${b64}","filename":"h.png"}},"mime":"image/png","name":"h.png","size":5,"width":null,"height":null}}}\n`,
     ]);
-    const out = await run(runtime, fakeCtx(media), { pics: [{ img: ref }] });
+    const out = await run(runtime, fakeCtx(media), { pics: [{ img: imageOf(ref) }] });
     expect((requests[0] as { inputs: unknown }).inputs).toEqual({
-      pics: [{ img: { uri: `briar-media://${ref.mediaId}`, mime: "image/png", url: "https://cdn.example/m_1" } }],
+      pics: [{ img: imageOf({ uri: `briar-media://${ref.mediaId}`, mime: "image/png", url: "https://cdn.example/m_1" } as unknown as MediaRef) }],
     });
-    const made = out.result as MediaRef;
+    const result = out.result as { data: MediaRef; name: string };
+    expect(result.name).toBe("h.png");
+    const made = result.data;
     expect(new TextDecoder().decode(await media.bytes(made))).toBe("hello");
-    expect((await media.entry(made))?.meta).toEqual({ filename: "h.txt" });
+    expect((await media.entry(made))?.meta).toEqual({ filename: "h.png" });
   });
 
   it("maps node.cancelled from the worker to a NodeError", async () => {
@@ -559,8 +575,8 @@ describe("NDJSON stream handling (fake worker)", () => {
   });
 
   it("rejects malformed $media values", async () => {
-    const { runtime } = fakeWorker(['{"type":"result","outputs":{"result":{"$media":{"mime":"image/png"}}}}\n']);
+    const { runtime } = fakeWorker(['{"type":"result","outputs":{"result":{"data":{"$media":{"mime":"image/png"}},"mime":"image/png"}}}\n']);
     const err = await caught(run(runtime, fakeCtx(new MemoryMediaStore())));
-    expect(err).toMatchObject({ code: "python.protocol_error", details: { path: "outputs.result" } });
+    expect(err).toMatchObject({ code: "python.protocol_error", details: { path: "outputs.result.data" } });
   });
 });

@@ -24,6 +24,7 @@ import { nodeLabel } from "./labels.js";
 import { resolveFlowPorts } from "./ports.js";
 import { computeVariableOrder } from "./variables.js";
 import { analyzeExec } from "./exec.js";
+import { structProblems } from "./structs.js";
 
 const VARIABLE_TYPES: readonly string[] = Object.values(VARIABLE_NODE_TYPES);
 
@@ -221,7 +222,7 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
       err("edge.unknown_port", `${toLabel} has no input "${e.to.port}". Inputs: ${list}.`, { edgeId: e.id, nodeId: to.id, port: e.to.port });
     }
     if (portMissing || !fp || !tp || containsVar(fp.type) || containsVar(tp.type)) continue;
-    if (!isAssignable(fp.type, tp.type)) {
+    if (!isAssignable(fp.type, tp.type, (id) => scope.getType(id)?.decl)) {
       const hint = mismatchHint(fp.type, tp.type);
       err(
         "edge.type_mismatch",
@@ -261,7 +262,7 @@ export function validateFlow(doc: ContextDocument, flowId: string, catalog: Node
 function mismatchHint(from: TypeRef, to: TypeRef): string {
   const target = to.kind === "optional" ? to.of : to;
   if (from.kind === "list" && isAssignable(from.of, to)) return "Use list.get to pick one item.";
-  if (target.kind === "primitive" && target.name === "text") return "Use convert.toText to turn it into text.";
+  if (target.kind === "primitive" && target.name === "string") return "Use convert.toText to turn it into a string.";
   return "";
 }
 
@@ -436,6 +437,7 @@ function checkTypeDecls(
         details: { chain },
       });
     }
+    out.push(...structProblems(t, scope, at));
     for (const f of t.fields) {
       const fat = { ...at, field: f.name };
       const ok = checkTypeRef(f.type, `Field "${t.name}.${f.name}"`, scope, fat, out, localOwner);
@@ -455,3 +457,4 @@ function checkTypeDecls(
   }
   return out;
 }
+

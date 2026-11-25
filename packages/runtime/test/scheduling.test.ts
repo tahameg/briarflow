@@ -124,9 +124,9 @@ describe("concurrency", () => {
   it("built-ins and variable nodes take no slot", async () => {
     const { engine } = makeEngine({ concurrency: 1 });
     const d = doc({
-      inputs: [{ name: "t", type: ir.text() }],
-      outputs: [{ name: "out", type: ir.text() }],
-      variables: [{ id: "var_v", name: "v", type: ir.text(), access: "private" }],
+      inputs: [{ name: "t", type: ir.string() }],
+      outputs: [{ name: "out", type: ir.string() }],
+      variables: [{ id: "var_v", name: "v", type: ir.string(), access: "private" }],
       nodes: [
         n("n_w", "probe.wait"),
         n("n_set", "briar.variable.set", { config: { variableId: "var_v" } }),
@@ -148,9 +148,9 @@ describe("input resolution", () => {
     const { engine } = makeEngine();
     const d = doc({
       outputs: [
-        { name: "edge", type: ir.text() },
-        { name: "constant", type: ir.text() },
-        { name: "default", type: ir.text() },
+        { name: "edge", type: ir.string() },
+        { name: "constant", type: ir.string() },
+        { name: "default", type: ir.string() },
       ],
       nodes: [
         n("n_src", "probe.echo", { values: { value: "from-edge" } }),
@@ -200,9 +200,9 @@ describe("input resolution", () => {
           id: "ty_char",
           name: "Character",
           fields: [
-            { name: "name", type: ir.text() },
+            { name: "name", type: ir.string() },
             { name: "age", type: ir.int(), default: 30 },
-            { name: "nick", type: ir.optional(ir.text()) },
+            { name: "nick", type: ir.optional(ir.string()) },
           ],
         },
       ],
@@ -250,10 +250,10 @@ describe("built-in nodes", () => {
     const { engine } = makeEngine();
     const d = doc({
       inputs: [
-        { name: "a", type: ir.text() },
+        { name: "a", type: ir.string() },
         { name: "b", type: ir.int(), default: 2 },
       ],
-      outputs: [{ name: "a", type: ir.text() }],
+      outputs: [{ name: "a", type: ir.string() }],
       edges: [e("n_in.a", "n_out.a")],
     });
     const run = engine.run({ context: d, flowId: FLOW_ID, inputs: { a: "x" } });

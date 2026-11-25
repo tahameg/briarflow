@@ -13,7 +13,7 @@ import {
   type ExecContext,
   type Media,
   type MediaEntry,
-  type MediaRef,
+  type MediaLike,
 } from "@briarflow/core";
 import {
   mockDelay,
@@ -27,7 +27,7 @@ import {
   mockStructured,
   PACKAGE_NAME,
 } from "@briarflow/nodes-mock";
-import { context, describeNodePack, enumType, field, flow, ir, runNode, struct } from "@briarflow/testing";
+import { context, describeNodePack, enumType, field, flow, ir, runNode, struct, textType } from "@briarflow/testing";
 
 async function rejects(p: Promise<unknown>): Promise<{ code: string; message: string; retryable?: boolean }> {
   try {
@@ -39,31 +39,33 @@ async function rejects(p: Promise<unknown>): Promise<{ code: string; message: st
   throw new Error("expected a rejection");
 }
 
-async function text(media: Media, ref: MediaRef): Promise<string> {
+async function text(media: Media, ref: MediaLike): Promise<string> {
   return new TextDecoder().decode(await media.read(ref));
 }
 
 const newMedia = () => createMedia({ registry: createMemoryMediaRegistry() });
 /** The registry entry of a media output. */
-const entry = (r: { media: Media }, ref: MediaRef) => r.media.entry(ref) as Promise<MediaEntry>;
+const entry = (r: { media: Media }, ref: MediaLike) => r.media.entry(ref) as Promise<MediaEntry>;
 
 const structCtx = () =>
   context({
     types: [
       enumType("ty_mood", "Mood", ["calm", "angry", "sad"]),
-      struct("ty_inner", "Inner", [field("flag", ir.boolean())]),
+      struct("ty_inner", "Inner", [field("flag", ir.bool())]),
+      textType("ty_short", { maxLength: 3 }),
+      textType("ty_long", { minLength: 30 }),
       struct("ty_all", "All", [
-        field("title", ir.text()),
-        field("short", ir.text({ maxLength: 3 })),
-        field("long", ir.text({ minLength: 30 })),
+        field("title", ir.string()),
+        field("short", ir.named("ty_short")),
+        field("long", ir.named("ty_long")),
         field("count", ir.int()),
         field("ranged", ir.int({ min: 10, max: 12 })),
         field("ratio", ir.float({ min: 0, max: 1 })),
-        field("ok", ir.boolean()),
+        field("ok", ir.bool()),
         field("mood", ir.named("ty_mood")),
-        field("tags", ir.list(ir.text())),
+        field("tags", ir.list(ir.string())),
         field("three", ir.list(ir.int(), { minItems: 3 })),
-        field("maybe", ir.optional(ir.text())),
+        field("maybe", ir.optional(ir.string())),
         field("inner", ir.named("ty_inner")),
         field("image", ir.image()),
         field("doc", ir.file()),
@@ -73,7 +75,7 @@ const structCtx = () =>
         field("clips", ir.list(ir.optional(ir.video()), { minItems: 1 })),
       ]),
       struct("ty_video", "WithVideo", [field("clip", ir.video())]),
-      struct("ty_simple", "Simple", [field("name", ir.text())]),
+      struct("ty_simple", "Simple", [field("name", ir.string())]),
     ],
   });
 
@@ -213,7 +215,7 @@ describe("mock.model3d", () => {
     expect(color).toHaveLength(4);
     for (const c of color) expect(c >= 0 && c <= 1).toBe(true);
     const again = await runNode(mockModel3d, { prompt: "box", seed: 1 });
-    const hashOf = async (x: { media: Media; outputs: { model: MediaRef } }) => (await entry(x, x.outputs.model)).hash;
+    const hashOf = async (x: { media: Media; outputs: { model: MediaLike } }) => (await entry(x, x.outputs.model)).hash;
     expect(await hashOf(again)).toBe(await hashOf(r));
     const other = await runNode(mockModel3d, { prompt: "box", seed: 2 });
     expect(await hashOf(other)).not.toBe(await hashOf(r));
@@ -267,8 +269,8 @@ describe("mock.structured", () => {
     const r = await runNode(mockStructured, { prompt: "hero", seed: 1 }, opts);
     const v = r.outputs.value as Record<string, unknown>;
     expect(v["title"]).toMatch(/^title [0-9a-f]{4}$/);
-    expect(Array.from(v["short"] as string).length).toBeLessThanOrEqual(3);
-    expect(Array.from(v["long"] as string).length).toBeGreaterThanOrEqual(30);
+    expect(Array.from((v["short"] as { value: string }).value).length).toBeLessThanOrEqual(3);
+    expect(Array.from((v["long"] as { value: string }).value).length).toBeGreaterThanOrEqual(30);
     expect(Number.isInteger(v["count"]) && (v["count"] as number) >= 0 && (v["count"] as number) <= 99).toBe(true);
     expect([10, 11, 12]).toContain(v["ranged"]);
     expect((v["ratio"] as number) >= 0 && (v["ratio"] as number) <= 1).toBe(true);
@@ -278,18 +280,21 @@ describe("mock.structured", () => {
     expect(v["three"]).toHaveLength(3);
     expect(typeof v["maybe"]).toBe("string");
     expect(typeof (v["inner"] as { flag: unknown }).flag).toBe("boolean");
-    expect(await entry(r, v["image"] as MediaRef)).toMatchObject({ mime: "image/svg+xml" });
-    expect(await entry(r, v["doc"] as MediaRef)).toMatchObject({ mime: "image/svg+xml" });
-    expect(await entry(r, v["model"] as MediaRef)).toMatchObject({ mime: "model/gltf+json" });
-    expect(await entry(r, v["sound"] as MediaRef)).toMatchObject({ mime: "audio/wav" });
+    expect(await entry(r, v["image"] as MediaLike)).toMatchObject({ mime: "image/svg+xml" });
+    expect(await entry(r, v["doc"] as MediaLike)).toMatchObject({ mime: "image/svg+xml" });
+    expect(await entry(r, v["model"] as MediaLike)).toMatchObject({ mime: "model/gltf+json" });
+    expect(await entry(r, v["sound"] as MediaLike)).toMatchObject({ mime: "audio/wav" });
     expect(v["clip"]).toBeNull();
     expect(v["clips"]).toEqual([null]);
-    for (const key of ["image", "doc", "model", "sound"]) expect(await media.read(v[key] as MediaRef)).toBeInstanceOf(Uint8Array);
+    for (const key of ["image", "doc", "model", "sound"]) expect(await media.read(v[key] as MediaLike)).toBeInstanceOf(Uint8Array);
     const again = await runNode(mockStructured, { prompt: "hero", seed: 1 }, { ...opts, media: newMedia() });
     const strip = async (x: { media: Media; outputs: { value: unknown } }) =>
       Object.fromEntries(
         await Promise.all(
-          Object.entries(x.outputs.value as Record<string, unknown>).map(async ([k, val]) => [k, isMediaRef(val) ? (await x.media.entry(val))?.hash : val] as const),
+          Object.entries(x.outputs.value as Record<string, unknown>).map(async ([k, val]) => {
+            const data = typeof val === "object" && val !== null ? (val as { data?: unknown }).data : undefined;
+            return [k, isMediaRef(data) ? (await x.media.entry(data))?.hash : val] as const;
+          }),
         ),
       );
     expect(await strip(again)).toEqual(await strip(r));

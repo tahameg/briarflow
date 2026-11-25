@@ -37,9 +37,9 @@ const failure = (status: number, type: string, message: string, headers: Record<
 const CHAR_CONTEXT = context({
   types: [
     struct("ty_char", "Character", [
-      field("name", ir.text({ maxLength: 40 })),
+      field("name", ir.string()),
       field("age", ir.int({ min: 0, max: 200 })),
-      field("title", ir.optional(ir.text())),
+      field("title", ir.optional(ir.string())),
     ]),
     struct("ty_pic", "Picture", [field("image", ir.image())]),
   ],

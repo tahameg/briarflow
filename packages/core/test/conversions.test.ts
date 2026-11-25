@@ -5,29 +5,30 @@ import { describe, expect, it } from "vitest";
 import { bindTypeVars, createCatalog, defineNode, definePack, findConversions, t, toNodeDescriptor } from "../src/index.js";
 import type { TypeRef } from "../src/index.js";
 
-const p = (name: string) => ({ kind: "primitive", name }) as TypeRef;
+const p = (name: string) =>
+  (name === "json" ? { kind: "named", id: "briar.Json" } : { kind: "primitive", name: name === "text" ? "string" : name === "boolean" ? "bool" : name }) as TypeRef;
 
-const asText = defineNode({ type: "convert.toText", title: "As text", pure: true, conversion: true, inputs: { value: t.var("T") }, outputs: { text: t.text() }, run: () => ({ text: "" }) });
+const asText = defineNode({ type: "convert.toText", title: "As string", pure: true, conversion: true, inputs: { value: t.var("T") }, outputs: { text: t.string() }, run: () => ({ text: "" }) });
 const asInt = defineNode({
   type: "convert.asInt",
   title: "As int",
   pure: true,
   conversion: true,
-  inputs: { value: t.var("T", { oneOf: [t.text(), t.json()] }) },
+  inputs: { value: t.var("T", { oneOf: [t.string(), t.json()] }) },
   outputs: { value: t.int() },
   run: () => ({ value: 0 }),
 });
-const asJson = defineNode({ type: "convert.asJson", title: "As JSON", pure: true, conversion: true, inputs: { text: t.text() }, outputs: { json: t.json() }, run: () => ({ json: null }) });
+const asJson = defineNode({ type: "convert.asJson", title: "As JSON", pure: true, conversion: true, inputs: { text: t.string() }, outputs: { json: t.json() }, run: () => ({ json: { text: "null" } }) });
 const floatToInt = defineNode({
   type: "convert.floatToInt",
   title: "Float to int",
   pure: true,
   conversion: true,
-  inputs: { value: t.float(), mode: { type: t.text(), default: "round" } },
+  inputs: { value: t.float(), mode: { type: t.string(), default: "round" } },
   outputs: { value: t.int() },
   run: () => ({ value: 0 }),
 });
-const notConversion = defineNode({ type: "convert.shout", pure: true, inputs: { text: t.text() }, outputs: { text: t.text() }, run: ({ inputs }) => inputs });
+const notConversion = defineNode({ type: "convert.shout", pure: true, inputs: { text: t.string() }, outputs: { text: t.string() }, run: ({ inputs }) => inputs });
 const catalog = createCatalog([definePack({ name: "c", version: "1.0.0", namespaces: ["convert"], nodes: [asText, asInt, asJson, floatToInt, notConversion] })]);
 
 describe("defineNode conversion", () => {
@@ -38,10 +39,10 @@ describe("defineNode conversion", () => {
   });
 
   it.each([
-    [{ inputs: { a: t.text() }, outputs: { b: t.text() } }, "must be pure"],
-    [{ pure: true, inputs: {}, outputs: { b: t.text() } }, "needs an input"],
-    [{ pure: true, inputs: { a: t.text() }, outputs: { b: t.text(), c: t.text() } }, "exactly one output"],
-    [{ pure: true, inputs: { a: t.text(), b: t.int() }, outputs: { c: t.text() } }, 'conversion input "b" needs a default'],
+    [{ inputs: { a: t.string() }, outputs: { b: t.string() } }, "must be pure"],
+    [{ pure: true, inputs: {}, outputs: { b: t.string() } }, "needs an input"],
+    [{ pure: true, inputs: { a: t.string() }, outputs: { b: t.string(), c: t.string() } }, "exactly one output"],
+    [{ pure: true, inputs: { a: t.string(), b: t.int() }, outputs: { c: t.string() } }, 'conversion input "b" needs a default'],
   ])("rejects a conversion node that breaks the rules (%#)", (parts, message) => {
     expect(() => defineNode({ type: "convert.bad", conversion: true, run: () => ({}) as never, ...(parts as object) })).toThrow(message);
   });

@@ -8,7 +8,7 @@ import { structuredSchema } from "./schema.js";
 import { modelConfig, nodeSettings, promptInputs, sendClaude, textOf, usageOf, Usage, type AnthropicPackOptions } from "./shared.js";
 
 // Ports from resolvePorts are not qualified by definePack, so the pack type id is spelled out.
-const outputs = (typeId: string) => ({ value: t.fromRef({ kind: "named", id: typeId }), usage: t.fromRef({ kind: "named", id: "anthropic.Usage" }), model: t.text() });
+const outputs = (typeId: string) => ({ value: t.fromRef({ kind: "named", id: typeId }), usage: t.fromRef({ kind: "named", id: "anthropic.Usage" }), model: t.string() });
 
 /** Builds the `anthropic.structured` node for a pack instance. */
 export function claudeStructured(options: AnthropicPackOptions) {
@@ -20,7 +20,7 @@ export function claudeStructured(options: AnthropicPackOptions) {
     ...nodeSettings,
     config: { typeId: cfg.typeId({ kind: "struct", title: "Struct" }), ...modelConfig },
     inputs: promptInputs,
-    outputs: { value: t.var("S"), usage: t.ref(Usage), model: t.text() },
+    outputs: { value: t.var("S"), usage: t.ref(Usage), model: t.string() },
     resolvePorts({ config, scope }) {
       const decl = scope.resolveType(config.typeId);
       if (!decl || decl.kind !== "struct") {

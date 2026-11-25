@@ -268,8 +268,8 @@ function ConfigFieldEditor({
   );
   switch (field.kind) {
     case "text": {
-      const t: TypeRef = { kind: "primitive", name: "text", ...(field.multiline ? { constraints: { multiline: true } } : {}) };
-      return <ValueEditor type={t} label={label} value={value} placeholder={placeholder} onCommit={onChange} />;
+      const t: TypeRef = { kind: "primitive", name: "string" };
+      return <ValueEditor type={t} label={label} value={value} placeholder={placeholder} onCommit={onChange} {...(field.multiline ? { widget: "textarea" as const } : {})} />;
     }
     case "int": {
       const t: TypeRef = { kind: "primitive", name: "int", constraints: { ...(field.min !== undefined ? { min: field.min } : {}), ...(field.max !== undefined ? { max: field.max } : {}) } };

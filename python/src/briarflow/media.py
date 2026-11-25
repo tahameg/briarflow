@@ -1,18 +1,19 @@
-"""Media references: values of the media primitives (image, video, audio, model3d, file)."""
+"""``Binary``: the value of the ``binary`` primitive (bytes held by the engine's media registry)."""
 
 from __future__ import annotations
 
 import base64
 import hashlib
-from typing import Any, ClassVar
+from typing import Any
 
-#: Media primitive -> required mime prefix (None = any mime). See types.md §8.
-MEDIA_PRIMITIVES = ("image", "video", "audio", "model3d", "file")
+#: Media kinds of the built-in media structs (types.md §1.2).
+MEDIA_KINDS = ("image", "video", "audio", "model3d", "file")
 
-#: Format name -> mime type (types.md §6).
+#: Format name -> mime type (types.md §1.2).
 FORMAT_MIMES = {
     "png": "image/png",
     "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
     "webp": "image/webp",
     "gif": "image/gif",
     "svg": "image/svg+xml",
@@ -31,15 +32,16 @@ FORMAT_MIMES = {
 }
 
 
-def mime_matches_primitive(mime: str, primitive: str) -> bool:
+def mime_matches_kind(mime: str, kind: str) -> bool:
+    """Does ``mime`` fit the media kind (``image`` needs ``image/*``…)?"""
     mime = mime.lower()
-    if primitive == "image":
+    if kind == "image":
         return mime.startswith("image/")
-    if primitive == "video":
+    if kind == "video":
         return mime.startswith("video/")
-    if primitive == "audio":
+    if kind == "audio":
         return mime.startswith("audio/")
-    if primitive == "model3d":
+    if kind == "model3d":
         return mime.startswith("model/") or mime == "application/octet-stream"
     return True
 
@@ -48,18 +50,14 @@ def format_to_mime(fmt: str) -> str:
     return FORMAT_MIMES.get(fmt.lower(), fmt.lower())
 
 
-class MediaRef:
-    """A reference to stored media, as passed between nodes.
+class Binary:
+    """Bytes held by the engine: the value of the ``binary`` primitive.
 
-    Inputs arrive as instances of the port's media class (``Image``, ``Audio``…), which are
-    all ``MediaRef`` subclasses. ``url`` is a temporary, fetchable URL added by the bridge
-    for the duration of one execution; read the bytes with ``ctx.media.read(ref)``.
-
-    Return an input ref unchanged to pass media through, or create new media with
-    ``ctx.media.create(data, mime=...)``.
+    The ``data`` member of ``Image``, ``Video``… is a ``Binary``. Inputs arrive with a
+    temporary ``url`` added by the bridge for one execution; read the bytes with
+    ``ctx.media.read(value)``. Return an input value unchanged to pass it through, or make new
+    media with ``ctx.media.create(data, mime=...)``.
     """
-
-    primitive: ClassVar[str | None] = None
 
     __slots__ = ("uri", "mime", "bytes", "hash", "meta", "url", "_data", "_filename")
 
@@ -82,32 +80,24 @@ class MediaRef:
         self._filename: str | None = None
 
     @classmethod
-    def _created(
-        cls, data: bytes, mime: str, filename: str | None, meta: dict[str, Any]
-    ) -> "MediaRef":
-        ref = cls(
-            uri="",
-            mime=mime,
-            bytes=len(data),
-            hash=hashlib.sha256(data).hexdigest(),
-            meta=meta or None,
-        )
+    def created(
+        cls, data: bytes, mime: str, filename: str | None = None, meta: dict[str, Any] | None = None
+    ) -> "Binary":
+        """New bytes made in this execution; the engine stores them when the node returns."""
+        ref = cls(uri="", mime=mime, bytes=len(data), hash=hashlib.sha256(data).hexdigest(), meta=meta or None)
         ref._data = bytes(data)
         ref._filename = filename
         return ref
 
     @property
     def is_new(self) -> bool:
-        """True for media created in this execution (not yet stored by the engine)."""
+        """True for bytes created in this execution (not yet stored by the engine)."""
         return self._data is not None
 
     def to_json(self) -> dict[str, Any]:
-        """Wire form: a MediaRef object, or ``{"$media": …}`` for newly created media."""
+        """Wire form: ``{uri, mime…}`` for stored bytes, ``{"$media": …}`` for new ones."""
         if self._data is not None:
-            payload: dict[str, Any] = {
-                "mime": self.mime,
-                "base64": base64.b64encode(self._data).decode("ascii"),
-            }
+            payload: dict[str, Any] = {"mime": self.mime, "base64": base64.b64encode(self._data).decode("ascii")}
             if self._filename:
                 payload["filename"] = self._filename
             if self.meta:
@@ -123,7 +113,7 @@ class MediaRef:
         return out
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, MediaRef):
+        if not isinstance(other, Binary):
             return NotImplemented
         return self.to_json() == other.to_json()
 
@@ -132,49 +122,5 @@ class MediaRef:
 
     def __repr__(self) -> str:
         if self._data is not None:
-            return f"{type(self).__name__}(<new {self.mime}, {len(self._data)} bytes>)"
-        return f"{type(self).__name__}(uri={self.uri!r}, mime={self.mime!r})"
-
-
-class Image(MediaRef):
-    """Media primitive ``image`` (mime ``image/*``)."""
-
-    primitive = "image"
-    __slots__ = ()
-
-
-class Video(MediaRef):
-    """Media primitive ``video`` (mime ``video/*``)."""
-
-    primitive = "video"
-    __slots__ = ()
-
-
-class Audio(MediaRef):
-    """Media primitive ``audio`` (mime ``audio/*``)."""
-
-    primitive = "audio"
-    __slots__ = ()
-
-
-class Model3D(MediaRef):
-    """Media primitive ``model3d`` (mime ``model/*`` or ``application/octet-stream``)."""
-
-    primitive = "model3d"
-    __slots__ = ()
-
-
-class File(MediaRef):
-    """Media primitive ``file`` (any mime)."""
-
-    primitive = "file"
-    __slots__ = ()
-
-
-MEDIA_CLASSES: dict[str, type[MediaRef]] = {
-    "image": Image,
-    "video": Video,
-    "audio": Audio,
-    "model3d": Model3D,
-    "file": File,
-}
+            return f"Binary(<new {self.mime}, {len(self._data)} bytes>)"
+        return f"Binary(uri={self.uri!r}, mime={self.mime!r})"

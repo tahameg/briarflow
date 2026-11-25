@@ -1,7 +1,7 @@
 {
   "name": "@briarflow/python",
   "version": "0.0.0",
-  "description": "Run Python Briarflow nodes: the TypeScript bridge to Python workers (protocol v1).",
+  "description": "Run Python Briarflow nodes: the TypeScript bridge to Python workers (protocol v2).",
   "type": "module",
   "license": "MIT",
   "//": "exports point at source during development; the build (tsdown) will produce dist/ and publishConfig will switch exports to it.",

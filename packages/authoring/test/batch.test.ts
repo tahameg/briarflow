@@ -6,11 +6,11 @@ import { KIT, emptyDoc, richDoc } from "./fixtures/docs.js";
 import { accept, clock, flowOf, frozen, nodeOf, NOW, options, reject } from "./fixtures/helpers.js";
 
 describe("COMMAND_OPS / isCommandOp", () => {
-  it("lists 70 ops in spec order", () => {
-    expect(COMMAND_OPS).toHaveLength(70);
+  it("lists 72 ops in spec order", () => {
+    expect(COMMAND_OPS).toHaveLength(72);
     expect(COMMAND_OPS[0]).toBe("context.rename");
     expect(COMMAND_OPS[COMMAND_OPS.length - 1]).toBe("flow.exec.set");
-    expect(new Set(COMMAND_OPS).size).toBe(70);
+    expect(new Set(COMMAND_OPS).size).toBe(72);
   });
   it("isCommandOp", () => {
     expect(isCommandOp("node.move")).toBe(true);
@@ -232,11 +232,11 @@ describe("ids", () => {
   it("resolved replaces shorthand types with IR", () => {
     const r = accept(richDoc(), [
       { op: "global.create", id: "gv_list", name: "names", type: "list<Character?>", access: "readwrite" },
-      { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_x", name: "X", fields: [{ name: "a", type: "text?" }] },
+      { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_x", name: "X", fields: [{ name: "a", type: "string?" }] },
       { op: "node.add", flowId: KIT, id: "n_k", type: "briar.constant", position: { x: 0, y: 0 }, config: { type: "int" } },
     ]);
     expect(r.resolved[0]).toMatchObject({ type: ir.list(ir.optional(ir.named("ty_char"))) });
-    expect(r.resolved[1]).toMatchObject({ fields: [{ name: "a", type: ir.optional(ir.text()) }] });
+    expect(r.resolved[1]).toMatchObject({ fields: [{ name: "a", type: ir.optional(ir.string()) }] });
     expect(r.resolved[2]).toMatchObject({ config: { type: ir.int() } });
     expect(nodeOf(r.doc, KIT, "n_k")!.config).toEqual({ type: ir.int() });
   });

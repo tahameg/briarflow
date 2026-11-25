@@ -8,10 +8,10 @@ import { CLOCK, FakeBackend, baseDoc, tick } from "./fakes.js";
 const print = defineNode({
   type: "debug.print",
   frontend: true,
-  inputs: { text: t.text(), browserConsole: { type: t.boolean(), default: false } },
+  inputs: { text: t.string(), browserConsole: { type: t.bool(), default: false } },
   run: () => ({}),
 });
-const plain = defineNode({ type: "debug.echo", inputs: { text: t.text() }, outputs: { text: t.text() }, run: ({ inputs }) => inputs });
+const plain = defineNode({ type: "debug.echo", inputs: { text: t.string() }, outputs: { text: t.string() }, run: ({ inputs }) => inputs });
 const catalog = createCatalog([definePack({ name: "debug", version: "1.0.0", nodes: [print, plain] })]);
 
 async function setup(frontendNodes?: Record<string, FrontendNodeHandler>) {

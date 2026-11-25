@@ -35,7 +35,7 @@ import {
 describe("constants", () => {
   it("match the contract", () => {
     expect(CONTEXT_FORMAT).toBe("briarflow.context");
-    expect(CONTEXT_FORMAT_VERSION).toBe(1);
+    expect(CONTEXT_FORMAT_VERSION).toBe(2);
     expect(FLOW_INPUT_NODE_TYPE).toBe("briar.input");
     expect(FLOW_OUTPUT_NODE_TYPE).toBe("briar.output");
     expect(VARIABLE_NODE_TYPES).toEqual({
@@ -52,7 +52,7 @@ describe("createContextDocument", () => {
     const doc = createContextDocument({ name: "Marketing", idGenerator: createSequentialIdGenerator(), clock: fixedClock });
     expect(doc).toEqual({
       format: "briarflow.context",
-      formatVersion: 1,
+      formatVersion: 2,
       id: "ctx_1",
       name: "Marketing",
       revision: 0,
@@ -231,8 +231,8 @@ describe("deserializeContext", () => {
   });
 
   it("formatVersion newer than supported → format.unsupported_version", () => {
-    const details = formatError(mutated((d) => void (d.formatVersion = 2)), "format.unsupported_version");
-    expect(details).toMatchObject({ formatVersion: 2 });
+    const details = formatError(mutated((d) => void (d.formatVersion = 3)), "format.unsupported_version");
+    expect(details).toMatchObject({ formatVersion: 3 });
     expect(details.supported).toBeDefined();
   });
 

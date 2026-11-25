@@ -234,3 +234,33 @@ Phase-1 contract decisions (lead):
 59. **Phase 3 reviewed:** `docs/tasks/phase-3.md` is the accepted contract (lead review notes in
     its §7).
 
+
+## 2026-11-25 — Types v2 (owner)
+
+60. **Five primitives: `int`, `float`, `bool`, `string`, `binary`.** `char` and `byte` are left
+    out (JavaScript has neither; `string` and `binary` cover them). `binary` is the id of a media
+    registry entry, never the bytes, so JSON stays small. Alternatives: keep `text`, `boolean`
+    and the media primitives (rejected: each was a special case with its own settings).
+61. **Text, media, JSON, secrets and errors are built-in structs** (`briar.Text`, `briar.Image`,
+    …), built from the primitives and in every scope. `Text { value: string }` is for what
+    people type; unlimited text is a plain `string`. Owner: "if you want it unlimited, use
+    string"; text fits a struct.
+62. **Limits are static fields; types with limits extend a built-in.** A struct field may be
+    static (the type fixes its value; values never carry it). A struct may extend another: it
+    inherits every field and may only set or add static fields, so `ShortText extends Text
+    { maxLength = 80 }` is accepted wherever `Text` is. Type-level settings (`text{maxLength}`,
+    `image{formats}`) are gone. Only `int` / `float` keep IR constraints, lists keep
+    `minItems` / `maxItems`. Alternative rejected by the owner: Text as a type with settings.
+63. **One truthiness rule** (`isTruthy`, types.md §7.1) for Branch, `{{#if}}` and As bool:
+    `false`, `0`, `""`, an empty list, an empty Text, null and unset are false. As bool no longer
+    reads `"false"` / `"no"` text as false. Loops take lists only.
+64. **`extends` is the only subtyping**, followed everywhere a type is compared: assignability,
+    generic join / meet, conversions, the editor's connection plan, members, schemas, toText,
+    secret checks. Built-in ids resolve between global and pack types.
+65. **Format 2 with a migration from 1** (types.md §13). Text constraints are dropped by the
+    migration (extend `Text` for limits). Media facts a value lacks (a migrated value's empty
+    mime) are filled from the registry entry before a node runs.
+66. **Python protocol 2.** The SDK follows the same model: `Text`, `Image`… are dataclasses,
+    `ClassVar` attributes are static fields, a `@struct` subclass extends its base. Its text and
+    media constraint markers are gone. The SDK checks input limits; output limits are the
+    engine's, as the protocol already said. Python support stays (Giftibul does not load it).

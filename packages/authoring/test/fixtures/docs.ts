@@ -56,22 +56,22 @@ export function richDoc(): ContextDocument {
       enumType("ty_unused", "Unused", ["a", "b"]),
     ],
     globals: [
-      { id: "gv_brand", name: "brand", type: ir.text(), access: "readonly", value: "Acme" },
+      { id: "gv_brand", name: "brand", type: ir.string(), access: "readonly", value: "Acme" },
       { id: "gv_count", name: "count", type: ir.int(), access: "readwrite", value: 0 },
       { id: "gv_hero", name: "hero", type: ir.named("ty_char"), access: "readwrite", value: { ...HERO } },
-      { id: "gv_spare", name: "spare", type: ir.text(), access: "readwrite" },
+      { id: "gv_spare", name: "spare", type: ir.string(), access: "readwrite" },
     ],
     flows: [
       portraitFlow,
       flow({
         id: KIT,
         name: "Kit",
-        types: [enumType("ty_mood", "Mood", ["calm", "angry"]), struct("ty_pair", "Pair", [field("left", ir.text()), field("mood", ir.named("ty_mood"))])],
-        inputs: [field("topic", ir.text(), { default: "cats" })],
-        outputs: [field("summary", ir.text())],
+        types: [enumType("ty_mood", "Mood", ["calm", "angry"]), struct("ty_pair", "Pair", [field("left", ir.string()), field("mood", ir.named("ty_mood"))])],
+        inputs: [field("topic", ir.string(), { default: "cats" })],
+        outputs: [field("summary", ir.string())],
         variables: [
           { id: "var_n", name: "n", type: ir.int(), access: "private", default: 1 },
-          { id: "var_title", name: "title", type: ir.text(), access: "public", default: "T" },
+          { id: "var_title", name: "title", type: ir.string(), access: "public", default: "T" },
           { id: "var_mood", name: "mood", type: ir.named("ty_mood"), access: "private", default: "calm" },
           { id: "var_hero", name: "hero", type: ir.named("ty_char"), access: "private", default: { name: "Bo", age: 1, style: "pixel", nickname: null } },
         ],
@@ -85,7 +85,7 @@ export function richDoc(): ContextDocument {
           node("n_src", "kit.textSource", { x: 100, y: 600 }),
           node("n_sink", "kit.sinkText", { x: 300, y: 600 }),
           node("n_c", "kit.sinkConstrained", { x: 100, y: 700 }, { values: { value: 5 } }),
-          node("n_const", "briar.constant", { x: 100, y: 800 }, { config: { type: ir.list(ir.text()) }, values: { value: ["anime"] } }),
+          node("n_const", "briar.constant", { x: 100, y: 800 }, { config: { type: ir.list(ir.string()) }, values: { value: ["anime"] } }),
           node(
             "n_chars",
             "briar.constant",
@@ -115,13 +115,13 @@ export const SECTION_10_BATCH: readonly Command[] = [
     id: "ty_char",
     name: "Character",
     fields: [
-      { name: "name", type: "text" },
+      { name: "name", type: "string" },
       { name: "style", type: "ArtStyle" },
     ],
   },
   { op: "flow.create", id: "flow_p", name: "Portrait", inputNodeId: "n_in", outputNodeId: "n_out" },
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
-  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "text" },
+  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "string" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
   {
     op: "node.add",

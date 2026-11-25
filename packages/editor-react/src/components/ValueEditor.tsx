@@ -5,8 +5,9 @@
  */
 import { useEffect, useId, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { MediaRef, TypeRef, TypeScope } from "@briarflow/core";
-import { formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
+import type { TypeRef, TypeScope } from "@briarflow/core";
+import { builtinView, formatBytes, initialValue, isMediaRef, jsonErrorLocation, mediaHref, previewValue, widgetKind } from "../values.js";
+import { formatToMime, mediaValue, type MediaKind, type MediaRef } from "@briarflow/core";
 import { useMediaEntry } from "../context.js";
 import { SecretPicker } from "./Vault.js";
 
@@ -41,7 +42,7 @@ const stop = (e: KeyboardEvent) => e.stopPropagation();
  *
  * @example
  * ```tsx
- * <ValueEditor type={{ kind: "primitive", name: "text" }} value="Aria" label="name" onCommit={(v) => …} />
+ * <ValueEditor type={{ kind: "primitive", name: "string" }} value="Aria" label="name" onCommit={(v) => …} />
  * ```
  */
 export function ValueEditor(props: ValueEditorProps) {
@@ -52,6 +53,21 @@ export function ValueEditor(props: ValueEditorProps) {
   switch (kind) {
     case "text":
       return <TextValue {...props} cls={cls} />;
+    case "textStruct": {
+      // A Text value is { value }; its multiline hint is a static field of the type.
+      const view = builtinView(props.type, props.scope);
+      const text = typeof props.value === "object" && props.value !== null ? (props.value as { value?: unknown }).value : undefined;
+      return (
+        <TextValue
+          {...props}
+          cls={cls}
+          value={typeof text === "string" ? text : undefined}
+          multiline={view?.statics.get("multiline") === true}
+          maxLength={numberOrUndefined(view?.statics.get("maxLength"))}
+          onCommit={(v) => props.onCommit({ value: v })}
+        />
+      );
+    }
     case "int":
     case "float":
       return <NumberValue {...props} int={kind === "int"} cls={cls} />;
@@ -91,13 +107,37 @@ export function ValueEditor(props: ValueEditorProps) {
     }
     case "optional":
       return <OptionalValue {...props} />;
-    case "media":
-      return <MediaValue {...props} />;
+    case "media": {
+      const view = builtinView(props.type, props.scope);
+      const kind = view?.mediaKind ?? "file";
+      const data = typeof props.value === "object" && props.value !== null ? (props.value as { data?: unknown }).data : undefined;
+      const formats = view?.statics.get("formats");
+      const limits = {
+        mimes: Array.isArray(formats) ? formats.map((f) => formatToMime(String(f))) : [],
+        maxBytes: numberOrUndefined(view?.statics.get("maxBytes")),
+        kind,
+      };
+      return <MediaValue {...props} value={data} limits={limits} onUpload={(ref, file) => describeUpload(kind, ref, file).then(props.onCommit)} />;
+    }
+    case "binary":
+      return <MediaValue {...props} onUpload={async (ref) => props.onCommit(ref)} />;
     case "unbound":
       return <span className="bf-value-note">connect first</span>;
     case "secret":
       return <SecretValue {...props} />;
-    case "json":
+    case "json": {
+      // A Json value is { text }: edited as the JSON it holds.
+      const text = typeof props.value === "object" && props.value !== null ? (props.value as { text?: unknown }).text : undefined;
+      let doc: unknown = undefined;
+      try {
+        doc = typeof text === "string" ? JSON.parse(text) : undefined;
+      } catch {
+        doc = text;
+      }
+      const inner = { ...props, value: doc, onCommit: (v: unknown) => props.onCommit({ text: JSON.stringify(v ?? null) }) };
+      if (props.compact) return <CompactJson {...inner} cls={cls} />;
+      return <JsonValue {...inner} cls={cls} />;
+    }
     case "struct":
     case "list":
     case "unknown":
@@ -107,26 +147,48 @@ export function ValueEditor(props: ValueEditorProps) {
 }
 
 function SecretValue(props: ValueEditorProps) {
-  const t = props.type;
-  const kind = t.kind === "primitive" && t.name === "secret" ? t.constraints?.kind : undefined;
+  // A Secret value is { name }; which secrets fit is its type's static field kind.
+  const kind = builtinView(props.type, props.scope)?.statics.get("kind");
+  const name = typeof props.value === "object" && props.value !== null ? (props.value as { name?: unknown }).name : undefined;
   return (
     <SecretPicker
-      value={typeof props.value === "string" ? props.value : undefined}
-      kind={kind}
+      value={typeof name === "string" ? name : undefined}
+      kind={kind === "apiKey" || kind === "text" || kind === "number" || kind === "json" ? kind : undefined}
       label={props.label}
       compact={props.compact === true}
       disabled={props.disabled === true}
-      onChange={(name) => (name !== undefined ? props.onCommit(name) : props.onClear ? props.onClear() : props.onCommit(null))}
+      onChange={(picked) => (picked !== undefined ? props.onCommit({ name: picked }) : props.onClear ? props.onClear() : props.onCommit(null))}
     />
   );
 }
 
-function TextValue(props: ValueEditorProps & { cls: (base: string) => string }) {
-  const { type, value, onCommit, widget, label, disabled, placeholder, cls } = props;
+const numberOrUndefined = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/** What a media struct type allows (its static fields), checked before uploading. */
+interface UploadLimits {
+  mimes: readonly string[];
+  maxBytes: number | undefined;
+  kind: MediaKind;
+}
+
+function uploadProblem(file: File, limits: UploadLimits | undefined): string | undefined {
+  if (!limits) return undefined;
+  const mime = file.type.toLowerCase();
+  const prefix = { image: "image/", video: "video/", audio: "audio/", model3d: "model/", file: "" }[limits.kind];
+  if (mime !== "" && prefix !== "" && !mime.startsWith(prefix) && !(limits.kind === "model3d" && mime === "application/octet-stream")) {
+    return `${file.name} is ${mime}, not a${limits.kind === "image" || limits.kind === "audio" ? "n" : ""} ${limits.kind}.`;
+  }
+  if (limits.mimes.length > 0 && mime !== "" && !limits.mimes.includes(mime)) return `${file.name} is ${mime}; this type takes ${limits.mimes.join(", ")}.`;
+  if (limits.maxBytes !== undefined && file.size > limits.maxBytes) return `${file.name} is ${formatBytes(file.size)}; this type takes at most ${formatBytes(limits.maxBytes)}.`;
+  return undefined;
+}
+
+function TextValue(props: ValueEditorProps & { cls: (base: string) => string; multiline?: boolean; maxLength?: number | undefined }) {
+  const { value, onCommit, widget, label, disabled, placeholder, cls } = props;
   const text = typeof value === "string" ? value : "";
   const [draft, setDraft] = useState(text);
   useEffect(() => setDraft(text), [text]);
-  const multiline = widget === "textarea" || (type.kind === "primitive" && type.name === "text" && type.constraints?.multiline === true);
+  const multiline = widget === "textarea" || props.multiline === true;
   const commit = () => {
     if (draft !== text || value === undefined) onCommit(draft);
   };
@@ -139,6 +201,7 @@ function TextValue(props: ValueEditorProps & { cls: (base: string) => string }) 
         value={draft}
         disabled={disabled}
         placeholder={placeholder}
+        maxLength={props.maxLength}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={stop}
@@ -153,6 +216,7 @@ function TextValue(props: ValueEditorProps & { cls: (base: string) => string }) 
       value={draft}
       disabled={disabled}
       placeholder={placeholder}
+      maxLength={props.maxLength}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -241,8 +305,8 @@ function OptionalValue(props: ValueEditorProps) {
   );
 }
 
-function MediaValue(props: ValueEditorProps) {
-  const { value, onCommit, onClear, label, disabled, mediaUrl, uploadMedia, compact } = props;
+function MediaValue(props: ValueEditorProps & { onUpload: (ref: MediaRef, file: File) => Promise<void>; limits?: UploadLimits }) {
+  const { value, onUpload, onClear, label, disabled, mediaUrl, uploadMedia, compact, limits } = props;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const ref = isMediaRef(value) ? value : undefined;
@@ -267,14 +331,20 @@ function MediaValue(props: ValueEditorProps) {
             type="file"
             className="bf-visually-hidden"
             aria-label={`Upload ${label}`}
+            accept={limits && limits.mimes.length > 0 ? limits.mimes.join(",") : undefined}
             disabled={disabled || busy}
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
+              const problem = uploadProblem(file, limits);
+              if (problem) {
+                setError(problem);
+                return;
+              }
               setBusy(true);
               setError(undefined);
               try {
-                onCommit(await uploadMedia(file));
+                await onUpload(await uploadMedia(file), file);
               } catch (err) {
                 setError(err instanceof Error ? err.message : String(err));
               } finally {
@@ -387,4 +457,20 @@ function syntaxError(draft: string): string | undefined {
     const where = jsonErrorLocation(draft);
     return `Not valid JSON${where ? ` (${where})` : ""}. Use double quotes for keys and strings.`;
   }
+}
+
+/** A media struct value for an uploaded file: its mime, size, name and (pictures) dimensions. */
+async function describeUpload(kind: MediaKind, ref: MediaRef, file: File) {
+  const meta: { filename: string; width?: number; height?: number } = { filename: file.name };
+  if (kind === "image" && typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      meta.width = bitmap.width;
+      meta.height = bitmap.height;
+      bitmap.close();
+    } catch {
+      // Not decodable here (e.g. an SVG in some browsers): the size stays unknown.
+    }
+  }
+  return mediaValue(kind, ref, { mime: file.type || "application/octet-stream", bytes: file.size, meta });
 }

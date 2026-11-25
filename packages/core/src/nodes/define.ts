@@ -176,7 +176,7 @@ export interface NodeDefinitionInput<
    */
   canFail?: boolean;
   /**
-   * A conversion node turns a value of one type into another (As text, As int, …). It must be
+   * A conversion node turns a value of one type into another (As string, As int, …). It must be
    * pure, have static ports, one output, and take the converted value on its first input
    * (any other input needs a default). Editors insert it on their own when a wire joins two
    * types it converts between (`findConversions`).

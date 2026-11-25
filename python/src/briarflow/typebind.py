@@ -1,4 +1,10 @@
-"""Python annotations -> Briarflow types, and value conversion in both directions."""
+"""Python annotations -> Briarflow types, and value conversion in both directions.
+
+Primitives: ``str`` -> ``string``, ``int``, ``float``, ``bool``, ``Binary`` -> ``binary``.
+Everything else is a struct or an enum: the built-ins (``Text``, ``Image``…, structs.py),
+``@struct`` dataclasses, and ``@struct`` classes that extend another struct, which may only give
+its static fields (``ClassVar`` attributes) other values (types.md §1.3).
+"""
 
 from __future__ import annotations
 
@@ -9,25 +15,26 @@ import re
 import types as _pytypes
 import typing
 from enum import Enum
-from typing import Annotated, Any, Union, get_args, get_origin
+from typing import Annotated, Any, ClassVar, Union, get_args, get_origin
 
 from .constraints import Constraint, Port
-from .media import MEDIA_CLASSES, MediaRef, format_to_mime, mime_matches_primitive
+from .media import Binary, format_to_mime, mime_matches_kind
+from .structs import BUILTIN_NAMES, Text, builtin_id, builtin_root, media_kind_of, wire_name
 
 MAX_SAFE_INT = 2**53 - 1
 
 TYPE_NAME_RE = re.compile(r"^[A-Z][A-Za-z0-9_]*$")
 FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 ENUM_VALUE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
-RESERVED_TYPE_NAMES = frozenset(
-    {"Text", "Int", "Float", "Boolean", "Image", "Video", "Audio", "Model3d", "Model3D", "File",
-     "List", "Optional"}
+RESERVED_TYPE_NAMES = BUILTIN_NAMES | frozenset(
+    {"Int", "Float", "Bool", "String", "Binary", "Boolean", "Model3d", "List", "Optional"}
 )
 RESERVED_FIELD_NAMES = frozenset({"__proto__", "constructor", "prototype"})
 
 SUPPORTED = (
-    "str, int, float, bool, Image, Video, Audio, Model3D, File, list[T], T | None, "
-    "@struct dataclasses, str-valued Enum classes, Annotated[T, ...]"
+    "str, int, float, bool, Binary, the built-in structs (Text, Image, Video, Audio, Model3D, "
+    "File, Json, Secret, ApiKey, Error), list[T], T | None, @struct classes, str-valued Enum "
+    "classes, Annotated[T, ...]"
 )
 
 
@@ -143,8 +150,10 @@ def resolve(ann: Any, where: str) -> tuple[Binding, Port | None]:
             f"Supported types: {SUPPORTED}"
         )
 
-    if origin is list:
+    if origin is list or origin is tuple:
         args = get_args(ann)
+        if origin is tuple and len(args) == 2 and args[1] is Ellipsis:
+            args = (args[0],)
         if len(args) != 1:
             raise TypeError(f"{where}: list needs one item type, e.g. list[str]")
         item, _ = resolve(args[0], where)
@@ -153,22 +162,17 @@ def resolve(ann: Any, where: str) -> tuple[Binding, Port | None]:
         raise TypeError(f"{where}: list needs an item type, e.g. list[str]")
 
     if ann is str:
-        return Prim("text"), None
+        return Prim("string"), None
     if ann is bool:
-        return Prim("boolean"), None
+        return Prim("bool"), None
     if ann is int:
         return Prim("int"), None
     if ann is float:
         return Prim("float"), None
+    if ann is Binary:
+        return Prim("binary"), None
 
     if isinstance(ann, type):
-        if issubclass(ann, MediaRef):
-            if ann.primitive is None:
-                raise TypeError(
-                    f"{where}: use a specific media class (Image, Video, Audio, Model3D or File), "
-                    f"not MediaRef"
-                )
-            return Prim(ann.primitive), None
         if issubclass(ann, Enum):
             if not issubclass(ann, str):
                 raise TypeError(
@@ -184,8 +188,7 @@ def resolve(ann: Any, where: str) -> tuple[Binding, Port | None]:
             return StructOf(ann), None
         if dataclasses.is_dataclass(ann):
             raise TypeError(
-                f"{where}: dataclass {ann.__name__} is not a Briarflow type; decorate it with "
-                f"@struct (above @dataclass)"
+                f"{where}: {ann.__name__} is not a Briarflow type; decorate it with @struct"
             )
 
     if isinstance(ann, (str, typing.ForwardRef)):
@@ -208,7 +211,7 @@ def _apply_constraints(binding: Binding, markers: list[Constraint], where: str) 
             if kind not in m.applies_to:
                 raise TypeError(f"{where}: constraint {m!r} cannot be used on {kind}")
             cons[m.key] = m.value
-        _check_pairs(cons, where)
+        _check_pair(cons, "min", "max", where)
         return Prim(kind, cons)
     if isinstance(binding, ListOf):
         out = ListOf(binding.of, binding.min_items, binding.max_items)
@@ -219,37 +222,36 @@ def _apply_constraints(binding: Binding, markers: list[Constraint], where: str) 
                 out.min_items = m.value
             else:
                 out.max_items = m.value
-        _check_pairs({"minItems": out.min_items, "maxItems": out.max_items}, where)
+        _check_pair({"minItems": out.min_items, "maxItems": out.max_items}, "minItems", "maxItems", where)
         return out
+    hint = ""
+    if isinstance(binding, StructOf):
+        hint = (
+            f"; limits of {binding.cls.__name__} are its static fields: extend it "
+            f"(@struct class Short{binding.cls.__name__}({binding.cls.__name__}): …)"
+        )
     raise TypeError(
-        f"{where}: constraints like {markers[0]!r} cannot be used on {binding.describe()}"
+        f"{where}: constraints like {markers[0]!r} cannot be used on {binding.describe()}{hint}"
     )
 
 
-_PAIRS = (
-    ("minLength", "maxLength"),
-    ("min", "max"),
-    ("minItems", "maxItems"),
-    ("minWidth", "maxWidth"),
-    ("minHeight", "maxHeight"),
-)
-
-
-def _check_pairs(cons: dict[str, Any], where: str) -> None:
-    for lo, hi in _PAIRS:
-        a, b = cons.get(lo), cons.get(hi)
-        if a is not None and b is not None and a > b:
-            raise ValueError(f"{where}: constraint {lo}={a} is greater than {hi}={b}")
+def _check_pair(cons: dict[str, Any], lo: str, hi: str, where: str) -> None:
+    a, b = cons.get(lo), cons.get(hi)
+    if a is not None and b is not None and a > b:
+        raise ValueError(f"{where}: {lo}={a} is greater than {hi}={b}")
 
 
 # --------------------------------------------------------------------------- structs
 
 
 class FieldSpec:
-    __slots__ = ("name", "binding", "description", "has_default", "default_factory")
+    """An instance field of a struct (or a field of an @outputs class)."""
 
-    def __init__(self, name, binding, description, has_default, default_factory):
+    __slots__ = ("name", "wire", "binding", "description", "has_default", "default_factory")
+
+    def __init__(self, name, wire, binding, description, has_default, default_factory):
         self.name: str = name
+        self.wire: str = wire
         self.binding: Binding = binding
         self.description: str | None = description
         self.has_default: bool = has_default
@@ -259,16 +261,27 @@ class FieldSpec:
         return self.default_factory()
 
 
+class StaticSpec:
+    """A static field: its value is fixed by the type (a ``ClassVar``), never by a value."""
+
+    __slots__ = ("name", "wire", "binding", "value", "own", "description")
+
+    def __init__(self, name, wire, binding, value, own, description):
+        self.name: str = name
+        self.wire: str = wire
+        self.binding: Binding = binding
+        self.value: Any = value
+        self.own: bool = own  # declared or given a value by this class itself
+        self.description: str | None = description
+
+
 def class_fields(cls: type, what: str) -> list[FieldSpec]:
-    """Fields of a @struct / @outputs dataclass, bound to Briarflow types (cached)."""
+    """Instance fields of a struct / @outputs dataclass, bound to Briarflow types (cached)."""
     cache_attr = "__briarflow_fields__"
     cached = cls.__dict__.get(cache_attr)
     if cached is not None:
         return cached
-    try:
-        hints = typing.get_type_hints(cls, include_extras=True)
-    except Exception as exc:  # NameError for unresolved forward refs, etc.
-        raise TypeError(f"{what} {cls.__name__}: cannot resolve field annotations: {exc}") from None
+    hints = _hints(cls, what)
     specs: list[FieldSpec] = []
     seen: dict[str, str] = {}
     for f in dataclasses.fields(cls):
@@ -292,10 +305,117 @@ def class_fields(cls: type, what: str) -> list[FieldSpec]:
             factory = None
             has_default = False
         specs.append(
-            FieldSpec(f.name, binding, port.description if port else None, has_default, factory)
+            FieldSpec(f.name, wire_name(cls, f.name), binding, port.description if port else None, has_default, factory)
         )
-    setattr(cls, cache_attr, specs)
+    type.__setattr__(cls, cache_attr, specs)
     return specs
+
+
+def _hints(cls: type, what: str) -> dict[str, Any]:
+    try:
+        return typing.get_type_hints(cls, include_extras=True)
+    except Exception as exc:  # NameError for unresolved forward refs, etc.
+        raise TypeError(f"{what} {cls.__name__}: cannot resolve field annotations: {exc}") from None
+
+
+def struct_base(cls: type) -> type | None:
+    """The struct ``cls`` extends (the nearest struct class among its bases), if any."""
+    for base in cls.__mro__[1:]:
+        if is_struct_class(base):
+            return base
+    return None
+
+
+def struct_root(cls: type) -> type:
+    """The struct at the top of ``cls``'s ``extends`` chain (``Text`` for ``ShortText``)."""
+    root = cls
+    base = struct_base(cls)
+    while base is not None:
+        root = base
+        base = struct_base(base)
+    return root
+
+
+def class_statics(cls: type) -> dict[str, StaticSpec]:
+    """Static fields of a struct, inherited ones included, with this class's values (cached)."""
+    cache_attr = "__briarflow_statics__"
+    cached = cls.__dict__.get(cache_attr)
+    if cached is not None:
+        return cached
+    hints = _hints(cls, "struct")
+    out: dict[str, StaticSpec] = {}
+    for name, ann in hints.items():
+        if get_origin(ann) is not ClassVar or name.startswith("_"):
+            continue
+        args = get_args(ann)
+        where = f"struct {cls.__name__}: static field '{name}'"
+        if len(args) != 1:
+            raise TypeError(f"{where} needs a type, e.g. ClassVar[int]")
+        if not hasattr(cls, name):
+            raise ValueError(f"{where} needs a value; static fields are fixed by the type")
+        _check_field_name(name, where)
+        binding, port = resolve(args[0], where)
+        out[name] = StaticSpec(
+            name, wire_name(cls, name), binding, getattr(cls, name), name in cls.__dict__, port.description if port else None
+        )
+    type.__setattr__(cls, cache_attr, out)
+    return out
+
+
+def check_struct(cls: type, pack_name: str) -> None:
+    """Raises ``TypeError`` / ``ValueError`` for a struct that breaks the ``extends`` rules or
+    whose static values are wrong (types.md §1.3)."""
+    who = f"pack {pack_name}: struct {cls.__name__}"
+    base = struct_base(cls)
+    fields = class_fields(cls, "struct")
+    statics = class_statics(cls)
+    if base is not None:
+        base_fields = {f.name for f in class_fields(base, "struct")}
+        for f in fields:
+            if f.name not in base_fields:
+                raise TypeError(
+                    f"{who} extends {base.__name__}, so it can only give static fields values; "
+                    f"field '{f.name}' is new. Declare it as ClassVar[…] = value, or don't extend."
+                )
+        inherited = class_statics(base)
+        for name, s in statics.items():
+            prior = inherited.get(name)
+            if prior is not None and describe_binding(prior.binding) != describe_binding(s.binding):
+                raise TypeError(
+                    f"{who}: static field '{name}' is {describe_binding(prior.binding)} in "
+                    f"{base.__name__}; an extending struct can't change its type"
+                )
+    for s in statics.values():
+        try:
+            json.dumps(to_json(s.value, s.binding, f"{cls.__name__}.{s.name}"), allow_nan=False)
+        except InvalidValue as exc:
+            raise ValueError(f"{who}: static field {exc}") from None
+    _check_limits_of(cls, who)
+
+
+def describe_binding(b: Binding) -> str:
+    return b.describe()
+
+
+def _check_limits_of(cls: type, who: str) -> None:
+    root = builtin_root(cls)
+    if root is None:
+        return
+    s = {k: v.value for k, v in class_statics(cls).items()}
+    pairs = [("min_length", "max_length"), ("min_width", "max_width"), ("min_height", "max_height")]
+    for lo, hi in pairs:
+        a, b = s.get(lo), s.get(hi)
+        if a is not None and b is not None and a > b:
+            raise ValueError(f"{who}: {wire_name(cls, lo)}={a} is greater than {wire_name(cls, hi)}={b}")
+    for key, value in s.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value < 0 and key != "kind":
+            raise ValueError(f"{who}: {wire_name(cls, key)} must be >= 0 (got {value})")
+    pattern = s.get("pattern")
+    if pattern is not None:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"{who}: pattern {pattern!r} does not compile: {exc}") from None
 
 
 def _check_field_name(name: str, where: str) -> None:
@@ -335,7 +455,7 @@ def first_paragraph(doc: str | None) -> str | None:
 
 
 def type_id(cls: type, pack_name: str) -> str:
-    return f"{pack_name}.{cls.__name__}"
+    return builtin_id(cls) or f"{pack_name}.{cls.__name__}"
 
 
 def to_typeref(b: Binding, pack_name: str) -> dict[str, Any]:
@@ -387,18 +507,6 @@ def _got(value: Any) -> str:
     return text if len(text) <= 60 else text[:57] + "..."
 
 
-def _check_text(value: str, cons: dict[str, Any], path: str) -> None:
-    n = cons.get("minLength")
-    if n is not None and len(value) < n:
-        raise InvalidValue(path, f"must be at least {n} characters long")
-    n = cons.get("maxLength")
-    if n is not None and len(value) > n:
-        raise InvalidValue(path, f"must be at most {n} characters long")
-    pat = cons.get("pattern")
-    if pat is not None and re.fullmatch(pat, value) is None:
-        raise InvalidValue(path, f"must match the pattern {pat}")
-
-
 def _check_range(value: int | float, cons: dict[str, Any], path: str) -> None:
     lo, hi = cons.get("min"), cons.get("max")
     if lo is not None and value < lo:
@@ -425,32 +533,63 @@ def _as_float(value: Any, path: str) -> float:
     return float(value)
 
 
-def _check_media(primitive: str, mime: str, size: Any, meta: Any, cons: dict, path: str) -> None:
-    if not mime_matches_primitive(mime, primitive):
-        raise InvalidValue(path, f"is not a valid {primitive}: mime {mime} is not a {primitive} type")
-    formats = cons.get("formats")
+def check_limits(cls: type, value: dict[str, Any], path: str) -> None:
+    """Checks a struct value (wire form) against the limits its type fixes: Text's length and
+    pattern, media's formats, size, dimensions and duration."""
+    root = builtin_root(cls)
+    if root is None:
+        return
+    s = {k: v.value for k, v in class_statics(cls).items()}
+    if issubclass(root, Text):
+        text = value.get("value")
+        if not isinstance(text, str):
+            return
+        at = f"{path}.value"
+        n = s.get("min_length")
+        if n is not None and len(text) < n:
+            raise InvalidValue(at, f"must be at least {n} characters long")
+        n = s.get("max_length")
+        if n is not None and len(text) > n:
+            raise InvalidValue(at, f"must be at most {n} characters long")
+        pat = s.get("pattern")
+        if pat is not None and re.fullmatch(pat, text) is None:
+            raise InvalidValue(at, f"must match the pattern {pat}")
+        return
+    kind = media_kind_of(cls)
+    if kind is None:
+        return
+    mime = value.get("mime")
+    if not isinstance(mime, str):
+        return
+    if not mime_matches_kind(mime, kind):
+        raise InvalidValue(path, f"is not a valid {kind}: mime {mime} is not a {kind} type")
+    formats = s.get("formats") or ()
     if formats:
         allowed = {format_to_mime(f) for f in formats}
         if mime.lower() not in allowed:
-            raise InvalidValue(
-                path, f"must be one of the formats {', '.join(formats)} (got {mime})"
-            )
-    n = cons.get("maxBytes")
+            raise InvalidValue(path, f"must be one of the formats {', '.join(formats)} (got {mime})")
+    size = value.get("size")
+    data = value.get("data")
+    if size is None and isinstance(data, dict):
+        size = data.get("bytes")
+    n = s.get("max_bytes")
     if n is not None and isinstance(size, int) and size > n:
         raise InvalidValue(path, f"must be at most {n} bytes")
-    if isinstance(meta, dict):
-        w, h, d = meta.get("width"), meta.get("height"), meta.get("durationSec")
-        checks = (
-            ("minWidth", w, lambda v, n: v >= n, "must be at least {n} px wide"),
-            ("maxWidth", w, lambda v, n: v <= n, "must be at most {n} px wide"),
-            ("minHeight", h, lambda v, n: v >= n, "must be at least {n} px high"),
-            ("maxHeight", h, lambda v, n: v <= n, "must be at most {n} px high"),
-            ("maxDurationSec", d, lambda v, n: v <= n, "must be at most {n} seconds long"),
-        )
-        for key, v, ok, msg in checks:
-            n = cons.get(key)
-            if n is not None and isinstance(v, (int, float)) and not ok(v, n):
-                raise InvalidValue(path, msg.format(n=n))
+    checks = (
+        ("min_width", value.get("width"), lambda v, n: v >= n, "must be at least {n} px wide"),
+        ("max_width", value.get("width"), lambda v, n: v <= n, "must be at most {n} px wide"),
+        ("min_height", value.get("height"), lambda v, n: v >= n, "must be at least {n} px high"),
+        ("max_height", value.get("height"), lambda v, n: v <= n, "must be at most {n} px high"),
+        ("max_duration", value.get("duration"), lambda v, n: v <= n, "must be at most {n} seconds long"),
+    )
+    for key, v, ok, msg in checks:
+        n = s.get(key)
+        if n is not None and isinstance(v, (int, float)) and not ok(v, n):
+            raise InvalidValue(path, msg.format(n=n))
+
+
+def _static_wires(cls: type) -> dict[str, str]:
+    return {s.wire: s.name for s in class_statics(cls).values()}
 
 
 def from_json(value: Any, b: Binding, path: str) -> Any:
@@ -462,10 +601,9 @@ def from_json(value: Any, b: Binding, path: str) -> Any:
     if isinstance(b, Prim):
         cons = b.constraints
         name = b.name
-        if name == "text":
+        if name == "string":
             if not isinstance(value, str):
-                raise InvalidValue(path, f"must be text (got {_got(value)})")
-            _check_text(value, cons, path)
+                raise InvalidValue(path, f"must be a string (got {_got(value)})")
             return value
         if name == "int":
             v = _as_int(value, path)
@@ -475,11 +613,11 @@ def from_json(value: Any, b: Binding, path: str) -> Any:
             f = _as_float(value, path)
             _check_range(f, cons, path)
             return f
-        if name == "boolean":
+        if name == "bool":
             if not isinstance(value, bool):
                 raise InvalidValue(path, f"must be true or false (got {_got(value)})")
             return value
-        return _media_from_json(value, name, cons, path)
+        return _binary_from_json(value, path)
     if isinstance(b, EnumOf):
         members = [m.value for m in b.cls]
         if isinstance(value, str) and value in members:
@@ -498,47 +636,50 @@ def from_json(value: Any, b: Binding, path: str) -> Any:
         if not isinstance(value, dict):
             raise InvalidValue(path, f"must be a {cls.__name__} object (got {_got(value)})")
         fields = class_fields(cls, "struct")
-        known = {f.name for f in fields}
+        known = {f.wire for f in fields}
+        statics = _static_wires(cls)
         for key in value:
+            if key in statics:
+                raise InvalidValue(f"{path}.{key}", f"is a static field of {cls.__name__}: its value comes from the type and is not part of a value")
             if key not in known:
                 raise InvalidValue(
                     f"{path}.{key}",
-                    f"is not a field of {cls.__name__}. Known fields: {', '.join(f.name for f in fields)}",
+                    f"is not a field of {cls.__name__}. Known fields: {', '.join(f.wire for f in fields)}",
                 )
         kwargs: dict[str, Any] = {}
         for f in fields:
-            fpath = f"{path}.{f.name}"
-            if f.name in value:
-                kwargs[f.name] = from_json(value[f.name], f.binding, fpath)
+            fpath = f"{path}.{f.wire}"
+            if f.wire in value:
+                kwargs[f.name] = from_json(value[f.wire], f.binding, fpath)
             elif f.has_default:
                 kwargs[f.name] = f.default_value()
             elif isinstance(f.binding, Opt):
                 kwargs[f.name] = None
             else:
                 raise InvalidValue(fpath, "is required")
+        check_limits(cls, value, path)
         return cls(**kwargs)
     raise AssertionError(b)
 
 
-def _media_from_json(value: Any, primitive: str, cons: dict, path: str) -> MediaRef:
+def _binary_from_json(value: Any, path: str) -> Binary:
     if not isinstance(value, dict):
-        raise InvalidValue(path, f"is not a valid {primitive}: expected a MediaRef object (got {_got(value)})")
+        raise InvalidValue(path, f"is not valid binary data: expected a media object (got {_got(value)})")
     uri, mime = value.get("uri"), value.get("mime")
     if not isinstance(uri, str) or not uri:
-        raise InvalidValue(path, f"is not a valid {primitive}: missing uri")
+        raise InvalidValue(path, "is not valid binary data: missing uri")
     if not isinstance(mime, str) or not mime:
-        raise InvalidValue(path, f"is not a valid {primitive}: missing mime")
+        raise InvalidValue(path, "is not valid binary data: missing mime")
     size, meta, h, url = value.get("bytes"), value.get("meta"), value.get("hash"), value.get("url")
     if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 0):
-        raise InvalidValue(path, f"is not a valid {primitive}: bytes must be a whole number >= 0")
+        raise InvalidValue(path, "is not valid binary data: bytes must be a whole number >= 0")
     if meta is not None and not isinstance(meta, dict):
-        raise InvalidValue(path, f"is not a valid {primitive}: meta must be an object")
+        raise InvalidValue(path, "is not valid binary data: meta must be an object")
     if h is not None and not isinstance(h, str):
-        raise InvalidValue(path, f"is not a valid {primitive}: hash must be a string")
+        raise InvalidValue(path, "is not valid binary data: hash must be a string")
     if url is not None and not isinstance(url, str):
-        raise InvalidValue(path, f"is not a valid {primitive}: url must be a string")
-    _check_media(primitive, mime, size, meta, cons, path)
-    return MEDIA_CLASSES[primitive](uri=uri, mime=mime, bytes=size, hash=h, meta=meta, url=url)
+        raise InvalidValue(path, "is not valid binary data: url must be a string")
+    return Binary(uri=uri, mime=mime, bytes=size, hash=h, meta=meta, url=url)
 
 
 def to_json(value: Any, b: Binding, path: str) -> Any:
@@ -549,29 +690,26 @@ def to_json(value: Any, b: Binding, path: str) -> Any:
         raise InvalidValue(path, "is required (got None)")
     if isinstance(b, Prim):
         name = b.name
-        if name == "text":
+        if name == "string":
             if isinstance(value, Enum) and isinstance(value, str):
                 value = value.value
             if not isinstance(value, str):
-                raise InvalidValue(path, f"must be text (got {_got(value)})")
+                raise InvalidValue(path, f"must be a string (got {_got(value)})")
             return value
         if name == "int":
             return _as_int(value, path)
         if name == "float":
             v = _as_float(value, path)
             return int(value) if isinstance(value, int) else v
-        if name == "boolean":
+        if name == "bool":
             if not isinstance(value, bool):
                 raise InvalidValue(path, f"must be true or false (got {_got(value)})")
             return value
-        if isinstance(value, MediaRef):
-            if not mime_matches_primitive(value.mime, name):
-                raise InvalidValue(path, f"is not a valid {name}: mime {value.mime} is not a {name} type")
+        if isinstance(value, Binary):
             return value.to_json()
         if isinstance(value, dict) and ("uri" in value or "$media" in value):
-            out = {k: v for k, v in value.items() if k != "url"}
-            return out
-        raise InvalidValue(path, f"must be a {name} MediaRef (got {_got(value)})")
+            return {k: v for k, v in value.items() if k != "url"}
+        raise InvalidValue(path, f"must be Binary data (got {_got(value)})")
     if isinstance(b, EnumOf):
         members = [m.value for m in b.cls]
         if isinstance(value, b.cls):
@@ -586,26 +724,35 @@ def to_json(value: Any, b: Binding, path: str) -> Any:
     if isinstance(b, StructOf):
         cls = b.cls
         fields = class_fields(cls, "struct")
-        if isinstance(value, cls):
-            return {f.name: to_json(getattr(value, f.name), f.binding, f"{path}.{f.name}") for f in fields}
-        if isinstance(value, dict):
-            known = {f.name for f in fields}
+        root = struct_root(cls)
+        if isinstance(value, str) and issubclass(root, Text):
+            value = {"value": value}
+        if isinstance(value, root):
+            out = {f.wire: to_json(getattr(value, f.name), f.binding, f"{path}.{f.wire}") for f in fields}
+        elif isinstance(value, dict):
+            by_wire = {f.wire: f for f in fields}
+            statics = _static_wires(cls)
             for key in value:
-                if key not in known:
+                if key in statics:
+                    raise InvalidValue(f"{path}.{key}", f"is a static field of {cls.__name__}: its value comes from the type and is not part of a value")
+                if key not in by_wire and key not in {f.name for f in fields}:
                     raise InvalidValue(
                         f"{path}.{key}",
-                        f"is not a field of {cls.__name__}. Known fields: {', '.join(sorted(known))}",
+                        f"is not a field of {cls.__name__}. Known fields: {', '.join(sorted(by_wire))}",
                     )
             out = {}
             for f in fields:
-                if f.name in value:
-                    out[f.name] = to_json(value[f.name], f.binding, f"{path}.{f.name}")
+                key = f.wire if f.wire in value else f.name
+                if key in value:
+                    out[f.wire] = to_json(value[key], f.binding, f"{path}.{f.wire}")
                 elif f.has_default:
-                    out[f.name] = to_json(f.default_value(), f.binding, f"{path}.{f.name}")
+                    out[f.wire] = to_json(f.default_value(), f.binding, f"{path}.{f.wire}")
                 elif isinstance(f.binding, Opt):
-                    out[f.name] = None
+                    out[f.wire] = None
                 else:
-                    raise InvalidValue(f"{path}.{f.name}", "is required")
-            return out
-        raise InvalidValue(path, f"must be a {cls.__name__} (got {_got(value)})")
+                    raise InvalidValue(f"{path}.{f.wire}", "is required")
+        else:
+            raise InvalidValue(path, f"must be a {cls.__name__} (got {_got(value)})")
+        # Limits of outputs are checked by the engine (python-protocol.md §1.3).
+        return out
     raise AssertionError(b)

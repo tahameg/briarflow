@@ -31,7 +31,7 @@ export interface TypePickerProps {
 
 interface MenuItem {
   key: string;
-  group: "Primitives" | "Structs" | "Enums" | "Custom";
+  group: "Primitives" | "Built-in" | "Structs" | "Enums" | "Custom";
   label: string;
   /** Base type picked by this item. */
   base: TypeRef | undefined;
@@ -127,7 +127,7 @@ function TypeMenu({
     const r = anchor.getBoundingClientRect();
     return { top: r.bottom + 4, left: r.left };
   });
-  const wrappers = shape ?? { base: { kind: "primitive", name: "text" } as TypeRef, array: false, optional: false, itemOptional: false };
+  const wrappers = shape ?? { base: { kind: "primitive", name: "string" } as TypeRef, array: false, optional: false, itemOptional: false };
   const currentBase = shape ? formatType(shape.base, scope) : undefined;
 
   const items = useMemo<MenuItem[]>(() => {
@@ -139,7 +139,8 @@ function TypeMenu({
       const ref: TypeRef = { kind: "named", id: e.decl.id };
       const name = formatType(ref, scope);
       if (!match(name)) continue;
-      out.push({ key: `n:${e.decl.id}`, group: e.decl.kind === "struct" ? "Structs" : "Enums", label: name, base: ref, hint: e.origin });
+      const group = e.origin === "builtin" ? "Built-in" : e.decl.kind === "struct" ? "Structs" : "Enums";
+      out.push({ key: `n:${e.decl.id}`, group, label: name, base: ref, hint: e.origin });
     }
     const raw = query.trim();
     if (raw && !out.some((i) => i.label === raw) && parseType(raw, scope ? { scope } : {}).ok) {

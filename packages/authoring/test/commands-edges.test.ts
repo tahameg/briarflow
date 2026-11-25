@@ -80,20 +80,20 @@ describe("edge.connect", () => {
   it("type mismatch → edge.type_mismatch with hint", () => {
     const d = build(richDoc(), [add("n_int", "kit.intSource"), add("n_tl", "kit.textListSource")]);
     reject(d, [conn("n_int.value", "n_pass.value")], "edge.type_mismatch", {
-      message: /^Cannot connect .*\(n_int\)\.value \(int\) to .*\(n_pass\)\.value \(text\)\. Use convert\.toText to turn it into text\.$/,
+      message: /^Cannot connect .*\(n_int\)\.value \(int\) to .*\(n_pass\)\.value \(string\)\. Use convert\.toText to turn it into a string\.$/,
     });
     reject(d, [conn("n_tl.list", "n_pass.value")], "edge.type_mismatch", { contains: ["Use list.get to pick one item."] });
   });
 
   it("generic conflict → edge.generic_conflict", () => {
     const d = build(richDoc(), [add("n_int", "kit.intSource"), add("n_g", "kit.same"), conn("n_int.value", "n_g.a")]);
-    reject(d, [conn("n_src.text", "n_g.b")], "edge.generic_conflict", { message: /^.*\(n_g\) already uses T = int; b would need T = text\.$/ });
+    reject(d, [conn("n_src.text", "n_g.b")], "edge.generic_conflict", { message: /^.*\(n_g\) already uses T = int; b would need T = string\.$/ });
   });
 
   it("generic bindings are stored after connect and removed after the last edge is disconnected", () => {
     const d = build(richDoc(), [add("n_g", "kit.same")]);
     const r = accept(d, [conn("n_src.text", "n_g.a", "e_g")]);
-    expect(nodeOf(r.doc, KIT, "n_g")!.typeBindings).toEqual({ T: ir.text() });
+    expect(nodeOf(r.doc, KIT, "n_g")!.typeBindings).toEqual({ T: ir.string() });
     const r2 = accept(r.doc, [{ op: "edge.disconnect", flowId: KIT, edgeId: "e_g" }]);
     expect(nodeOf(r2.doc, KIT, "n_g")!.typeBindings).toBeUndefined();
     expect("typeBindings" in nodeOf(r2.doc, KIT, "n_g")!).toBe(false);

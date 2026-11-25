@@ -17,25 +17,25 @@ describe("flow.input.add", () => {
 
   it("the new port can be connected in the same batch", () => {
     accept(richDoc(), [
-      { op: "flow.input.add", flowId: KIT, name: "extra", type: "text" },
+      { op: "flow.input.add", flowId: KIT, name: "extra", type: "string" },
       { op: "edge.connect", flowId: KIT, id: "e_x", from: { node: "n_in", port: "extra" }, to: { node: "n_pass", port: "value" } },
     ]);
   });
 
   it("an input may share a name with an output", () => {
-    accept(richDoc(), [{ op: "flow.input.add", flowId: PORTRAIT, name: "prompt", type: "text" }]);
+    accept(richDoc(), [{ op: "flow.input.add", flowId: PORTRAIT, name: "prompt", type: "string" }]);
   });
 
   it("§10 rejection: duplicate name (ignoring case) with the exact message", () => {
-    reject(richDoc(), [{ op: "flow.input.add", flowId: PORTRAIT, name: "Character", type: "text" }], "command.duplicate_name", {
+    reject(richDoc(), [{ op: "flow.input.add", flowId: PORTRAIT, name: "Character", type: "string" }], "command.duplicate_name", {
       index: 0,
       message: 'A flow input named "character" already exists in flow "Portrait". Names must be unique (ignoring case).',
     });
   });
 
   it("name rules", () => {
-    reject(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "my input", type: "text" }], "command.invalid_name", { message: msg.invalidName("my input") });
-    reject(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "constructor", type: "text" }], "command.reserved_name");
+    reject(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "my input", type: "string" }], "command.invalid_name", { message: msg.invalidName("my input") });
+    reject(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "constructor", type: "string" }], "command.reserved_name");
   });
 
   it("local type in public signature → visibility.local_type_in_public_signature", () => {
@@ -74,7 +74,7 @@ describe("flow.input.rename", () => {
   });
   it("same name no-op; rejections", () => {
     expect(accept(richDoc(), [{ op: "flow.input.rename", flowId: KIT, name: "topic", newName: "topic" }]).changed).toBe(false);
-    const d = build(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "other", type: "text" }]);
+    const d = build(richDoc(), [{ op: "flow.input.add", flowId: KIT, name: "other", type: "string" }]);
     reject(d, [{ op: "flow.input.rename", flowId: KIT, name: "topic", newName: "OTHER" }], "command.duplicate_name", { message: msg.duplicateName("other") });
     reject(richDoc(), [{ op: "flow.input.rename", flowId: KIT, name: "topic", newName: "a.b" }], "command.invalid_name");
     reject(richDoc(), [{ op: "flow.input.rename", flowId: KIT, name: "ghost", newName: "x" }], "command.unknown_ref");
@@ -99,8 +99,8 @@ describe("flow.input.setType", () => {
 describe("flow.input.reorder / setDescription / setDefault / clearDefault", () => {
   const three = () =>
     build(richDoc(), [
-      { op: "flow.input.add", flowId: KIT, name: "a", type: "text" },
-      { op: "flow.input.add", flowId: KIT, name: "b", type: "text" },
+      { op: "flow.input.add", flowId: KIT, name: "a", type: "string" },
+      { op: "flow.input.add", flowId: KIT, name: "b", type: "string" },
     ]);
   it.each([
     [0, ["b", "topic", "a"]],
@@ -140,17 +140,17 @@ describe("flow.output.*", () => {
     expect(portsOf(r.doc, KIT, "n_out").inputs).toEqual(["count", "summary"]);
   });
   it("add rejections (outputs have no defaults)", () => {
-    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "SUMMARY", type: "text" }], "command.duplicate_name", {
+    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "SUMMARY", type: "string" }], "command.duplicate_name", {
       message: 'A flow output named "summary" already exists in flow "Kit". Names must be unique (ignoring case).',
     });
     reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "m", type: "Mood" }], "visibility.local_type_in_public_signature", {
       message: 'Flow output "m" uses local type "Mood". Public signatures can only use primitives, global types and pack types. Move "Mood" to global types.',
     });
-    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "x", type: "text", default: "a" } as unknown as Command], "command.invalid_payload");
-    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "$x", type: "text" }], "command.invalid_name");
+    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "x", type: "string", default: "a" } as unknown as Command], "command.invalid_payload");
+    reject(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "$x", type: "string" }], "command.invalid_name");
   });
   it("remove: edges and Output-node constants of the port are removed", () => {
-    const d = build(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "extra", type: "text" }, { op: "node.setValue", flowId: KIT, nodeId: "n_out", port: "extra", value: "x" }]);
+    const d = build(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "extra", type: "string" }, { op: "node.setValue", flowId: KIT, nodeId: "n_out", port: "extra", value: "x" }]);
     const r = accept(d, [
       { op: "flow.output.remove", flowId: KIT, name: "extra" },
       { op: "flow.output.remove", flowId: KIT, name: "summary" },
@@ -167,12 +167,12 @@ describe("flow.output.*", () => {
     reject(richDoc(), [{ op: "flow.output.rename", flowId: KIT, name: "ghost", newName: "x" }], "command.unknown_ref", { contains: ['"ghost"'] });
   });
   it("setType: soft edge mismatch, hard visibility", () => {
-    const r = accept(richDoc(), [{ op: "flow.output.setType", flowId: KIT, name: "summary", type: "image" }]);
+    const r = accept(richDoc(), [{ op: "flow.output.setType", flowId: KIT, name: "summary", type: "Image" }]);
     expect(diags(r.diagnostics, "edge.type_mismatch").some((d) => d.path.edgeId === "e_1")).toBe(true);
     reject(richDoc(), [{ op: "flow.output.setType", flowId: KIT, name: "summary", type: "Pair" }], "visibility.local_type_in_public_signature");
   });
   it("reorder and setDescription", () => {
-    const d = build(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "b", type: "text" }]);
+    const d = build(richDoc(), [{ op: "flow.output.add", flowId: KIT, name: "b", type: "string" }]);
     expect(names(flowOf(accept(d, [{ op: "flow.output.reorder", flowId: KIT, name: "b", index: 0 }]).doc, KIT).outputs)).toEqual(["b", "summary"]);
     expect(flowOf(accept(d, [{ op: "flow.output.setDescription", flowId: KIT, name: "b", description: "B" }]).doc, KIT).outputs[1]!.description).toBe("B");
     reject(d, [{ op: "flow.output.reorder", flowId: KIT, name: "zz", index: 0 }], "command.unknown_ref");

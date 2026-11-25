@@ -11,8 +11,8 @@ beforeEach(() => probe.reset());
 
 const echoDoc = () =>
   doc({
-    inputs: [{ name: "topic", type: ir.text() }],
-    outputs: [{ name: "out", type: ir.text() }],
+    inputs: [{ name: "topic", type: ir.string() }],
+    outputs: [{ name: "out", type: ir.string() }],
     nodes: [n("n_a", "probe.echo")],
     edges: [e("n_in.topic", "n_a.value"), e("n_a.value", "n_out.out")],
   });
@@ -90,7 +90,7 @@ describe("run lifecycle", () => {
   it("is running while nodes execute", async () => {
     const { engine } = makeEngine();
     const run = engine.run({
-      context: doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] }),
+      context: doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] }),
       flowId: FLOW_ID,
     });
     await started(run, "n_w");
@@ -124,7 +124,7 @@ describe("run lifecycle", () => {
     const { engine } = makeEngine({ maxConcurrentRuns: 1 });
     const mk = (key: string) =>
       engine.run({
-        context: doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_w", "probe.wait", { values: { key } })], edges: [e("n_w.value", "n_out.out")] }),
+        context: doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_w", "probe.wait", { values: { key } })], edges: [e("n_w.value", "n_out.out")] }),
         flowId: FLOW_ID,
       });
     const a = mk("a");
@@ -190,8 +190,8 @@ describe("start sequence failures", () => {
     const { engine } = makeEngine();
     // An unused private variable is a warning (variable.unused).
     const d = doc({
-      outputs: [{ name: "out", type: ir.text() }],
-      variables: [{ id: "var_u", name: "unused", type: ir.text(), access: "private", default: "x" }],
+      outputs: [{ name: "out", type: ir.string() }],
+      variables: [{ id: "var_u", name: "unused", type: ir.string(), access: "private", default: "x" }],
       nodes: [n("n_a", "probe.echo", { values: { value: "v" } })],
       edges: [e("n_a.value", "n_out.out")],
     });
@@ -202,14 +202,14 @@ describe("start sequence failures", () => {
     const sig = () =>
       doc({
         inputs: [
-          { name: "name", type: ir.text({ maxLength: 5 }) },
+          { name: "name", type: ir.string() },
           { name: "count", type: ir.int({ min: 0 }), default: 3 },
-          { name: "maybe", type: ir.optional(ir.text()) },
+          { name: "maybe", type: ir.optional(ir.string()) },
         ],
         outputs: [
-          { name: "name", type: ir.text() },
+          { name: "name", type: ir.string() },
           { name: "count", type: ir.int() },
-          { name: "maybe", type: ir.optional(ir.text()) },
+          { name: "maybe", type: ir.optional(ir.string()) },
         ],
         edges: [e("n_in.name", "n_out.name"), e("n_in.count", "n_out.count"), e("n_in.maybe", "n_out.maybe")],
       });
@@ -247,7 +247,7 @@ describe("start sequence failures", () => {
     });
 
     it("wrong type and constraint violations; plural message", async () => {
-      const { error, diagnostics } = await invalid({ name: "Too long name", count: -1 });
+      const { error, diagnostics } = await invalid({ name: 42, count: -1 });
       expect(diagnostics.length).toBe(2);
       expect(diagnostics.every((d) => d.code.startsWith("value."))).toBe(true);
       expect(diagnostics.map((d) => d.path.valuePath)).toEqual(["inputs.name", "inputs.count"]);
@@ -259,7 +259,7 @@ describe("start sequence failures", () => {
     it("media inputs use media.* codes", async () => {
       const { engine } = makeEngine();
       const d = doc({ inputs: [{ name: "img", type: ir.image() }], outputs: [] });
-      const result = await engine.run({ context: d, flowId: FLOW_ID, inputs: { img: { uri: "ftp://x/a.png", mime: "image/png" } } }).result;
+      const result = await engine.run({ context: d, flowId: FLOW_ID, inputs: { img: { data: { uri: "ftp://x/a.png", mime: "image/png" }, mime: "image/png" } } }).result;
       expect(result.error?.code).toBe("run.invalid_inputs");
       const diags = (result.error?.details as { diagnostics: { code: string; path: { valuePath?: string } }[] }).diagnostics;
       expect(diags[0]?.code).toBe("media.invalid_ref");
@@ -272,8 +272,8 @@ describe("start sequence failures", () => {
     // variables.md example D.
     const d = doc({
       variables: [
-        { id: "var_x", name: "x", type: ir.text(), access: "private", default: "x0" },
-        { id: "var_y", name: "y", type: ir.text(), access: "private", default: "y0" },
+        { id: "var_x", name: "x", type: ir.string(), access: "private", default: "x0" },
+        { id: "var_y", name: "y", type: ir.string(), access: "private", default: "y0" },
       ],
       nodes: [
         n("n_gx", "briar.variable.get", { config: { variableId: "var_x" } }),
@@ -291,7 +291,7 @@ describe("start sequence failures", () => {
 
   it("the run works on its own copy: editing the document mid-run has no effect", async () => {
     const { engine } = makeEngine();
-    const d = doc({ outputs: [{ name: "out", type: ir.text() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] });
+    const d = doc({ outputs: [{ name: "out", type: ir.string() }], nodes: [n("n_w", "probe.wait")], edges: [e("n_w.value", "n_out.out")] });
     const run = engine.run({ context: d, flowId: FLOW_ID });
     await started(run, "n_w");
     (d as { revision: number }).revision = 99;

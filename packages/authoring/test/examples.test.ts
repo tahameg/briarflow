@@ -13,7 +13,7 @@ describe("commands.md §10", () => {
     expect(r.created[7]).toEqual({ edgeId: "e_1" });
     expect(r.diagnostics).toEqual([]);
     expect(r.doc.revision).toBe(1);
-    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text(), T2: ir.named("ty_style") });
+    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.string(), T2: ir.named("ty_style") });
   });
 
   it("type.field.setType style → int keeps e_3 without diagnostics (template re-binds)", () => {
@@ -21,12 +21,12 @@ describe("commands.md §10", () => {
     const r = accept(doc, [{ op: "type.field.setType", typeId: "ty_char", field: "style", type: "int" }]);
     expect(edgeIds(r.doc, PORTRAIT)).toContain("e_3");
     expect(r.diagnostics).toEqual([]);
-    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.text(), T2: ir.int() });
+    expect(nodeOf(r.doc, PORTRAIT, "n_tpl")!.typeBindings).toEqual({ T1: ir.string(), T2: ir.int() });
   });
 
   it("flow.output.setType prompt → image gives edge.type_mismatch on e_4", () => {
     const doc = build(emptyDoc(), SECTION_10_BATCH);
-    const r = accept(doc, [{ op: "flow.output.setType", flowId: PORTRAIT, name: "prompt", type: "image" }]);
+    const r = accept(doc, [{ op: "flow.output.setType", flowId: PORTRAIT, name: "prompt", type: "Image" }]);
     expect(edgeIds(r.doc, PORTRAIT)).toContain("e_4");
     const d = diags(r.diagnostics, "edge.type_mismatch");
     expect(d).toHaveLength(1);
@@ -36,7 +36,7 @@ describe("commands.md §10", () => {
 
   it("the rejection example returns the exact message", () => {
     const doc = build(emptyDoc(), SECTION_10_BATCH);
-    const e = reject(doc, [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "text" }], "command.duplicate_name", {
+    const e = reject(doc, [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "string" }], "command.duplicate_name", {
       message: 'A flow input named "character" already exists in flow "Portrait". Names must be unique (ignoring case).',
     });
     expect(e.commandIndex).toBe(0);

@@ -29,8 +29,8 @@ describe("execution lines", () => {
   it("runs the line in order, pulls pure nodes when needed and leaves other nodes alone", async () => {
     const f = withLines(
       flow({
-        inputs: [field("topic", ir.text())],
-        outputs: [field("reply", ir.text())],
+        inputs: [field("topic", ir.string())],
+        outputs: [field("reply", ir.string())],
         nodes: [
           node("n_tpl", "text.template", { config: { template: "About {{t}}" } }),
           node("n_llm", "mock.llm"),
@@ -50,7 +50,7 @@ describe("execution lines", () => {
   it("takes the failed line when a node fails, with the reason on its error output", async () => {
     const f = withLines(
       flow({
-        outputs: [field("why", ir.text())],
+        outputs: [field("why", ir.string())],
         nodes: [node("n_fail", "mock.fail", { values: { message: "no luck" } }), node("n_brk", "briar.error.break")],
         edges: [edge("n_fail.error", "n_brk.error"), edge("n_brk.message", "n_out.why")],
       }),
@@ -76,7 +76,7 @@ describe("execution lines", () => {
 
   it("fails with run.output_not_reached when the line ends before Output", async () => {
     const f = withLines(
-      flow({ outputs: [field("x", ir.text())], nodes: [node("n_llm", "mock.llm", { values: { prompt: "p" } })], edges: [edge("n_llm.text", "n_out.x")] }),
+      flow({ outputs: [field("x", ir.string())], nodes: [node("n_llm", "mock.llm", { values: { prompt: "p" } })], edges: [edge("n_llm.text", "n_out.x")] }),
       [line("n_in", "n_llm")],
     );
     const { result } = await run(f);
@@ -86,8 +86,8 @@ describe("execution lines", () => {
   it("reads variables as written so far along the line", async () => {
     const f = withLines(
       flow({
-        outputs: [field("before", ir.text()), field("after", ir.text())],
-        variables: [{ id: "var_x", name: "x", type: ir.text(), access: "private", default: "a" }],
+        outputs: [field("before", ir.string()), field("after", ir.string())],
+        variables: [{ id: "var_x", name: "x", type: ir.string(), access: "private", default: "a" }],
         nodes: [
           node("n_set", "briar.variable.set", { config: { variableId: "var_x" }, values: { value: "b" } }),
           node("n_get", "briar.variable.get", { config: { variableId: "var_x" } }),
@@ -105,7 +105,7 @@ describe("validation with execution lines", () => {
   const base = (lines: ExecEdge[]) =>
     withLines(
       flow({
-        outputs: [field("reply", ir.text())],
+        outputs: [field("reply", ir.string())],
         nodes: [node("n_a", "mock.llm", { values: { prompt: "a" } }), node("n_b", "mock.llm"), node("n_lost", "mock.llm")],
         edges: [edge("n_a.text", "n_out.reply")],
 

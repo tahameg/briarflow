@@ -3,6 +3,7 @@
  * input/output nodes, generic bindings. Shared by validation, authoring and the runtime.
  */
 import { ERROR_OUTPUT } from "../nodes/exec-ports.js";
+import { BUILTIN } from "../types/builtins.js";
 import type { ContextDocument, FieldDecl, FlowDocument, NodeInstance } from "../documents/model.js";
 import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE } from "../documents/model.js";
 import { findFlow } from "../documents/factories.js";
@@ -85,7 +86,7 @@ export function resolveFlowPorts(doc: ContextDocument, flowId: string, catalog: 
     if (nodes.has(node.id)) continue; // duplicate ids are reported by validateFlow
     nodes.set(node.id, resolveNode(node, doc, flow, scope, catalog));
   }
-  bindGenerics(flow, nodes, catalog);
+  bindGenerics(flow, nodes, scope);
   return { flowId, nodes };
 }
 
@@ -201,7 +202,7 @@ function resolveNode(
     return { ...base, definition: def, inputs: [], outputs: [] };
   }
   if (def.canFail && !ro.some((p) => p.name === ERROR_OUTPUT)) {
-    const type: TypeRef = { kind: "primitive", name: "error" };
+    const type: TypeRef = { kind: "named", id: BUILTIN.Error };
     ro.push({ name: ERROR_OUTPUT, type, declaredType: type, title: "Error", description: "Why the node failed. Only set on the failed line.", hasDefault: false });
   }
   return { ...base, definition: def, inputs: ri, outputs: ro };
@@ -215,8 +216,7 @@ function portScope(doc: ContextDocument, flow: FlowDocument, scope: TypeScope): 
   };
 }
 
-function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, catalog: NodeCatalog): void {
-  void catalog;
+function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, scope: TypeScope): void {
   const generic = [...nodes.values()].filter((n) => [...n.inputs, ...n.outputs].some((p) => containsVar(p.declaredType)));
   if (generic.length === 0) return;
   const bindings = new Map<string, TypeBindings>();
@@ -248,7 +248,7 @@ function bindGenerics(flow: FlowDocument, nodes: Map<string, ResolvedNode>, cata
           }
         }
       }
-      const r = bindTypeVarsAll(conns);
+      const r = bindTypeVarsAll(conns, (id) => scope.getType(id)?.decl);
       if (!jsonEquals(r.bindings, bindings.get(n.nodeId) ?? {})) changed = true;
       bindings.set(n.nodeId, r.bindings);
       nextConflicts.set(n.nodeId, r.conflicts);

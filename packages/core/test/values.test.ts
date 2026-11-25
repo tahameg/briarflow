@@ -34,7 +34,8 @@ function messages(diagnostics: readonly Diagnostic[]): string[] {
 }
 
 function checkRow(row: ValueCase): void {
-  const diagnostics = validateValue(row.value, row.type, empty, { path: "v" });
+  const scope = row.types ? createTypeScope({ globalTypes: row.types }) : empty;
+  const diagnostics = validateValue(row.value, row.type, scope, { path: "v" });
   if (row.ok) {
     expect(diagnostics, JSON.stringify(diagnostics)).toEqual([]);
     return;
@@ -59,8 +60,8 @@ describe("constraints (types.md §6)", () => {
 
   it("constraints: false skips constraint checks only", () => {
     expect(validateValue(-1, ir.int({ min: 0 }), empty, { constraints: false })).toEqual([]);
-    expect(validateValue("abc", ir.text({ maxLength: 1 }), empty, { constraints: false })).toEqual([]);
-    expect(validateValue(["a", "b"], ir.list(ir.text(), { maxItems: 1 }), empty, { constraints: false })).toEqual([]);
+    expect(validateValue("abc", ir.string(), empty, { constraints: false })).toEqual([]);
+    expect(validateValue(["a", "b"], ir.list(ir.string(), { maxItems: 1 }), empty, { constraints: false })).toEqual([]);
     expect(validateValue("x", ir.int(), empty, { constraints: false }).length).toBeGreaterThan(0);
     expect(validateValue(1.5, ir.int(), empty, { constraints: false }).length).toBeGreaterThan(0);
   });
@@ -195,7 +196,7 @@ describe("normalizeValue", () => {
   });
 
   it("does not share the default value object", () => {
-    const withList = { kind: "struct" as const, id: "ty_l", name: "L", fields: [{ name: "tags", type: ir.list(ir.text()), default: ["a"] }] };
+    const withList = { kind: "struct" as const, id: "ty_l", name: "L", fields: [{ name: "tags", type: ir.list(ir.string()), default: ["a"] }] };
     const scope = createTypeScope({ globalTypes: [withList] });
     const a = normalizeValue({}, ir.named("ty_l"), scope);
     expect(a).toEqual({ ok: true, value: { tags: ["a"] } });
@@ -221,23 +222,23 @@ describe("normalizeValue", () => {
 
   it("primitives normalize as is", () => {
     expect(normalizeValue(2.0, ir.int(), empty)).toEqual({ ok: true, value: 2 });
-    expect(normalizeValue("x", ir.text(), empty)).toEqual({ ok: true, value: "x" });
+    expect(normalizeValue("x", ir.string(), empty)).toEqual({ ok: true, value: "x" });
   });
 });
 
 describe("MediaRef validation (types.md §8)", () => {
   it.each(validMediaRefs.map((c) => [c.label, c] as const))("valid: %s", (_label, c) => {
-    expect(validateMediaRef(c.value, c.primitive, "v")).toEqual([]);
-    expect(validateValue(c.value, { kind: "primitive", name: c.primitive }, empty, { path: "v" })).toEqual([]);
+    expect(validateMediaRef(c.value, "v")).toEqual([]);
+    expect(validateValue(c.value, { kind: "primitive", name: "binary" }, empty, { path: "v" })).toEqual([]);
   });
 
   it.each(invalidMediaRefs.map((c) => [c.label, c] as const))("invalid: %s", (_label, c) => {
-    const diagnostics = validateMediaRef(c.value, c.primitive, "v");
+    const diagnostics = validateMediaRef(c.value, "v");
     expect(diagnostics.map((d) => d.code)).toContain(c.code);
     const d = diagnostics.find((x) => x.code === c.code)!;
     expect(d.severity).toBe("error");
-    expect(d.message.startsWith(`v is not a valid ${c.primitive}: `)).toBe(true);
-    expect(validateValue(c.value, { kind: "primitive", name: c.primitive }, empty, { path: "v" }).map((x) => x.code)).toContain(c.code);
+    expect(d.message.startsWith("v is not a valid binary value: ")).toBe(true);
+    expect(validateValue(c.value, { kind: "primitive", name: "binary" }, empty, { path: "v" }).map((x) => x.code)).toContain(c.code);
   });
 
   it("formatToMime maps the format table case-insensitively", () => {

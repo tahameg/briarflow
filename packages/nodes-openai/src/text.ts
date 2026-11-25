@@ -37,14 +37,14 @@ export function answerText(res: ResponsesAnswer): string {
 
 /** Ports every text variant has. */
 const textInputs = {
-  prompt: { type: t.text({ multiline: true }), widget: "textarea" },
-  instructions: { type: t.optional(t.text({ multiline: true })), default: null, widget: "textarea", description: "System-level instructions." },
+  prompt: { type: t.string(), widget: "textarea" },
+  instructions: { type: t.optional(t.string()), default: null, widget: "textarea", description: "System-level instructions." },
   maxTokens: { type: t.optional(t.int({ min: 16, max: 128_000 })), default: null, description: "Upper bound on output tokens. Empty: the model's limit." },
 } as const;
 const temperature = {
   temperature: { type: t.optional(t.float({ min: 0, max: 2 })), default: null, description: "Sampling temperature (0–2). Empty: the model's default." },
 } as const;
-const textOutputs = { text: t.text(), usage: t.ref(Usage), model: t.text(), complete: t.boolean() };
+const textOutputs = { text: t.string(), usage: t.ref(Usage), model: t.string(), complete: t.bool() };
 const reasoningConfig = {
   reasoning: cfg.choice(["default", "minimal", "low", "medium", "high"], {
     default: "default",

@@ -15,14 +15,14 @@ const PORTRAIT_COMMANDS = [
     id: "ty_char",
     name: "Character",
     fields: [
-      { name: "name", type: "text" },
+      { name: "name", type: "string" },
       { name: "style", type: "ArtStyle" },
     ],
   },
   { op: "flow.create", id: "flow_p", name: "Portrait", inputNodeId: "n_in", outputNodeId: "n_out" },
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
-  { op: "flow.output.add", flowId: "flow_p", name: "description", type: "text" },
-  { op: "flow.output.add", flowId: "flow_p", name: "image", type: "image" },
+  { op: "flow.output.add", flowId: "flow_p", name: "description", type: "string" },
+  { op: "flow.output.add", flowId: "flow_p", name: "image", type: "Image" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
   { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Portrait of {{name}} in {{style}} style" } },
   { op: "node.add", flowId: "flow_p", id: "n_llm", type: "mock.llm", position: { x: 640, y: 0 } },
@@ -186,10 +186,11 @@ describe("runs", () => {
 
     const res = await json(app, "POST", "/flows/flow_p/runs?wait=true", { inputs: { character: CHARACTER } });
     expect(res.status).toBe(200);
-    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { mediaId: string } } };
+    const result = (await res.json()) as { runId: string; status: string; outputs: { description: string; image: { data: { mediaId: string }; mime: string } } };
     expect(result.status).toBe("succeeded");
-    expect(Object.keys(result.outputs.image)).toEqual(["mediaId"]);
-    const entry = await app.request(`${BASE}/media/${result.outputs.image.mediaId}/entry`);
+    expect(Object.keys(result.outputs.image.data)).toEqual(["mediaId"]);
+    expect(result.outputs.image.mime).toBe("image/svg+xml");
+    const entry = await app.request(`${BASE}/media/${result.outputs.image.data.mediaId}/entry`);
     expect(await entry.json()).toMatchObject({ mime: "image/svg+xml", source: { kind: "data" }, owner: { runId: result.runId, flowId: "flow_p" } });
 
     const last = (await (await app.request(`${BASE}/flows/flow_p/last-run`)).json()) as { lastRun: { runId: string; status: string; nodes: Record<string, { state: string; key?: string }> } };
@@ -214,7 +215,7 @@ describe("runs", () => {
     const nothing = await readEvents(await app.request(`${BASE}/runs/${result.runId}/events?after=${all.length - 1}`));
     expect(nothing.raw).toBe("");
 
-    const mediaId = result.outputs.image.mediaId;
+    const mediaId = result.outputs.image.data.mediaId;
     const image = await app.request(`${BASE}/media/${mediaId}`);
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/svg+xml");
@@ -235,8 +236,8 @@ describe("runs", () => {
       baseRevision: 0,
       commands: [
         { op: "flow.create", id: "flow_slow", name: "Slow", inputNodeId: "n_in", outputNodeId: "n_out" },
-        { op: "flow.input.add", flowId: "flow_slow", name: "v", type: "text" },
-        { op: "flow.output.add", flowId: "flow_slow", name: "v", type: "text" },
+        { op: "flow.input.add", flowId: "flow_slow", name: "v", type: "string" },
+        { op: "flow.output.add", flowId: "flow_slow", name: "v", type: "string" },
         { op: "node.add", flowId: "flow_slow", id: "n_d", type: "mock.delay", position: { x: 0, y: 0 }, values: { ms: 5000 } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_in", port: "v" }, to: { node: "n_d", port: "value" } },
         { op: "edge.connect", flowId: "flow_slow", from: { node: "n_d", port: "value" }, to: { node: "n_out", port: "v" } },

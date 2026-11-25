@@ -2,9 +2,11 @@
  * Internal: one local run (docs/specs/runtime.md §2–§8, variables.md §6–§8).
  */
 import {
+  jsonText,
   checkMediaEntry,
   emptyValue,
   ERROR_OUTPUT,
+  completeMediaValues,
   findMedia,
   typeHasMedia,
   EXEC_FAILED,
@@ -16,6 +18,7 @@ import {
   type ExecContext,
   type Logger,
   type Media,
+  type MediaEntry,
   type NodeCatalog,
   type RetryPolicy,
   type Run,
@@ -27,6 +30,7 @@ import {
   type SecretVault,
   type SerializedError,
   type SettingsStore,
+  type TypeRef,
 } from "@briarflow/core";
 import { computeCacheKey, replaceMedia, type RunCache } from "./cache.js";
 import { EventLog } from "./events.js";
@@ -539,7 +543,7 @@ export class LocalRun implements Run {
     } else if (handler !== undefined) {
       // Handled: the failed line runs, and can read why from the node's error output.
       const error: ErrorValue = { code: f.error.code, message: f.error.message, nodeId: node.id, node: node.title };
-      if (f.error.details !== undefined) error.details = f.error.details;
+      if (f.error.details !== undefined) error.details = jsonText(f.error.details);
       ex.outputs = { [ERROR_OUTPUT]: error };
       for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
       this.activate(handler);
@@ -770,9 +774,10 @@ export class LocalRun implements Run {
       }
     }
 
-    const mediaProblem = await this.checkMediaInputs(node, inputs.values);
+    const mediaCheck = await this.checkMediaInputs(node, inputs.values);
     if (this.cancelKind) return this.cancelNode(node, ex);
-    if (mediaProblem) return this.failNode(node, ex, mediaProblem);
+    if ("failure" in mediaCheck) return this.failNode(node, ex, mediaCheck.failure);
+    const values = mediaCheck.values;
 
     const secretValues = new Map<string, string>();
     for (const name of def.secrets) {
@@ -824,7 +829,7 @@ export class LocalRun implements Run {
     }
 
     for (let attempt = 1; ; ) {
-      const outcome = await this.attempt(node, ex, inputs.values, attempt, secretValues);
+      const outcome = await this.attempt(node, ex, values, attempt, secretValues);
       if (this.cancelKind) return this.cancelNode(node, ex);
       let fail: NodeFailure;
       if (outcome.kind === "ok") {
@@ -904,37 +909,51 @@ export class LocalRun implements Run {
     }
   }
 
-  /** Media inputs must exist and fit their port's type (media.md §4). */
-  private async checkMediaInputs(node: PlannedNode, inputs: Record<string, unknown>): Promise<NodeFailure | undefined> {
+  /**
+   * Media inputs must exist and fit their port's type (media.md §4). Gives the inputs with media
+   * struct facts filled from their entries (an empty mime, unknown size or dimensions).
+   */
+  private async checkMediaInputs(node: PlannedNode, inputs: Record<string, unknown>): Promise<{ failure: NodeFailure } | { values: Record<string, unknown> }> {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
+    const entries = new Map<string, MediaEntry>();
     for (const port of node.ports.inputs) {
       for (const found of findMedia(inputs[port.name], port.type, getType)) {
-        if (!found.type) continue;
         const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
         let entry;
         try {
           entry = await this.services.media.entry(found.ref);
         } catch (err) {
-          return classify(err, node.id, this.services.fetchErrors);
+          return { failure: classify(err, node.id, this.services.fetchErrors) };
         }
         if (!entry) {
-          return failure(
+          return {
+            failure: failure(
             "media.not_found",
             `Node ${node.title} got media "${found.ref.mediaId}" in ${where}, which no longer exists. Media made by a run goes away with the next run; run the nodes that make it again.`,
             node.id,
             { details: { mediaId: found.ref.mediaId, port: port.name } },
-          );
+            ),
+          };
         }
-        const problems = checkMediaEntry(entry, found.type, where);
+        entries.set(entry.id, entry);
+        if (!found.media) continue;
+        const problems = checkMediaEntry(entry, found.media.kind, found.media.limits, where);
         if (problems.length > 0) {
-          return failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
-            details: { diagnostics: problems },
-          });
+          return {
+            failure: failure(problems[0]!.code === "media.kind_mismatch" ? "media.kind_mismatch" : "node.invalid_input", `Node ${node.title} got an invalid input: ${problems[0]!.message}`, node.id, {
+              details: { diagnostics: problems },
+            }),
+          };
         }
       }
     }
-    return undefined;
+    if (entries.size === 0) return { values: inputs };
+    const values: Record<string, unknown> = { ...inputs };
+    for (const port of node.ports.inputs) {
+      if (port.name in values) values[port.name] = completeMediaValues(values[port.name], port.type, getType, (id) => entries.get(id));
+    }
+    return { values };
   }
 
   private cacheWarning(op: "read" | "write" | "key", node: PlannedNode, err: unknown): void {
@@ -1088,7 +1107,7 @@ export class LocalRun implements Run {
       settings: this.services.catalog.packOf(node.node.type)?.settings ?? [],
       store: this.services.settings,
       vault: this.services.vault,
-      allowed: inputSecretRefs(node.ports.inputs, inputs),
+      allowed: inputSecretRefs(node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
     });
     const logger = this.services.logger;
     const tag = { runId: this.id, nodeId: node.id };
@@ -1104,6 +1123,10 @@ export class LocalRun implements Run {
           : `Variable "${name}" does not exist in flow "${plan.flow.name}". Check the name.`,
         { details: { name } },
       );
+    };
+    const typeOf = (kind: "flow" | "global", name: string): TypeRef | undefined => {
+      for (const slot of plan.variables.values()) if (slot.kind === kind && slot.name === name) return slot.type;
+      return undefined;
     };
     const baseFetch = this.services.fetch;
     const fetchErrors = this.services.fetchErrors;
@@ -1150,8 +1173,8 @@ export class LocalRun implements Run {
         read: (ref: string) => access.readSecret(ref),
       },
       settings: { get: (name: string) => access.readSetting(name) },
-      globals: { get: (name: string) => lookup("global", name) },
-      variables: { get: (name: string) => lookup("flow", name) },
+      globals: { get: (name: string) => lookup("global", name), typeOf: (name: string) => typeOf("global", name) },
+      variables: { get: (name: string) => lookup("flow", name), typeOf: (name: string) => typeOf("flow", name) },
       fetch: boundFetch,
       resolveType: (id: string) => plan.scope.getType(id)?.decl,
     };

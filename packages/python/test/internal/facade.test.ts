@@ -36,8 +36,8 @@ describe.skipIf(!existsSync(PYTHON))("python pack through the briarflow facade",
   it("builds, saves and runs a flow with Python nodes (secrets included)", async () => {
     const ctx = await briar.contexts.create({ name: "Python demo" });
     const flow = ctx.flows.create("Shout and sign");
-    flow.inputs.add("text", "text");
-    flow.outputs.add("loud", "text").outputs.add("signature", "text");
+    flow.inputs.add("text", "string");
+    flow.outputs.add("loud", "string").outputs.add("signature", "string");
     const upper = flow.nodes.add("imaging.uppercase");
     const sign = flow.nodes.add("imaging.sign");
     flow.connect(flow.input.port("text"), upper.port("text"));

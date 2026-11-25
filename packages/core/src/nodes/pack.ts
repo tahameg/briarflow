@@ -1,6 +1,7 @@
 /**
  * Node packs (docs/specs/node-api.md §7).
  */
+import { isBuiltinId } from "../types/builtins.js";
 import type { TypeDecl } from "../documents/model.js";
 import { PackDefinitionError } from "../errors.js";
 import type { EnumType, StructType, TypeSpec } from "../types/builder.js";
@@ -31,7 +32,7 @@ export interface PackDefinitionInput {
   nodes: readonly AnyNodeDefinition[];
   /**
    * Settings the pack adds to the settings screen, by name (key `<pack>.<name>`). Nodes read
-   * them with `ctx.settings.get(name)`. Types: primitives, lists and optionals of them.
+   * them with `ctx.settings.get(name)`. Types: primitives, built-in types, lists and optionals of them.
    */
   settings?: Readonly<Record<string, TypeSpec | PackSettingInput>>;
 }
@@ -114,6 +115,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
   }
   const ownIds = new Set(byName.values());
   const qualify = (id: string, where: string, allowForeign: boolean): string => {
+    if (isBuiltinId(id)) return id;
     if (!id.includes(".")) {
       const q = byName.get(id);
       if (q !== undefined) return q;
@@ -124,7 +126,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
       if (!ownIds.has(id)) fail(`${where} refers to "${id}", which is not a type of this pack.`);
       return id;
     }
-    if (!allowForeign) fail(`${where} refers to "${id}" from another pack. Pack types may only use primitives and types of the same pack.`);
+    if (!allowForeign) fail(`${where} refers to "${id}" from another pack. Pack types may only use primitives, built-in types and types of the same pack.`);
     return id;
   };
   const qualifyRef = (ref: TypeRef, where: string, allowForeign: boolean) => mapNamedIds(ref, (id) => qualify(id, where, allowForeign));
@@ -136,6 +138,7 @@ export function definePack(input: PackDefinitionInput): NodePack {
       ...t.decl,
       id,
       fields: t.decl.fields.map((f) => ({ ...f, type: qualifyRef(f.type, `type ${t.decl.name}, field "${f.name}"`, false) })),
+      ...(t.decl.extends === undefined ? {} : { extends: qualify(t.decl.extends, `type ${t.decl.name} (extends)`, false) }),
     };
   });
   const scope = createTypeScope({ packTypes: types });
@@ -193,7 +196,9 @@ export function definePack(input: PackDefinitionInput): NodePack {
     const parts: PackSettingInput | undefined = isTypeSpec(raw) ? { type: raw } : typeof raw === "object" && raw !== null && isTypeSpec((raw as PackSettingInput).type) ? (raw as PackSettingInput) : undefined;
     if (!parts) return fail(`${where} must be a type from t (e.g. t.secret()) or { type, title?, description?, default? }.`);
     const ref = parts.type.ref;
-    if (collectNamedIds(ref).length > 0 || containsVar(ref)) fail(`${where} must use primitives, lists or optionals; named and generic types are not supported.`);
+    if (collectNamedIds(ref).some((id) => !isBuiltinId(id)) || containsVar(ref)) {
+      fail(`${where} must use primitives, built-in types (ApiKey, Text…), lists or optionals; other named types and generics are not supported.`);
+    }
     const setting: { -readonly [K in keyof PackSetting]: PackSetting[K] } = { key: `${name}.${settingName}`, name: settingName, title: parts.title ?? titleFromName(settingName), type: ref };
     if (parts.description !== undefined) setting.description = parts.description;
     if (parts.default !== undefined) {

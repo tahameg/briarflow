@@ -1,7 +1,7 @@
 /**
  * In-memory blob store (`MediaStore`) for tests and sample media values (types.md §8).
  */
-import { MediaError, type BlobRef, type MediaPrimitiveName, type MediaStore, type PutMediaInfo, type StoredMedia } from "@briarflow/core";
+import { MediaError, type BlobRef, type MediaKind, type MediaStore, type PutMediaInfo, type StoredMedia } from "@briarflow/core";
 
 const MEDIA_SCHEME = "briar-media://";
 const MIME_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
@@ -118,7 +118,7 @@ export const HELLO_SHA256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e730
 /** A media value for a primitive. */
 export interface MediaRefCase {
   label: string;
-  primitive: MediaPrimitiveName;
+  primitive: MediaKind;
   value: unknown;
 }
 

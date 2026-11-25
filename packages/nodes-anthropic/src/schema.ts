@@ -2,7 +2,7 @@
  * Structured output schema (phase-8.md §4.3): a provider-safe JSON Schema for a struct type,
  * built with core `toJsonSchema` over a `TypeScope` adapter of `ctx.resolveType`.
  */
-import { NodeError, toJsonSchema, type TypeDecl, type TypeRef, type TypeScope } from "@briarflow/core";
+import { NodeError, toJsonSchema, type TypeDecl, type TypeRef, type TypeScope, mediaKindOfBuiltin, structLayout, withBuiltins } from "@briarflow/core";
 
 type Json = Record<string, unknown>;
 
@@ -23,17 +23,18 @@ export function scopeFromResolver(resolve: (id: string) => TypeDecl | undefined)
   };
 }
 
-/** Throws `anthropic.unsupported_type` when the type contains media anywhere. */
+/** Throws `anthropic.unsupported_type` when the type contains binary data (a media struct or a binary) anywhere. */
 export function assertNoMedia(type: TypeRef, scope: TypeScope, path = "value", seen = new Set<string>()): void {
+  const refuse = (what: string) => {
+    throw new NodeError(
+      "anthropic.unsupported_type",
+      `Claude cannot produce ${what} values (field ${path}). Use text fields (e.g. a prompt or a URL) instead.`,
+      { retryable: false, details: { path } },
+    );
+  };
   switch (type.kind) {
     case "primitive":
-      if (["image", "video", "audio", "model3d", "file"].includes(type.name)) {
-        throw new NodeError(
-          "anthropic.unsupported_type",
-          `Claude cannot produce ${type.name} values (field ${path}). Use text fields (e.g. a prompt or a URL) instead.`,
-          { retryable: false, details: { path } },
-        );
-      }
+      if (type.name === "binary") refuse("binary");
       return;
     case "optional":
       return assertNoMedia(type.of, scope, path, seen);
@@ -42,8 +43,13 @@ export function assertNoMedia(type: TypeRef, scope: TypeScope, path = "value", s
     case "named": {
       if (seen.has(type.id)) return;
       seen.add(type.id);
-      const decl = scope.getType(type.id)?.decl;
-      if (decl?.kind === "struct") for (const f of decl.fields) assertNoMedia(f.type, scope, `${path}.${f.name}`, seen);
+      const resolve = withBuiltins((id) => scope.getType(id)?.decl);
+      const decl = resolve(type.id);
+      if (decl?.kind !== "struct") return;
+      const layout = structLayout(decl, resolve);
+      const kind = mediaKindOfBuiltin(layout.root);
+      if (kind !== undefined) refuse(kind);
+      for (const f of layout.fields) assertNoMedia(f.type, scope, `${path}.${f.name}`, seen);
       return;
     }
     default:

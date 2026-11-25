@@ -4,6 +4,7 @@
 import { canonicalJson } from "../util/json.js";
 import { isAssignable, stripConstraints, typeEquals } from "./assignability.js";
 import type { TypeRef } from "./ir.js";
+import { extendsStruct, type DeclResolver } from "./layout.js";
 import { containsVar } from "./walk.js";
 
 /** Generic var name → bound type. Stored as `NodeInstance.typeBindings`. */
@@ -57,8 +58,8 @@ interface Bound {
  * // { ok: true, bindings: { T: { kind: "named", id: "ty_char" } } }
  * ```
  */
-export function bindTypeVars(connections: readonly GenericConnection[]): BindTypeVarsResult {
-  const r = bindTypeVarsAll(connections);
+export function bindTypeVars(connections: readonly GenericConnection[], resolve?: DeclResolver): BindTypeVarsResult {
+  const r = bindTypeVarsAll(connections, resolve);
   const first = r.conflicts[0];
   if (first) return { ok: false, conflict: first };
   return { ok: true, bindings: r.bindings };
@@ -68,7 +69,7 @@ export function bindTypeVars(connections: readonly GenericConnection[]): BindTyp
  * Internal: like {@link bindTypeVars} but reports every conflict and still returns the
  * bindings of vars without conflict (conflicting vars stay unbound).
  */
-export function bindTypeVarsAll(connections: readonly GenericConnection[]): {
+export function bindTypeVarsAll(connections: readonly GenericConnection[], resolve?: DeclResolver): {
   bindings: TypeBindings;
   conflicts: BindingConflict[];
 } {
@@ -107,7 +108,7 @@ export function bindTypeVarsAll(connections: readonly GenericConnection[]): {
         binding = b.type;
         continue;
       }
-      const next = combine(binding, b.type);
+      const next = combine(binding, b.type, resolve);
       if (next === undefined) {
         conflict = { varName: name, port: b.port, bound: binding, other: b.type };
         break;
@@ -116,14 +117,14 @@ export function bindTypeVarsAll(connections: readonly GenericConnection[]): {
     }
     if (!conflict && binding !== undefined) {
       for (const u of ups) {
-        if (!isAssignable(binding, u.type)) {
+        if (!isAssignable(binding, u.type, resolve)) {
           conflict = { varName: name, port: u.port, bound: binding, other: u.type };
           break;
         }
       }
     }
     const oneOf = allowed.get(name);
-    if (!conflict && binding !== undefined && oneOf && !oneOf.some((o) => isAssignable(binding!, o))) {
+    if (!conflict && binding !== undefined && oneOf && !oneOf.some((o) => isAssignable(binding!, o, resolve))) {
       const port = (lows.length > 0 ? lows : ups)[0]?.port ?? "";
       conflict = { varName: name, port, bound: binding, other: binding, allowed: oneOf };
     }
@@ -203,8 +204,12 @@ export function collectTypeVars(type: TypeRef, out: string[] = []): string[] {
   return out;
 }
 
-/** Least upper bound (`join(int, float) = float`, `join(X, X?) = X?`), or `undefined`. */
-export function joinTypes(a: TypeRef, b: TypeRef): TypeRef | undefined {
+/**
+ * Least upper bound (`join(int, float) = float`, `join(X, X?) = X?`; with `resolve`, two structs
+ * join to the nearest struct both are or extend: `join(ShortText, LongText) = Text`), or
+ * `undefined`.
+ */
+export function joinTypes(a: TypeRef, b: TypeRef, resolve?: DeclResolver): TypeRef | undefined {
   a = stripConstraints(a);
   b = stripConstraints(b);
   if (containsVar(a) || containsVar(b)) return undefined;
@@ -212,7 +217,7 @@ export function joinTypes(a: TypeRef, b: TypeRef): TypeRef | undefined {
   if (a.kind === "optional" || b.kind === "optional") {
     const ia = a.kind === "optional" ? a.of : a;
     const ib = b.kind === "optional" ? b.of : b;
-    const inner = joinTypes(ia, ib);
+    const inner = joinTypes(ia, ib, resolve);
     return inner === undefined ? undefined : { kind: "optional", of: inner };
   }
   if (a.kind === "primitive" && b.kind === "primitive") {
@@ -220,31 +225,52 @@ export function joinTypes(a: TypeRef, b: TypeRef): TypeRef | undefined {
     return names === "float,int" ? { kind: "primitive", name: "float" } : undefined;
   }
   if (a.kind === "list" && b.kind === "list") {
-    const of = joinTypes(a.of, b.of);
+    const of = joinTypes(a.of, b.of, resolve);
     return of === undefined ? undefined : { kind: "list", of };
+  }
+  if (a.kind === "named" && b.kind === "named" && resolve) {
+    for (const id of chainOf(a.id, resolve)) if (extendsStruct(b.id, id, resolve)) return { kind: "named", id };
   }
   return undefined;
 }
 
-/** Greatest lower bound (`meet(int, float) = int`, `meet(X?, X) = X`), or `undefined`. */
-export function meetTypes(a: TypeRef, b: TypeRef): TypeRef | undefined {
+/** A struct id, then the ids it extends, nearest first. */
+function chainOf(id: string, resolve: DeclResolver): string[] {
+  const out = [id];
+  let decl = resolve(id);
+  while (decl?.kind === "struct" && decl.extends !== undefined && !out.includes(decl.extends)) {
+    out.push(decl.extends);
+    decl = resolve(decl.extends);
+  }
+  return out;
+}
+
+/**
+ * Greatest lower bound (`meet(int, float) = int`, `meet(X?, X) = X`; with `resolve`, a struct
+ * and one it extends meet to the extending one), or `undefined`.
+ */
+export function meetTypes(a: TypeRef, b: TypeRef, resolve?: DeclResolver): TypeRef | undefined {
   a = stripConstraints(a);
   b = stripConstraints(b);
   if (containsVar(a) || containsVar(b)) return undefined;
   if (typeEquals(a, b)) return a;
   if (a.kind === "optional" && b.kind === "optional") {
-    const inner = meetTypes(a.of, b.of);
+    const inner = meetTypes(a.of, b.of, resolve);
     return inner === undefined ? undefined : { kind: "optional", of: inner };
   }
-  if (a.kind === "optional") return meetTypes(a.of, b);
-  if (b.kind === "optional") return meetTypes(a, b.of);
+  if (a.kind === "optional") return meetTypes(a.of, b, resolve);
+  if (b.kind === "optional") return meetTypes(a, b.of, resolve);
   if (a.kind === "primitive" && b.kind === "primitive") {
     const names = [a.name, b.name].sort().join(",");
     return names === "float,int" ? { kind: "primitive", name: "int" } : undefined;
   }
   if (a.kind === "list" && b.kind === "list") {
-    const of = meetTypes(a.of, b.of);
+    const of = meetTypes(a.of, b.of, resolve);
     return of === undefined ? undefined : { kind: "list", of };
+  }
+  if (a.kind === "named" && b.kind === "named" && resolve) {
+    if (extendsStruct(a.id, b.id, resolve)) return a;
+    if (extendsStruct(b.id, a.id, resolve)) return b;
   }
   return undefined;
 }

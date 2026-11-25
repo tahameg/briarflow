@@ -16,43 +16,35 @@ import { expectBriarError } from "@briarflow/testing";
 
 describe("t builder IR (types.md §2)", () => {
   const cases: [string, () => TypeSpec<unknown>, TypeRef][] = [
-    ["text", () => t.text(), { kind: "primitive", name: "text" }],
-    ["text {}", () => t.text({}), { kind: "primitive", name: "text" }],
-    [
-      "text constraints",
-      () => t.text({ minLength: 1, maxLength: 40, pattern: "[a-z]+", multiline: true }),
-      { kind: "primitive", name: "text", constraints: { minLength: 1, maxLength: 40, pattern: "[a-z]+", multiline: true } },
-    ],
+    ["text", () => t.string(), { kind: "primitive", name: "string" }],
+    ["string", () => t.string(), { kind: "primitive", name: "string" }],
     ["int", () => t.int(), { kind: "primitive", name: "int" }],
     ["int bounds", () => t.int({ min: 0, max: 120 }), { kind: "primitive", name: "int", constraints: { min: 0, max: 120 } }],
     ["float", () => t.float({ min: -1.5 }), { kind: "primitive", name: "float", constraints: { min: -1.5 } }],
-    ["boolean", () => t.boolean(), { kind: "primitive", name: "boolean" }],
-    ["image", () => t.image(), { kind: "primitive", name: "image" }],
-    [
-      "image constraints",
-      () => t.image({ formats: ["png", "jpeg"], maxBytes: 1000, minWidth: 1, maxWidth: 10, minHeight: 2, maxHeight: 20 }),
-      {
-        kind: "primitive",
-        name: "image",
-        constraints: { formats: ["png", "jpeg"], maxBytes: 1000, minWidth: 1, maxWidth: 10, minHeight: 2, maxHeight: 20 },
-      },
-    ],
-    ["video", () => t.video({ maxDurationSec: 30 }), { kind: "primitive", name: "video", constraints: { maxDurationSec: 30 } }],
-    ["audio", () => t.audio(), { kind: "primitive", name: "audio" }],
-    ["model3d", () => t.model3d({ formats: ["glb"] }), { kind: "primitive", name: "model3d", constraints: { formats: ["glb"] } }],
-    ["file", () => t.file(), { kind: "primitive", name: "file" }],
-    ["list", () => t.list(t.text()), { kind: "list", of: { kind: "primitive", name: "text" } }],
-    ["list {}", () => t.list(t.text(), {}), { kind: "list", of: { kind: "primitive", name: "text" } }],
+    ["bool", () => t.bool(), { kind: "primitive", name: "bool" }],
+    ["binary", () => t.binary(), { kind: "primitive", name: "binary" }],
+    ["text (built-in struct)", () => t.text(), { kind: "named", id: "briar.Text" }],
+    ["json (built-in struct)", () => t.json(), { kind: "named", id: "briar.Json" }],
+    ["secret (built-in struct)", () => t.secret(), { kind: "named", id: "briar.Secret" }],
+    ["apiKey (built-in struct)", () => t.apiKey(), { kind: "named", id: "briar.ApiKey" }],
+    ["error (built-in struct)", () => t.error(), { kind: "named", id: "briar.Error" }],
+    ["image", () => t.image(), { kind: "named", id: "briar.Image" }],
+    ["video", () => t.video(), { kind: "named", id: "briar.Video" }],
+    ["audio", () => t.audio(), { kind: "named", id: "briar.Audio" }],
+    ["model3d", () => t.model3d(), { kind: "named", id: "briar.Model3D" }],
+    ["file", () => t.file(), { kind: "named", id: "briar.File" }],
+    ["list", () => t.list(t.string()), { kind: "list", of: { kind: "primitive", name: "string" } }],
+    ["list {}", () => t.list(t.string(), {}), { kind: "list", of: { kind: "primitive", name: "string" } }],
     [
       "list bounds",
       () => t.list(t.image(), { minItems: 1, maxItems: 4 }),
-      { kind: "list", of: { kind: "primitive", name: "image" }, minItems: 1, maxItems: 4 },
+      { kind: "list", of: { kind: "named", id: "briar.Image" }, minItems: 1, maxItems: 4 },
     ],
     ["optional", () => t.optional(t.int()), { kind: "optional", of: { kind: "primitive", name: "int" } }],
     [
       "list of optional",
-      () => t.list(t.optional(t.text())),
-      { kind: "list", of: { kind: "optional", of: { kind: "primitive", name: "text" } } },
+      () => t.list(t.optional(t.string())),
+      { kind: "list", of: { kind: "optional", of: { kind: "primitive", name: "string" } } },
     ],
     ["ref by id", () => t.ref("ty_char"), { kind: "named", id: "ty_char" }],
     ["ref qualified", () => t.ref("openai.ChatMessage"), { kind: "named", id: "openai.ChatMessage" }],
@@ -68,11 +60,11 @@ describe("t builder IR (types.md §2)", () => {
   });
 
   it("empty options produce no constraints key", () => {
-    expect("constraints" in t.text({}).ref).toBe(false);
+    expect("constraints" in t.string().ref).toBe(false);
     expect("constraints" in t.int().ref).toBe(false);
-    expect("constraints" in t.image({}).ref).toBe(false);
-    expect("minItems" in t.list(t.text(), {}).ref).toBe(false);
-    expect("maxItems" in t.list(t.text()).ref).toBe(false);
+    expect("constraints" in t.image().ref).toBe(false);
+    expect("minItems" in t.list(t.string(), {}).ref).toBe(false);
+    expect("maxItems" in t.list(t.string()).ref).toBe(false);
   });
 
   it("does not share the caller's constraint object", () => {
@@ -83,7 +75,7 @@ describe("t builder IR (types.md §2)", () => {
   });
 
   it("isTypeSpec rejects other values", () => {
-    expect(isTypeSpec({ kind: "primitive", name: "text" })).toBe(false);
+    expect(isTypeSpec({ kind: "primitive", name: "string" })).toBe(false);
     expect(isTypeSpec(null)).toBe(false);
     expect(isTypeSpec("text")).toBe(false);
   });
@@ -94,7 +86,7 @@ describe("t builder IR (types.md §2)", () => {
       of: { kind: "optional", of: { kind: "named", id: "Character" } },
     });
     expect(t.parse("openai.ChatMessage").ref).toEqual({ kind: "named", id: "openai.ChatMessage" });
-    expect(t.parse("list<image>[..4]").ref).toEqual({ kind: "list", of: { kind: "primitive", name: "image" }, maxItems: 4 });
+    expect(t.parse("list<Image>[..4]").ref).toEqual({ kind: "list", of: { kind: "named", id: "briar.Image" }, maxItems: 4 });
   });
 
   it("t.parse accepts generic vars (node definitions)", () => {
@@ -113,20 +105,9 @@ describe("t builder constraint validation (types.md §6)", () => {
     ["int non-integer min", () => t.int({ min: 1.5 })],
     ["int non-integer max", () => t.int({ max: 2.5 })],
     ["int unsafe bound", () => t.int({ max: 2 ** 60 })],
-    ["text negative minLength", () => t.text({ minLength: -1 })],
-    ["text negative maxLength", () => t.text({ maxLength: -1 })],
-    ["text minLength > maxLength", () => t.text({ minLength: 5, maxLength: 2 })],
-    ["text fractional maxLength", () => t.text({ maxLength: 1.5 })],
-    ["text regex that does not compile", () => t.text({ pattern: "(" })],
-    ["text regex invalid with the u flag", () => t.text({ pattern: "\\c" })],
-    ["image negative maxBytes", () => t.image({ maxBytes: -1 })],
-    ["file negative maxBytes", () => t.file({ maxBytes: -5 })],
-    ["image minWidth > maxWidth", () => t.image({ minWidth: 10, maxWidth: 5 })],
-    ["image negative minHeight", () => t.image({ minHeight: -1 })],
-    ["video negative maxDurationSec", () => t.video({ maxDurationSec: -1 })],
-    ["list negative minItems", () => t.list(t.text(), { minItems: -1 })],
-    ["list minItems > maxItems", () => t.list(t.text(), { minItems: 3, maxItems: 1 })],
-    ["list fractional maxItems", () => t.list(t.text(), { maxItems: 1.5 })],
+    ["list negative minItems", () => t.list(t.string(), { minItems: -1 })],
+    ["list minItems > maxItems", () => t.list(t.string(), { minItems: 3, maxItems: 1 })],
+    ["list fractional maxItems", () => t.list(t.string(), { maxItems: 1.5 })],
   ];
 
   it.each(invalid)("%s throws type.invalid_constraint", (_label, build) => {
@@ -136,14 +117,13 @@ describe("t builder constraint validation (types.md §6)", () => {
 
   it("accepts boundary constraints", () => {
     expect(() => t.int({ min: 3, max: 3 })).not.toThrow();
-    expect(() => t.text({ minLength: 0, maxLength: 0 })).not.toThrow();
-    expect(() => t.list(t.text(), { minItems: 2, maxItems: 2 })).not.toThrow();
+    expect(() => t.string()).not.toThrow();
+    expect(() => t.list(t.string(), { minItems: 2, maxItems: 2 })).not.toThrow();
     expect(() => t.float({ min: -0.5, max: 0.5 })).not.toThrow();
-    expect(() => t.image({ maxBytes: 0 })).not.toThrow();
   });
 
   it("optional of optional throws type.syntax", () => {
-    expectBriarError(() => t.optional(t.optional(t.text())), "type.syntax", TypeDefinitionError);
+    expectBriarError(() => t.optional(t.optional(t.string())), "type.syntax", TypeDefinitionError);
   });
 
   it.each(["t", "T_1", "1T", "", "TooLongVariableName"])("t.var(%j) throws type.invalid_name", (name) => {
@@ -194,8 +174,8 @@ describe("defineStruct", () => {
       "ChatMessage",
       {
         role: t.ref(Role),
-        content: t.text(),
-        name: { type: t.optional(t.text()), description: "Optional speaker name" },
+        content: t.string(),
+        name: { type: t.optional(t.string()), description: "Optional speaker name" },
         tokens: { type: t.int({ min: 0 }), default: 0 },
       },
       { description: "A chat message" },
@@ -208,8 +188,8 @@ describe("defineStruct", () => {
       description: "A chat message",
       fields: [
         { name: "role", type: { kind: "named", id: "Role" } },
-        { name: "content", type: { kind: "primitive", name: "text" } },
-        { name: "name", type: { kind: "optional", of: { kind: "primitive", name: "text" } }, description: "Optional speaker name" },
+        { name: "content", type: { kind: "primitive", name: "string" } },
+        { name: "name", type: { kind: "optional", of: { kind: "primitive", name: "string" } }, description: "Optional speaker name" },
         { name: "tokens", type: { kind: "primitive", name: "int", constraints: { min: 0 } }, default: 0 },
       ],
     });
@@ -221,11 +201,11 @@ describe("defineStruct", () => {
   });
 
   it.each([
-    ["invalid name", () => defineStruct("chatMessage", { a: t.text() })],
-    ["reserved name", () => defineStruct("List", { a: t.text() })],
-    ["invalid field name", () => defineStruct("S", { "1x": t.text() })],
-    ["reserved field name", () => defineStruct("S", { constructor: t.text() })],
-    ["fields differing only in case", () => defineStruct("S", { name: t.text(), Name: t.text() })],
+    ["invalid name", () => defineStruct("chatMessage", { a: t.string() })],
+    ["reserved name", () => defineStruct("List", { a: t.string() })],
+    ["invalid field name", () => defineStruct("S", { "1x": t.string() })],
+    ["reserved field name", () => defineStruct("S", { constructor: t.string() })],
+    ["fields differing only in case", () => defineStruct("S", { name: t.string(), Name: t.string() })],
     ["default violating a constraint", () => defineStruct("S", { age: { type: t.int({ min: 0 }), default: -1 } })],
     ["default of the wrong type", () => defineStruct("S", { age: { type: t.int(), default: "x" as unknown as number } })],
   ])("%s throws pack.invalid", (_label, build) => {

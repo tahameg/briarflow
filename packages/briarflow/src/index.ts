@@ -11,7 +11,7 @@
  * const briar = createBriar({ packs: [mockPack] });
  * const ctx = await briar.contexts.create({ name: "Demo" });
  * const flow = ctx.flows.create("Echo");
- * flow.inputs.add("topic", "text").outputs.add("reply", "text");
+ * flow.inputs.add("topic", "string").outputs.add("reply", "string");
  * const llm = flow.nodes.add("mock.llm");
  * flow.connect(flow.input.port("topic"), llm.port("prompt"));
  * flow.connect(llm.port("text"), flow.output.port("reply"));

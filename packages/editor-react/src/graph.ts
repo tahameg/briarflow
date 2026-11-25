@@ -3,6 +3,7 @@
  * diagnostics and run status. No React here, so it can be unit tested and reused by other
  * view layers.
  */
+import { mediaKindOfBuiltin, rootOf } from "@briarflow/core";
 import {
   analyzeExec,
   ERROR_OUTPUT,
@@ -188,7 +189,8 @@ export function emptyCatalog(): NodeCatalog {
 
 /** Struct/enum lookup for type styles in a scope. */
 export function kindLookup(scope: TypeScope): NamedKindLookup {
-  return (id) => scope.getType(id)?.decl.kind;
+  const resolve = (id: string) => scope.getType(id)?.decl;
+  return Object.assign((id: string) => resolve(id)?.kind, { root: (id: string) => rootOf(id, resolve) });
 }
 
 /** Title of a node instance as the canvas shows it. */
@@ -273,7 +275,7 @@ export function buildFlowView(
       declaredType: p.declaredType,
       typeText: formatType(p.type, scope),
       style: typeStyle(p.type, kindOf),
-      led: ledFamily(p.type),
+      led: ledFamily(p.type, kindOf),
       list: isListType(p.type),
       links: dir === "out" ? (outgoing.get(`${node.id}\u0000${p.name}`) ?? 0) : 0,
       hasDefault: p.hasDefault,
@@ -420,15 +422,16 @@ export function planConnection(view: FlowView, catalog: NodeCatalog | undefined,
   const inp = view.byId.get(to.node)?.inputs.find((p) => p.name === to.port);
   if (!out || !inp) return undefined;
   if (containsVar(out.type)) return { kind: "direct" };
+  const resolve = (id: string) => view.scope.getType(id)?.decl;
   const convert = (target: TypeRef): ConnectionPlan | undefined => {
-    const c = catalog ? findConversions(catalog, out.type, target)[0] : undefined;
+    const c = catalog ? findConversions(catalog, out.type, target, resolve)[0] : undefined;
     return c ? { kind: "convert", conversion: c } : undefined;
   };
   if (containsVar(inp.declaredType)) {
-    const r = bindTypeVars([{ port: inp.name, direction: "input", pattern: inp.declaredType, other: out.type }]);
+    const r = bindTypeVars([{ port: inp.name, direction: "input", pattern: inp.declaredType, other: out.type }], resolve);
     if (r.ok) {
       const bound = substituteTypeVars(inp.declaredType, r.bindings);
-      if (containsVar(bound) || isAssignable(out.type, bound)) return { kind: "direct" };
+      if (containsVar(bound) || isAssignable(out.type, bound, resolve)) return { kind: "direct" };
     }
     const options = inp.declaredType.kind === "var" ? (inp.declaredType.oneOf ?? []) : [];
     for (const o of options) {
@@ -437,7 +440,7 @@ export function planConnection(view: FlowView, catalog: NodeCatalog | undefined,
     }
     return undefined;
   }
-  if (isAssignable(out.type, inp.type)) return { kind: "direct" };
+  if (isAssignable(out.type, inp.type, resolve)) return { kind: "direct" };
   return convert(inp.type);
 }
 
@@ -453,7 +456,8 @@ export function canConnect(view: FlowView, from: { node: string; port: string },
 export function visualMediaKind(type: TypeRef): "image" | "video" | undefined {
   const inner = type.kind === "optional" || type.kind === "list" ? type.of : type;
   if (inner.kind === "optional" || inner.kind === "list") return visualMediaKind(inner);
-  return inner.kind === "primitive" && (inner.name === "image" || inner.name === "video") ? inner.name : undefined;
+  const kind = inner.kind === "named" ? mediaKindOfBuiltin(inner.id) : undefined;
+  return kind === "image" || kind === "video" ? kind : undefined;
 }
 
 /** What a node's inputs were in the run: the wired source's output, else the node's constant. */

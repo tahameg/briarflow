@@ -20,7 +20,7 @@ import { LoopbackMediaServer } from "./media-server.js";
 import type { MediaServerOptions } from "./media-server.js";
 
 /** The only wire protocol version this bridge speaks. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** `GET /briarflow/manifest` (python-protocol.md §1.2). */
 export interface PythonManifest {

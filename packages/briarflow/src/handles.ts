@@ -35,7 +35,7 @@ import {
 import type { BriarRun } from "./runs.js";
 import type { BriarRunOptions } from "./briar.js";
 
-/** A type in a fluent call: shorthand (`"list<Character?>"`), IR, or a `t` builder spec (`t.text()`). */
+/** A type in a fluent call: shorthand (`"list<Character?>"`), IR, or a `t` builder spec (`t.string()`). */
 export type TypeLike = string | TypeRef | TypeSpec;
 
 /** A struct field: just its type, or the type with a description / default. */
@@ -58,7 +58,7 @@ function toTypeInput(type: TypeLike, where: string): TypeInput {
   if (typeof type === "object" && type !== null && typeof (type as { kind?: unknown }).kind === "string") return type as TypeRef;
   throw new BriarError(
     "handle.invalid_type",
-    `${where}: ${JSON.stringify(type)} is not a type. Use shorthand like "text", "list<int>" or "Character?", a t builder (t.text()), or type IR.`,
+    `${where}: ${JSON.stringify(type)} is not a type. Use shorthand like "text", "list<int>" or "Character?", a t builder (t.string()), or type IR.`,
   );
 }
 
@@ -111,7 +111,7 @@ export interface TypesApi {
    *
    * @example
    * ```ts
-   * ctx.types.defineStruct("Character", { name: "text", age: "int", style: "ArtStyle" });
+   * ctx.types.defineStruct("Character", { name: "string", age: "int", style: "ArtStyle" });
    * ```
    */
   defineStruct(name: string, fields?: Readonly<Record<string, FieldLike>>, options?: { description?: string; id?: string }): TypeHandle;
@@ -159,7 +159,7 @@ export interface ContextHandle {
      *
      * @example
      * ```ts
-     * ctx.globals.create("brandGuide", "text", { access: "readonly", value: "Pastel colors" });
+     * ctx.globals.create("brandGuide", "string", { access: "readonly", value: "Pastel colors" });
      * ```
      */
     create(
@@ -233,7 +233,7 @@ export interface AddNodeOptions {
  * ```ts
  * const flow = ctx.flows.create("Portrait");
  * flow.inputs.add("character", "Character");
- * flow.outputs.add("prompt", "text");
+ * flow.outputs.add("prompt", "string");
  * const tpl = flow.nodes.add("text.template", { config: { template: "Draw {{c}}" } });
  * flow.connect(flow.input.port("character"), tpl.port("c"));
  * flow.connect(tpl.port("text"), flow.output.port("prompt"));

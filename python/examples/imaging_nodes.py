@@ -19,10 +19,10 @@ from briarflow import (
     ExecContext,
     Image,
     Max,
-    MaxLength,
     Min,
     NodeError,
     Port,
+    Text,
     node,
     outputs,
     pack,
@@ -58,6 +58,13 @@ class Swatch:
     height: Annotated[int, Min(1), Max(512), Port(description="Height in px")] = 64
 
 
+@struct
+class Headline(Text):
+    """A short title: Text of at most 40 characters."""
+
+    max_length = 40
+
+
 @outputs
 @dataclass
 class ImageInfo:
@@ -90,9 +97,15 @@ def make_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 @node(title="Uppercase", category="Text")
-def uppercase(text: Annotated[str, MaxLength(10_000)]) -> str:
+def uppercase(text: str) -> str:
     """Returns the text in upper case."""
     return text.upper()
+
+
+@node(title="Shout headline", category="Text")
+def shout_headline(title: Headline) -> Headline:
+    """Returns the headline in upper case (still at most 40 characters)."""
+    return Headline(title.value.upper())
 
 
 @node(title="Solid color image", category="Image", color="peach")
@@ -114,8 +127,8 @@ def solid_image(swatch: Swatch, *, ctx: ExecContext) -> Image:
 @node(title="Image info", category="Image")
 def image_info(image: Image, *, ctx: ExecContext) -> ImageInfo:
     """Passes the image through unchanged and reports its mime, size and whether it is a PNG."""
-    head = ctx.media.read(image)[:8] if image.url else b""
-    return ImageInfo(image=image, mime=image.mime, bytes=image.bytes, is_png=head == b"\x89PNG\r\n\x1a\n")
+    head = ctx.media.read(image)[:8] if image.data.url else b""
+    return ImageInfo(image=image, mime=image.mime, bytes=image.size, is_png=head == b"\x89PNG\r\n\x1a\n")
 
 
 @node(title="Repeat text", category="Text", cache=False)
@@ -151,7 +164,7 @@ imaging = pack(
     version="0.1.0",
     title="Imaging (example)",
     description="Example Python nodes: text and tiny generated images.",
-    nodes=[uppercase, solid_image, image_info, repeat, count_slowly, sign],
+    nodes=[uppercase, shout_headline, solid_image, image_info, repeat, count_slowly, sign],
 )
 
 if __name__ == "__main__":

@@ -27,9 +27,9 @@ describe("flow variables (variables.md §4, §6, §7)", () => {
   it("example A: a get waits for the set and reads its value", async () => {
     const doc = context([
       flow({
-        inputs: [field("topic", ir.text())],
-        outputs: [field("summary", ir.text())],
-        variables: [v("var_sum", "summary", ir.text(), "public")],
+        inputs: [field("topic", ir.string())],
+        outputs: [field("summary", ir.string())],
+        variables: [v("var_sum", "summary", ir.string(), "public")],
         nodes: [node("n_set", "briar.variable.set", { config: { variableId: "var_sum" } }), node("n_get", "briar.variable.get", { config: { variableId: "var_sum" } })],
         edges: [edge("n_in.topic", "n_set.value"), edge("n_get.value", "n_out.summary")],
       }),
@@ -46,7 +46,7 @@ describe("flow variables (variables.md §4, §6, §7)", () => {
     const doc = context([
       flow({
         outputs: [field("before", ir.int()), field("after", ir.int())],
-        variables: [v("var_c", "count", ir.int(), "public", { default: 5 }), v("var_p", "notes", ir.list(ir.text()), "private")],
+        variables: [v("var_c", "count", ir.int(), "public", { default: 5 }), v("var_p", "notes", ir.list(ir.string()), "private")],
         nodes: [
           node("n_get1", "briar.variable.get", { config: { variableId: "var_c" } }),
           node("n_add", "tk.addOne"),
@@ -90,8 +90,8 @@ describe("flow variables (variables.md §4, §6, §7)", () => {
   it("gets ordered after a skipped writer are skipped too", async () => {
     const doc = context([
       flow({
-        outputs: [field("x", ir.text())],
-        variables: [v("var_x", "x", ir.text(), "public", { default: "start" })],
+        outputs: [field("x", ir.string())],
+        variables: [v("var_x", "x", ir.string(), "public", { default: "start" })],
         nodes: [
           node("n_fail", "tk.fail"),
           node("n_set", "briar.variable.set", { config: { variableId: "var_x" } }),
@@ -114,10 +114,10 @@ describe("flow variables (variables.md §4, §6, §7)", () => {
     const doc = context([
       flow({
         variables: [
-          v("var_a", "a", ir.text(), "public", { default: "x" }),
-          v("var_b", "b", ir.text(), "public"),
-          v("var_c", "c", ir.optional(ir.text()), "public"),
-          v("var_d", "d", ir.text(), "private", { default: "hidden" }),
+          v("var_a", "a", ir.string(), "public", { default: "x" }),
+          v("var_b", "b", ir.string(), "public"),
+          v("var_c", "c", ir.optional(ir.string()), "public"),
+          v("var_d", "d", ir.string(), "private", { default: "hidden" }),
         ],
       }),
     ]);
@@ -128,7 +128,7 @@ describe("flow variables (variables.md §4, §6, §7)", () => {
 
 describe("globals (variables.md §6, §8)", () => {
   const globals: GlobalVariable[] = [
-    { id: "gv_brand", name: "brand", type: ir.text(), access: "readonly", value: "Pastel" },
+    { id: "gv_brand", name: "brand", type: ir.string(), access: "readonly", value: "Pastel" },
     { id: "gv_count", name: "counter", type: ir.int(), access: "readwrite", value: 1 },
     { id: "gv_other", name: "other", type: ir.int(), access: "readwrite", value: 2 },
   ];
@@ -137,7 +137,7 @@ describe("globals (variables.md §6, §8)", () => {
     const doc = context(
       [
         flow({
-          outputs: [field("brand", ir.text()), field("before", ir.int()), field("after", ir.int())],
+          outputs: [field("brand", ir.string()), field("before", ir.int()), field("after", ir.int())],
           nodes: [
             node("n_brand", "briar.global.get", { config: { globalId: "gv_brand" } }),
             node("n_get", "briar.global.get", { config: { globalId: "gv_count" } }),
@@ -166,7 +166,7 @@ describe("globals (variables.md §6, §8)", () => {
     const doc = context(
       [
         flow({
-          outputs: [field("v", ir.text())],
+          outputs: [field("v", ir.string())],
           variables: [v("var_c", "count", ir.int(), "public", { default: 5 })],
           nodes: [node("n_r", "tk.readState", { values: { global: "brand", variable: "count" } }), node("n_set", "briar.variable.set", { config: { variableId: "var_c" }, values: { value: 9 } })],
           edges: [edge("n_r.value", "n_out.v")],

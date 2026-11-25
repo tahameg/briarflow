@@ -9,7 +9,8 @@ import urllib.request
 from typing import Any, BinaryIO, Callable, Iterator, Mapping
 
 from .errors import Cancelled, NodeError
-from .media import MEDIA_CLASSES, MediaRef
+from .media import Binary
+from .structs import Audio, File, Image, Model3D, Video
 
 LOG_LEVELS = ("debug", "info", "warn", "error")
 _LEVEL_ALIASES = {"warning": "warn", "err": "error", "critical": "error", "fatal": "error"}
@@ -51,32 +52,53 @@ class Secrets(Mapping[str, str]):
         return f"Secrets({sorted(self._values)})"
 
 
+_KIND_CLASSES: dict[str, type] = {"image": Image, "video": Video, "audio": Audio, "model": Model3D}
+
+Media = Any  # Image | Video | Audio | Model3D | File, or a struct extending one
+
+
+def _binary(value: Any) -> Binary:
+    """The ``Binary`` of a media struct value (its ``data``), or the value itself."""
+    data = getattr(value, "data", value)
+    if not isinstance(data, Binary):
+        raise TypeError(f"expected media (Image, Video…) or Binary, got {type(value).__name__}")
+    return data
+
+
+def _num(meta: dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        v = meta.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return v
+    return None
+
+
 class MediaHelper:
     """Reads input media and creates output media."""
 
     def __init__(self, timeout: float = 60.0) -> None:
         self._timeout = timeout
 
-    def _url(self, ref: MediaRef) -> str:
-        if not isinstance(ref, MediaRef):
-            raise TypeError(f"expected a MediaRef, got {type(ref).__name__}")
+    def _url(self, ref: Binary) -> str:
         if not ref.url:
             raise NodeError(
                 "node.invalid_input",
                 f"Media {ref.uri or ref.mime} has no fetchable url; the bridge adds one to every "
-                f"input MediaRef.",
+                f"input media value.",
             )
         return ref.url
 
-    def read(self, ref: MediaRef) -> bytes:
-        """Downloads the media bytes (GET ``ref.url``)."""
+    def read(self, value: Media | Binary) -> bytes:
+        """Downloads the bytes of a media value (``image``) or of a ``Binary``."""
+        ref = _binary(value)
         if ref.is_new:
             return bytes(ref._data or b"")
         with self.open(ref) as fh:
             return fh.read()
 
-    def open(self, ref: MediaRef) -> BinaryIO:
+    def open(self, value: Media | Binary) -> BinaryIO:
         """Streaming variant of ``read``; use as a context manager."""
+        ref = _binary(value)
         if ref.is_new:
             import io
 
@@ -95,10 +117,10 @@ class MediaHelper:
                 "node.unavailable", f"Could not fetch media {ref.uri}: {exc}", retryable=True
             ) from None
 
-    def create(
-        self, data: bytes, mime: str, filename: str | None = None, **meta: Any
-    ) -> MediaRef:
-        """Creates new media from bytes. Return it from the node (or inside a struct/list).
+    def create(self, data: bytes, mime: str, filename: str | None = None, **meta: Any) -> Media:
+        """Creates new media from bytes: an ``Image`` for ``image/*``, a ``Video``, ``Audio``,
+        ``Model3D`` or else a ``File``. Return it from the node (or inside a struct/list).
+        ``width``, ``height``, ``duration`` and ``fps`` in ``meta`` fill those members.
 
         Example:
             return ctx.media.create(png_bytes, mime="image/png", width=64, height=64)
@@ -108,9 +130,20 @@ class MediaHelper:
         if not isinstance(mime, str) or "/" not in mime:
             raise ValueError(f"media.create needs a mime type like 'image/png', got {mime!r}")
         mime = mime.lower()
-        kind = mime.split("/", 1)[0]
-        cls = {"image": "image", "video": "video", "audio": "audio", "model": "model3d"}.get(kind, "file")
-        return MEDIA_CLASSES[cls]._created(bytes(data), mime, filename, dict(meta))
+        raw = bytes(data)
+        ref = Binary.created(raw, mime, filename, dict(meta))
+        cls = _KIND_CLASSES.get(mime.split("/", 1)[0], File)
+        if mime == "application/octet-stream":
+            cls = File
+        values: dict[str, Any] = {"data": ref, "mime": mime, "name": filename, "size": len(raw)}
+        if cls in (Image, Video):
+            values["width"] = _num(meta, "width")
+            values["height"] = _num(meta, "height")
+        if cls in (Video, Audio):
+            values["duration"] = _num(meta, "duration", "durationSec")
+        if cls is Video:
+            values["fps"] = _num(meta, "fps")
+        return cls(**values)
 
 
 class ExecContext:

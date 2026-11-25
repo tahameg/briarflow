@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   MediaError,
+  builtinType,
   checkMediaEntry,
   createMedia,
   createMemoryMediaRegistry,
@@ -17,7 +18,7 @@ import {
 import { expectBriarRejection, memoryMediaStore, streamOf, utf8 } from "@briarflow/testing";
 
 const PNG_1X1 = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="), (c) => c.charCodeAt(0));
-const image = { kind: "primitive", name: "image" } as const;
+const image = { kind: "named", id: "briar.Image" } as const;
 
 function setup(options: { fetch?: typeof fetch; blobs?: boolean; memoryBytes?: number } = {}) {
   let n = 0;
@@ -37,32 +38,44 @@ describe("media values", () => {
     expect(isMediaRef({ mediaId: "med_1" })).toBe(true);
     expect(isMediaRef({ mediaId: "med_1", mime: "image/png" })).toBe(false);
     expect(isMediaRef({ uri: "briar-media://m_1", mime: "image/png" })).toBe(false);
-    expect(validateMediaRef({ mediaId: "med_1" }, "image", "inputs.photo")).toEqual([]);
-    const [old] = validateMediaRef({ uri: "briar-media://m_1", mime: "image/png" }, "image", "inputs.photo");
+    expect(validateMediaRef({ mediaId: "med_1" }, "inputs.photo.data")).toEqual([]);
+    const [old] = validateMediaRef({ uri: "briar-media://m_1", mime: "image/png" }, "inputs.photo.data");
     expect(old?.code).toBe("media.invalid_ref");
     expect(old?.message).toContain("upload the file again");
   });
 
   it("are found inside values by type, and by shape where the type is a var", () => {
-    const struct = { kind: "struct", id: "ty_c", name: "C", fields: [{ name: "portrait", type: image }, { name: "name", type: { kind: "primitive", name: "text" } }] } as const;
-    const getType = (id: string) => (id === "ty_c" ? struct : undefined);
-    const value = [{ portrait: { mediaId: "a" }, name: "x" }, { portrait: { mediaId: "b" }, name: "y" }];
+    const struct = { kind: "struct", id: "ty_c", name: "C", fields: [{ name: "portrait", type: image }, { name: "name", type: { kind: "primitive", name: "string" } }] } as const;
+    const getType = (id: string) => (id === "ty_c" ? struct : builtinType(id));
+    const value = [
+      { portrait: { data: { mediaId: "a" }, mime: "image/png" }, name: "x" },
+      { portrait: { data: { mediaId: "b" }, mime: "image/png" }, name: "y" },
+    ];
     const found = findMedia(value, { kind: "list", of: { kind: "named", id: "ty_c" } }, getType);
-    expect(found.map((f) => [f.ref.mediaId, f.path])).toEqual([
-      ["a", "[0].portrait"],
-      ["b", "[1].portrait"],
+    expect(found.map((f) => [f.ref.mediaId, f.path, f.media?.kind])).toEqual([
+      ["a", "[0].portrait.data", "image"],
+      ["b", "[1].portrait.data", "image"],
     ]);
     expect(findMedia({ any: [{ mediaId: "c" }] }, { kind: "var", name: "T" }, getType).map((f) => f.ref.mediaId)).toEqual(["c"]);
     expect(typeHasMedia({ kind: "named", id: "ty_c" }, getType)).toBe(true);
-    expect(typeHasMedia({ kind: "primitive", name: "text" }, getType)).toBe(false);
+    expect(typeHasMedia({ kind: "primitive", name: "string" }, getType)).toBe(false);
   });
 
-  it("entries are checked against the port type", () => {
-    expect(checkMediaEntry({ mime: "image/png" }, image, "inputs.a")).toEqual([]);
-    expect(checkMediaEntry({ mime: "video/mp4" }, image, "inputs.a")[0]?.code).toBe("media.kind_mismatch");
-    const small = { kind: "primitive", name: "image", constraints: { maxWidth: 10, formats: ["png"] } } as const;
-    expect(checkMediaEntry({ mime: "image/png", meta: { width: 20 } }, small, "inputs.a")[0]?.message).toBe("inputs.a must be at most 10 px wide.");
-    expect(checkMediaEntry({ mime: "image/jpeg" }, small, "inputs.a")[0]?.message).toContain("formats png");
+  it("entries are checked against the media kind and the struct's limits", () => {
+    const none = new Map<string, unknown>();
+    expect(checkMediaEntry({ mime: "image/png" }, "image", none, "inputs.a")).toEqual([]);
+    expect(checkMediaEntry({ mime: "video/mp4" }, "image", none, "inputs.a")[0]?.code).toBe("media.kind_mismatch");
+    const small = new Map<string, unknown>([["maxWidth", 10], ["formats", ["png"]]]);
+    expect(checkMediaEntry({ mime: "image/png", meta: { width: 20 } }, "image", small, "inputs.a")[0]?.message).toBe("inputs.a must be at most 10 px wide.");
+    expect(checkMediaEntry({ mime: "image/jpeg" }, "image", small, "inputs.a")[0]?.message).toContain("formats png");
+  });
+
+  it("finds the limits of a struct extending Image", () => {
+    const thumb = { kind: "struct", id: "ty_thumb", name: "Thumb", extends: "briar.Image", fields: [{ name: "maxWidth", type: { kind: "optional", of: { kind: "primitive", name: "int" } }, static: true, default: 64 }] } as const;
+    const getType = (id: string) => (id === "ty_thumb" ? thumb : builtinType(id));
+    const [found] = findMedia({ data: { mediaId: "t" }, mime: "image/png" }, { kind: "named", id: "ty_thumb" }, getType);
+    expect(found?.media?.kind).toBe("image");
+    expect(found?.media?.limits.get("maxWidth")).toBe(64);
   });
 });
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { applyCommands } from "@briarflow/authoring";
-import { createCatalog, createContextDocument, validateContext } from "@briarflow/core";
+import { createCatalog, createContextDocument, createTypeScope, validateContext } from "@briarflow/core";
 import type { ContextDocument, TypeRef } from "@briarflow/core";
 import { stdPack } from "@briarflow/nodes-std";
-import { buildFlowView, canConnect, planConnection } from "../../src/graph.js";
+import { buildFlowView, canConnect, kindLookup, planConnection } from "../../src/graph.js";
 import { initialConfig, paletteGroups, snap } from "../../src/palette.js";
 import { isListType, ledFamily, typeStyle } from "../../src/theme.js";
 import { initialValue, widgetKind } from "../../src/values.js";
@@ -19,7 +19,7 @@ function sample(): ContextDocument {
       { op: "flow.create", name: "Portrait", id: "flow_p", inputNodeId: "n_in", outputNodeId: "n_out" },
       { op: "flow.input.add", flowId: "flow_p", name: "count", type: "int" },
       { op: "flow.input.add", flowId: "flow_p", name: "style", type: "Style" },
-      { op: "flow.output.add", flowId: "flow_p", name: "text", type: "text" },
+      { op: "flow.output.add", flowId: "flow_p", name: "text", type: "string" },
       { op: "node.add", flowId: "flow_p", type: "text.join", id: "n_join", position: { x: 300, y: 0 } },
       { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_join", port: "text" }, to: { node: "n_out", port: "text" } },
     ],
@@ -70,7 +70,7 @@ describe("buildFlowView", () => {
     const r = applyCommands(
       sample(),
       [
-        { op: "flow.input.add", flowId: "flow_p", name: "raw", type: "text" },
+        { op: "flow.input.add", flowId: "flow_p", name: "raw", type: "string" },
         { op: "node.add", flowId: "flow_p", type: "json.getField", id: "n_get", position: { x: 300, y: 200 } },
         { op: "node.add", flowId: "flow_p", type: "convert.asInt", id: "n_int", position: { x: 300, y: 400 } },
       ],
@@ -83,14 +83,14 @@ describe("buildFlowView", () => {
       kind: "convert",
       conversion: { type: "convert.asJson", title: "As JSON", input: "text", output: "json" },
     });
-    // count (int) → text: As text.
+    // count (int) → string: As string.
     expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
     expect(canConnect(view, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" }, catalog)).toBe(true);
-    // json → As int's text|json input: direct; int → it: through As text.
+    // json → As int's text|json input: direct; int → it: through As string.
     expect(planConnection(view, catalog, { node: "n_get", port: "value" }, { node: "n_int", port: "value" })).toEqual({ kind: "direct" });
     expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_int", port: "value" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
     // An unwired oneOf port shows its choices.
-    expect(view.byId.get("n_int")!.inputs[0]!.typeText).toBe("text | json");
+    expect(view.byId.get("n_int")!.inputs[0]!.typeText).toBe("string | Json");
   });
 
   it("returns undefined for an unknown flow", () => {
@@ -100,7 +100,7 @@ describe("buildFlowView", () => {
 
 describe("helpers", () => {
   it("styles list and optional types", () => {
-    const s = typeStyle({ kind: "optional", of: { kind: "list", of: { kind: "primitive", name: "image" } } });
+    const s = typeStyle({ kind: "optional", of: { kind: "list", of: { kind: "named", id: "briar.Image" } } });
     expect(s).toMatchObject({ token: "peach", hollow: true, optional: true, shape: "square" });
     expect(typeStyle({ kind: "var", name: "T" }).unbound).toBe(true);
   });
@@ -112,15 +112,15 @@ describe("helpers", () => {
 
   it("builds a starting config for config-required nodes", () => {
     const doc = sample();
-    expect(initialConfig(catalog.get("briar.constant"), doc, "flow_p", catalog)).toEqual({ type: "text" });
+    expect(initialConfig(catalog.get("briar.constant"), doc, "flow_p", catalog)).toEqual({ type: "string" });
     expect(initialConfig(catalog.get("text.join"), doc, "flow_p", catalog)).toBeUndefined();
     expect(snap({ x: 13, y: 29 })).toEqual({ x: 12, y: 24 });
   });
 
   it("picks widgets and initial values", () => {
-    expect(widgetKind({ kind: "primitive", name: "image" }, undefined)).toBe("media");
+    expect(widgetKind({ kind: "named", id: "briar.Image" }, undefined)).toBe("media");
     expect(initialValue({ kind: "primitive", name: "int", constraints: { min: 3 } }, undefined)).toBe(3);
-    expect(initialValue({ kind: "list", of: { kind: "primitive", name: "text" } }, undefined)).toEqual([]);
+    expect(initialValue({ kind: "list", of: { kind: "primitive", name: "string" } }, undefined)).toEqual([]);
   });
 });
 
@@ -128,15 +128,24 @@ describe("ledFamily", () => {
   const t = (name: string) => ({ kind: "primitive", name }) as TypeRef;
 
   it("groups types by family through lists and optionals", () => {
-    expect([t("text"), t("int"), t("float"), t("boolean"), t("image"), t("audio"), t("file")].map(ledFamily)).toEqual(["text", "num", "num", "bool", "media", "media", "data"]);
+    const b = (id: string) => ({ kind: "named", id }) as TypeRef;
+    expect([t("string"), t("int"), t("float"), t("bool"), b("briar.Image"), b("briar.Audio"), b("briar.File"), b("briar.Text")].map((x) => ledFamily(x))).toEqual(["text", "num", "num", "bool", "media", "media", "data", "text"]);
     expect(ledFamily({ kind: "optional", of: { kind: "list", of: t("int") } })).toBe("num");
     expect(ledFamily({ kind: "named", id: "ty_style" })).toBe("data");
     expect(ledFamily({ kind: "var", name: "T" })).toBe("any");
   });
 
+  it("styles a struct like the built-in it extends", () => {
+    const short = { kind: "struct" as const, id: "ty_short", name: "ShortText", extends: "briar.Text", fields: [] };
+    const scope = createTypeScope({ globalTypes: [short] });
+    const kindOf = kindLookup(scope);
+    expect(ledFamily({ kind: "named", id: "ty_short" }, kindOf)).toBe("text");
+    expect(typeStyle({ kind: "named", id: "ty_short" }, kindOf).token).toBe("mint");
+  });
+
   it("marks lists, optional or not", () => {
-    expect(isListType({ kind: "list", of: t("text") })).toBe(true);
-    expect(isListType({ kind: "optional", of: { kind: "list", of: t("text") } })).toBe(true);
-    expect(isListType(t("text"))).toBe(false);
+    expect(isListType({ kind: "list", of: t("string") })).toBe(true);
+    expect(isListType({ kind: "optional", of: { kind: "list", of: t("string") } })).toBe(true);
+    expect(isListType(t("string"))).toBe(false);
   });
 });

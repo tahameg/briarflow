@@ -88,10 +88,10 @@ export const errorBreak = defineNode({
   description: "Splits an error (from a node's error output on its failed line) into its code, message and the node that failed.",
   inputs: { error: t.error() },
   outputs: {
-    code: { type: t.text(), description: "Stable code, e.g. node.timeout." },
-    message: t.text(),
-    node: { type: t.optional(t.text()), description: "Title of the node that failed." },
-    nodeId: t.optional(t.text()),
+    code: { type: t.string(), description: "Stable code, e.g. node.timeout." },
+    message: t.string(),
+    node: { type: t.optional(t.string()), description: "Title of the node that failed." },
+    nodeId: t.optional(t.string()),
   },
   run: ({ inputs }) => ({ code: inputs.error.code, message: inputs.error.message, node: inputs.error.node ?? null, nodeId: inputs.error.nodeId ?? null }),
 });
@@ -128,9 +128,9 @@ export const memberGet = defineNode({
     const name = m.path[m.path.length - 1]!;
     return { inputs: { value: t.fromRef(config.type) }, outputs: { [name]: portOf(m.type, m.titles[m.titles.length - 1]!, m.description) } };
   },
-  run: async ({ inputs, config, ctx }) => {
+  run: ({ inputs, config, ctx }) => {
     const path = pathOf(config.path);
-    const out: Record<string, UnknownValue> = { [path[path.length - 1]!]: (await readMember(inputs.value, config.type, path, (id) => ctx.resolveType(id), (ref) => ctx.media.entry(ref))) as UnknownValue };
+    const out: Record<string, UnknownValue> = { [path[path.length - 1]!]: readMember(inputs.value, config.type, path, (id) => ctx.resolveType(id)) as UnknownValue };
     return out;
   },
 });

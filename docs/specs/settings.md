@@ -13,19 +13,19 @@ One settings screen for the whole studio. It is extensible from two sides:
 definePack({
   name: "openai",
   settings: {
-    defaultKey: { type: t.optional(t.secret({ kind: "apiKey" })), title: "Default API key", description: "…" },
-    baseUrl: { type: t.text(), default: "https://api.openai.com/v1" },
+    defaultKey: { type: t.optional(t.apiKey()), title: "Default API key", description: "…" },
+    baseUrl: { type: t.string(), default: "https://api.openai.com/v1" },
   },
   nodes: [...],
 });
 ```
 
 - Keys are `<pack>.<name>` (`openai.defaultKey`). Names follow field-name rules.
-- Types: primitives, lists and optionals of them (no named or generic types). Defaults are
-  validated at definition time.
+- Types: primitives, built-in types (`ApiKey`, `Secret`, `Text`…), lists and optionals of them
+  (no pack, document or generic types). Defaults are validated at definition time.
 - `NodePack.settings` lists them; `GET /node-types` and `GET /settings` carry them.
 - Nodes read their own pack's settings: `await ctx.settings.get("defaultKey")` → stored value,
-  else the default, else `null`. Undeclared → `node.unknown_setting`. Reading a `secret`
+  else the default, else `null`. Undeclared → `node.unknown_setting`. Reading a `Secret`
   setting allows the node to `ctx.secrets.read` that secret (secrets.md §3).
 
 ## 2. Storage and API

@@ -2,13 +2,14 @@
  * Value validation and normalization (docs/specs/types.md §6–§8).
  */
 import type { Diagnostic, DiagnosticPath } from "../validation/diagnostic.js";
-import type { MediaPrimitiveName, PrimitiveTypeRef, TypeRef } from "../types/ir.js";
-import { MEDIA_PRIMITIVE_NAMES } from "../types/ir.js";
+import type { StructDecl } from "../documents/model.js";
+import type { PrimitiveTypeRef, TypeRef } from "../types/ir.js";
+import { BUILTIN } from "../types/builtins.js";
 import { compilePattern } from "../types/constraints.js";
+import { structLayout } from "../types/layout.js";
 import { describe, validateMediaRef } from "../types/media.js";
 import type { TypeScope } from "../types/scope.js";
 import { cloneJson } from "../util/json.js";
-import { isValidSecretName } from "../util/names.js";
 
 /** Options of {@link validateValue} / {@link normalizeValue}. */
 export interface ValueCheckOptions {
@@ -163,16 +164,24 @@ class Checker {
       this.invalid(path, `must be an object with the fields of ${decl.name} (got ${describe(value)})`);
       return value;
     }
-    const obj = value as Record<string, unknown>;
-    const known = decl.fields.map((f) => f.name);
+    return this.struct(value as Record<string, unknown>, decl, path);
+  }
+
+  /** A struct value holds its instance fields only (types.md §7); static fields belong to the type. */
+  private struct(obj: Record<string, unknown>, decl: StructDecl, path: string): unknown {
+    const layout = structLayout(decl, (id) => this.scope.getType(id)?.decl);
+    const known = layout.fields.map((f) => f.name);
     for (const key of Object.keys(obj)) {
-      if (obj[key] !== undefined && !known.includes(key)) {
+      if (obj[key] === undefined || known.includes(key)) continue;
+      if (layout.statics.has(key)) {
+        this.invalid(`${path}.${key}`, `is a static field of ${decl.name}: its value comes from the type and is not part of a value`);
+      } else {
         this.invalid(`${path}.${key}`, `is not a field of ${decl.name}. Known fields: ${known.join(", ")}`);
       }
     }
     const out: Record<string, unknown> = {};
     let changed = false;
-    for (const field of decl.fields) {
+    for (const field of layout.fields) {
       const fieldPath = `${path}.${field.name}`;
       const present = Object.prototype.hasOwnProperty.call(obj, field.name) && obj[field.name] !== undefined;
       if (!present) {
@@ -191,32 +200,34 @@ class Checker {
       if (n !== v) changed = true;
       out[field.name] = n;
     }
-    if (!changed && Object.keys(obj).length === decl.fields.length) return value;
+    if (this.constraints && layout.root === BUILTIN.Text) this.text(out, layout.statics, path);
+    if (!changed && Object.keys(obj).length === layout.fields.length) return obj;
     return out;
+  }
+
+  /** Text's limits come from its (static) fields (types.md §6). */
+  private text(value: Record<string, unknown>, statics: ReturnType<typeof structLayout>["statics"], path: string): void {
+    const text = value["value"];
+    if (typeof text !== "string") return;
+    const at = `${path}.value`;
+    const length = [...text].length;
+    const min = statics.get("minLength")?.value;
+    const max = statics.get("maxLength")?.value;
+    if (typeof min === "number" && length < min) this.invalid(at, `must be at least ${min} characters long`);
+    if (typeof max === "number" && length > max) this.invalid(at, `must be at most ${max} characters long`);
+    const pattern = statics.get("pattern")?.value;
+    if (typeof pattern === "string") {
+      const re = compilePattern(pattern);
+      if (re && !re.test(text)) this.invalid(at, `must match the pattern ${pattern}`);
+    }
   }
 
   private primitive(value: unknown, type: PrimitiveTypeRef, path: string): unknown {
     const c = (this.constraints ? type.constraints : undefined) as Record<string, unknown> | undefined;
     switch (type.name) {
-      case "text": {
-        if (typeof value !== "string") {
-          this.invalid(path, `must be text (got ${describe(value)})`);
-          return value;
-        }
-        if (c) {
-          const length = [...value].length;
-          const min = c["minLength"];
-          const max = c["maxLength"];
-          if (typeof min === "number" && length < min) this.invalid(path, `must be at least ${min} characters long`);
-          if (typeof max === "number" && length > max) this.invalid(path, `must be at most ${max} characters long`);
-          const pattern = c["pattern"];
-          if (typeof pattern === "string") {
-            const re = compilePattern(pattern);
-            if (re && !re.test(value)) this.invalid(path, `must match the pattern ${pattern}`);
-          }
-        }
+      case "string":
+        if (typeof value !== "string") this.invalid(path, `must be a string (got ${describe(value)})`);
         return value;
-      }
       case "int":
       case "float": {
         if (type.name === "int" ? !Number.isSafeInteger(value) : typeof value !== "number" || !Number.isFinite(value)) {
@@ -232,49 +243,13 @@ class Checker {
         }
         return value;
       }
-      case "boolean":
+      case "bool":
         if (typeof value !== "boolean") this.invalid(path, `must be true or false (got ${describe(value)})`);
         return value;
-      case "json": {
-        const problem = jsonProblem(value);
-        if (problem !== undefined) this.invalid(path, `must be JSON: ${problem}`);
+      case "binary":
+        // Shape only: the entry, its mime and the media limits are checked when a node reads it (media.md §4).
+        for (const p of validateMediaRef(value, path)) this.diagnostics.push({ ...p, path: { ...this.options.at, ...p.path } });
         return value;
-      }
-      case "secret":
-        if (typeof value !== "string" || !isValidSecretName(value)) this.invalid(path, `must be the name of a secret (got ${describe(value)})`);
-        return value;
-      case "error": {
-        const e = value as Record<string, unknown> | null;
-        if (typeof e !== "object" || e === null || Array.isArray(e) || typeof e["code"] !== "string" || typeof e["message"] !== "string") {
-          this.invalid(path, `must be an error { code, message } (got ${describe(value)})`);
-        }
-        return value;
-      }
-      default:
-        return this.media(value, type.name, path);
     }
   }
-
-  /** Shape only: the entry's mime and the constraints are checked when a node reads it (media.md §4). */
-  private media(value: unknown, kind: MediaPrimitiveName, path: string): unknown {
-    if (!MEDIA_PRIMITIVE_NAMES.includes(kind)) return value;
-    for (const p of validateMediaRef(value, kind, path)) this.diagnostics.push({ ...p, path: { ...this.options.at, ...p.path } });
-    return value;
-  }
-}
-
-/** Why a value is not plain JSON (undefined, functions, non-finite numbers, cycles…), or undefined. */
-function jsonProblem(value: unknown, seen: Set<object> = new Set()): string | undefined {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return undefined;
-  if (typeof value === "number") return Number.isFinite(value) ? undefined : `${String(value)} is not a JSON number`;
-  if (typeof value !== "object") return `${typeof value} is not a JSON value`;
-  if (seen.has(value)) return "it contains a circular reference";
-  seen.add(value);
-  const items = Array.isArray(value) ? value : Object.values(value);
-  for (const item of items) {
-    const p = jsonProblem(item, seen);
-    if (p !== undefined) return p;
-  }
-  seen.delete(value);
-  return undefined;
 }

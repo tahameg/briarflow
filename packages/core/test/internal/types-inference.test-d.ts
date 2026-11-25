@@ -14,6 +14,8 @@ import {
   variant,
   type AnyNodeDefinition,
   type ConfigOf,
+  type ImageValue,
+  type TextValue,
   type InputsOf,
   type MediaRef,
   type NodeDefinition,
@@ -24,15 +26,18 @@ import {
   type ValueOf,
 } from "@briarflow/core";
 
+const IMG: ImageValue = { data: { mediaId: "x" }, mime: "image/png", name: null, size: null, width: null, height: null };
+
 export function typeInferenceChecks(): void {
   // --- t builder -------------------------------------------------------------------------
-  expectTypeOf(t.text()).toEqualTypeOf<TypeSpec<string>>();
+  expectTypeOf(t.string()).toEqualTypeOf<TypeSpec<string>>();
   expectTypeOf(t.int({ min: 0 })).toEqualTypeOf<TypeSpec<number>>();
-  expectTypeOf(t.boolean()).toEqualTypeOf<TypeSpec<boolean>>();
-  expectTypeOf(t.image({ formats: ["png"] })).toEqualTypeOf<TypeSpec<MediaRef>>();
-  expectTypeOf(t.list(t.image())).toEqualTypeOf<TypeSpec<readonly MediaRef[]>>();
+  expectTypeOf(t.bool()).toEqualTypeOf<TypeSpec<boolean>>();
+  expectTypeOf(t.image()).toEqualTypeOf<TypeSpec<ImageValue>>();
+  expectTypeOf(t.binary()).toEqualTypeOf<TypeSpec<MediaRef>>();
+  expectTypeOf(t.list(t.image())).toEqualTypeOf<TypeSpec<readonly ImageValue[]>>();
   expectTypeOf(t.optional(t.int())).toEqualTypeOf<TypeSpec<number | null>>();
-  expectTypeOf(t.list(t.optional(t.text()))).toEqualTypeOf<TypeSpec<readonly (string | null)[]>>();
+  expectTypeOf(t.list(t.optional(t.string()))).toEqualTypeOf<TypeSpec<readonly (string | null)[]>>();
   expectTypeOf(t.ref("openai.ChatMessage")).toEqualTypeOf<TypeSpec<UnknownValue>>();
   expectTypeOf(t.var("T")).toEqualTypeOf<TypeSpec<UnknownValue>>();
   expectTypeOf<ValueOf<TypeSpec<string>>>().toEqualTypeOf<string>();
@@ -46,30 +51,37 @@ export function typeInferenceChecks(): void {
 
   const ChatMessage = defineStruct("ChatMessage", {
     role: t.ref(Role),
-    content: t.text(),
-    name: { type: t.optional(t.text()), description: "Optional speaker name" },
+    content: t.string(),
+    name: { type: t.optional(t.string()), description: "Optional speaker name" },
   });
   expectTypeOf<ValueOf<typeof ChatMessage>>().toEqualTypeOf<{
     role: "system" | "user" | "assistant";
     content: string;
     name: string | null;
   }>();
+  // Static fields belong to the type; a struct that extends another has the base's values.
+  const Pet = defineStruct("Pet", { name: t.string(), legs: { type: t.int(), static: true, default: 4 } });
+  expectTypeOf<ValueOf<typeof Pet>>().toEqualTypeOf<{ name: string }>();
+  const Title = defineStruct("Title", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
+  expectTypeOf<ValueOf<typeof Title>>().toEqualTypeOf<TextValue>();
+  const Bird = defineStruct("Bird", { legs: { type: t.int(), static: true, default: 2 } }, { extends: Pet });
+  expectTypeOf<ValueOf<typeof Bird>>().toEqualTypeOf<{ name: string }>();
   expectTypeOf(t.ref(ChatMessage)).toEqualTypeOf<TypeSpec<{ role: "system" | "user" | "assistant"; content: string; name: string | null }>>();
 
   // --- defineNode: inputs, outputs, return checks (node-api.md §3) -------------------------
   const def = defineNode({
     type: "demo.x",
-    inputs: { a: t.text(), b: { type: t.optional(t.int()), default: null }, c: t.list(t.image()) },
-    outputs: { out: t.text() },
+    inputs: { a: t.string(), b: { type: t.optional(t.int()), default: null }, c: t.list(t.image()) },
+    outputs: { out: t.string() },
     run({ inputs, ctx }) {
       expectTypeOf(inputs.a).toEqualTypeOf<string>();
       expectTypeOf(inputs.b).toEqualTypeOf<number | null>();
-      expectTypeOf(inputs.c).toEqualTypeOf<readonly MediaRef[]>();
+      expectTypeOf(inputs.c).toEqualTypeOf<readonly ImageValue[]>();
       expectTypeOf(ctx.signal).toEqualTypeOf<AbortSignal>();
       return { out: "ok" };
     },
   });
-  expectTypeOf<InputsOf<typeof def>>().toEqualTypeOf<{ readonly a: string; readonly b: number | null; readonly c: readonly MediaRef[] }>();
+  expectTypeOf<InputsOf<typeof def>>().toEqualTypeOf<{ readonly a: string; readonly b: number | null; readonly c: readonly ImageValue[] }>();
   expectTypeOf<OutputsOf<typeof def>>().toEqualTypeOf<{ readonly out: string }>();
   expectTypeOf(def).toMatchTypeOf<AnyNodeDefinition>();
 
@@ -89,14 +101,14 @@ export function typeInferenceChecks(): void {
 
   defineNode({
     type: "demo.missing",
-    outputs: { out: t.text() },
+    outputs: { out: t.string() },
     // @ts-expect-error a required output is missing
     run: () => ({}),
   });
 
   defineNode({
     type: "demo.wrong",
-    outputs: { out: t.text() },
+    outputs: { out: t.string() },
     // @ts-expect-error wrong output type
     run: () => ({ out: 42 }),
   });
@@ -104,7 +116,7 @@ export function typeInferenceChecks(): void {
   // @ts-expect-error undeclared output port
   defineNode({
     type: "demo.extra",
-    outputs: { out: t.text() },
+    outputs: { out: t.string() },
     run: () => ({ out: "ok", extra: 1 }),
   });
 
@@ -117,8 +129,8 @@ export function typeInferenceChecks(): void {
 
   defineNode({
     type: "demo.input_typo",
-    inputs: { text: t.text() },
-    outputs: { out: t.text() },
+    inputs: { text: t.string() },
+    outputs: { out: t.string() },
     run({ inputs }) {
       // @ts-expect-error unknown input
       void inputs.txt;
@@ -169,7 +181,7 @@ export function typeInferenceChecks(): void {
   expectTypeOf(structMake).toMatchTypeOf<NodeDefinition>();
 
   // Variants: each one types its own run.
-  const shared = { prompt: t.text() };
+  const shared = { prompt: t.string() };
   const image = defineNode({
     type: "demo.image",
     variants: {
@@ -180,21 +192,21 @@ export function typeInferenceChecks(): void {
           outputs: { image: t.image() },
           run({ inputs }) {
             expectTypeOf(inputs.prompt).toEqualTypeOf<string>();
-            return { image: { mediaId: "x" } };
+            return { image: IMG };
           },
         }),
         best: variant({
           config: { steps: cfg.int({ default: 20 }) },
-          inputs: { ...shared, negative: t.optional(t.text()) },
+          inputs: { ...shared, negative: t.optional(t.string()) },
           outputs: { image: t.image(), seed: t.int() },
           run({ inputs, config }) {
             expectTypeOf(inputs.negative).toEqualTypeOf<string | null>();
             expectTypeOf(config.steps).toEqualTypeOf<number>();
-            return { image: { mediaId: "x" }, seed: 1 };
+            return { image: IMG, seed: 1 };
           },
         }),
         wrong: variant({
-          outputs: { out: t.text() },
+          outputs: { out: t.string() },
           // @ts-expect-error wrong output type in a variant
           run: () => ({ out: 42 }),
         }),
@@ -207,7 +219,7 @@ export function typeInferenceChecks(): void {
   // @ts-expect-error inputs belong on the variants
   defineNode({
     type: "demo.mixed",
-    inputs: { a: t.text() },
+    inputs: { a: t.string() },
     variants: { options: {} },
   });
 

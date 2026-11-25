@@ -36,7 +36,7 @@ export function moreInferenceChecks(): void {
   const Stats = defineStruct("Stats", {
     words: t.int({ min: 0 }),
     tones: t.list(t.ref(Tone)),
-    note: { type: t.optional(t.text()), default: null },
+    note: { type: t.optional(t.string()), default: null },
   });
   expectTypeOf<ValueOf<typeof Stats>>().toEqualTypeOf<{ words: number; tones: readonly ("calm" | "excited")[]; note: string | null }>();
 

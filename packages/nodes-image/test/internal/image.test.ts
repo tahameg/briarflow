@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMedia, createMemoryMediaRegistry, type Media, type MediaRef } from "@briarflow/core";
+import { createMedia, createMemoryMediaRegistry, type Media, type MediaRef, mediaRefOf, mediaValue, type ImageValue } from "@briarflow/core";
 import { describeNodePack, runNode, type RunNodeResult } from "@briarflow/testing";
 import { blank, decodeImage, encodeImage, imageCrop, imageInvert, imageMake, imagePack, imageResize, imageSplit, imageTransform, resample, type Pixels } from "../../src/index.js";
 
@@ -10,14 +10,15 @@ function sample(): Pixels {
   return p;
 }
 
-async function put(media: Media, p: Pixels, format: "png" | "jpeg" = "png"): Promise<MediaRef> {
+async function put(media: Media, p: Pixels, format: "png" | "jpeg" = "png"): Promise<ImageValue> {
   const { bytes, mime } = encodeImage(p, format);
-  return { mediaId: (await media.put(bytes, { mime })).id };
+  return mediaValue("image", { mediaId: (await media.put(bytes, { mime })).id }, { mime, meta: { width: p.width, height: p.height } });
 }
 
-const pixelsOf = async (media: Media, ref: unknown) => decodeImage(await media.read(ref as MediaRef));
+const refOf = (value: unknown): MediaRef => mediaRefOf(value as ImageValue);
+const pixelsOf = async (media: Media, value: unknown) => decodeImage(await media.read(refOf(value)));
 /** The registry entry of an output. */
-const entryOf = (r: RunNodeResult, port = "image") => r.media.entry(r.outputs[port] as MediaRef);
+const entryOf = (r: RunNodeResult, port = "image") => r.media.entry(refOf(r.outputs[port]));
 const at = (p: Pixels, x: number, y: number) => [...p.data.subarray((y * p.width + x) * 4, (y * p.width + x) * 4 + 4)];
 
 const media = createMedia({ registry: createMemoryMediaRegistry() });
@@ -91,7 +92,7 @@ describe("image nodes", () => {
     const jpg = await put(media, blank(2, 2), "jpeg");
     const r = await runNode(imageResize, { image: jpg, width: 4 }, { media });
     expect(await entryOf(r)).toMatchObject({ meta: { width: 4, height: 4 } });
-    const webp = { mediaId: (await media.put(new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4]), { mime: "image/webp" })).id };
+    const webp = mediaValue("image", { mediaId: (await media.put(new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4]), { mime: "image/webp" })).id }, { mime: "image/webp" });
     await expect(runNode(imageResize, { image: webp, width: 4 }, { media })).rejects.toMatchObject({ code: "image.unsupported_format" });
   });
 });
