@@ -72,6 +72,10 @@ export interface PortView {
   value?: unknown;
   /** Error diagnostics pointing at this port. */
   errors: string[];
+  /** A member port of a split struct port (execution.md §8): the split port's path and the field. */
+  member?: { of: string; field: string };
+  /** A struct port that can be split into its members. */
+  splittable: boolean;
 }
 
 /** One node on the canvas. */
@@ -281,7 +285,9 @@ export function buildFlowView(
       hasDefault: p.hasDefault,
       hasValue: false,
       errors: diags.filter((d) => d.severity === "error" && d.path.port === p.name).map((d) => d.message),
+      splittable: p.type.kind === "named" && kindOf(p.type.id) === "struct",
     };
+    if (p.member !== undefined) view.member = p.member;
     if (p.description !== undefined) view.description = p.description;
     if (p.widget !== undefined) view.widget = p.widget;
     if (p.hasDefault) view.default = p.default;

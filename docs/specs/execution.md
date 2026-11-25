@@ -143,3 +143,22 @@ Two kinds, declared on the node definition (node-api.md §1.3):
   node reports `node.progress` per iteration (`Iteration 2 of 5`) and completes once, after the
   last.
 - Flow control nodes are never cached.
+
+## 8. Split ports
+
+A struct port (input or output; on any node, the flow's Input and Output and a variable's GET
+included) can be shown as one port per member. Right-click the port → **Split**; right-click a
+member → **Collapse** (commands `node.splitPort` / `node.collapsePort`, undoable).
+
+- **Stored** on the node: `NodeInstance.split = { inputs?: string[], outputs?: string[] }`,
+  paths of split ports (`"portrait"`, nested `"portrait.image"`). Member ports are named by
+  their path (`"portrait.image"`); edges and constants use those names.
+- **Members:** a split input shows the struct's instance fields (with their defaults); a split
+  output shows its instance and static fields. A member that is a struct can be split again.
+- **Edges and constants:** splitting removes the port's edges and constant; collapsing removes
+  the members' edges and constants (and the splits inside it). Undo restores them.
+- **Running:** the node still takes and gives the whole struct. Before it runs, the members of a
+  split input are put back together (deepest first; an unwired member without a value is null).
+  After it runs, a split output's struct gives each member on its member port.
+- A path that is not a struct port (the type changed) stays as it is with a warning
+  (`node.split_invalid`); collapse it.
