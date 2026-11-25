@@ -6,7 +6,7 @@
  * - As JSON takes text and does not parse it (fields are parsed when read).
  * - As int, As float and As JSON array take text or json and fail when it does not read.
  */
-import { defineEnum, defineNode, isTruthy, jsonText, NodeError, t } from "@briarflow/core";
+import { BUILTIN, defineEnum, defineNode, isTruthy, jsonText, NodeError, rootOf, t } from "@briarflow/core";
 import type { DeclResolver, TypeRef } from "@briarflow/core";
 import { isJsonText, jsonToText, openJson } from "./json-path.js";
 import { valueToText } from "./text-utils.js";
@@ -97,13 +97,13 @@ export const convertAsFloat = defineNode({
  * is read first (`{ text: "0" }` is false).
  */
 export function truthOf(given: unknown, type?: TypeRef, resolve?: DeclResolver): boolean {
-  if (type !== undefined && isJsonType(type)) return isTruthy(unwrapJson(given));
+  if (type !== undefined && isJsonType(type, resolve)) return isTruthy(unwrapJson(given));
   return isTruthy(given, type, resolve);
 }
 
-const isJsonType = (type: TypeRef): boolean => {
+const isJsonType = (type: TypeRef, resolve?: DeclResolver): boolean => {
   const inner = type.kind === "optional" ? type.of : type;
-  return inner.kind === "named" && inner.id === "briar.Json";
+  return inner.kind === "named" && (resolve ? rootOf(inner.id, resolve) : inner.id) === BUILTIN.Json;
 };
 
 /** `convert.asBoolean`: any value → boolean; never fails. */

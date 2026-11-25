@@ -35,17 +35,18 @@ import {
   type OutputsOf,
   type ResolvedPort,
   type TypeDecl,
-  type TypeRef, BUILTIN } from "@briarflow/core";
+  type TypeRef, BUILTIN, extendsStruct, type DeclResolver } from "@briarflow/core";
 
-function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>): void {
+/** Names of the vault secrets a value gives the node: Secret values and values of structs extending Secret. */
+function collectSecretRefs(value: unknown, type: TypeRef, out: Set<string>, resolve: DeclResolver): void {
   if (value === null || value === undefined) return;
-  if (type.kind === "optional") return collectSecretRefs(value, type.of, out);
+  if (type.kind === "optional") return collectSecretRefs(value, type.of, out, resolve);
   if (type.kind === "list" && Array.isArray(value)) {
-    for (const item of value) collectSecretRefs(item, type.of, out);
+    for (const item of value) collectSecretRefs(item, type.of, out, resolve);
     return;
   }
   const name = typeof value === "object" ? (value as { name?: unknown }).name : undefined;
-  if (type.kind === "named" && (type.id === BUILTIN.Secret || type.id === BUILTIN.ApiKey) && typeof name === "string") out.add(name);
+  if (type.kind === "named" && extendsStruct(type.id, BUILTIN.Secret, resolve) && typeof name === "string") out.add(name);
 }
 
 /** One captured `ctx.progress` call (clamped like the engine; no throttling). */
@@ -332,7 +333,8 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
     });
   const signal = options.signal ?? new AbortController().signal;
   const allowedSecrets = new Set<string>();
-  for (const port of resolved.inputs) collectSecretRefs(values[port.name], portType(port), allowedSecrets);
+  const resolveDecl: DeclResolver = (id) => scope.getType(id)?.decl;
+  for (const port of resolved.inputs) collectSecretRefs(values[port.name], portType(port), allowedSecrets, resolveDecl);
   const packSettings = catalog.packOf(definition.type)?.settings ?? [];
   const ctx: ExecContext = {
     signal,
@@ -378,7 +380,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
         if (!decl) throw new NodeError("node.unknown_setting", `Node ${title} asked for setting "${name}", which its pack does not declare.`, { details: { setting: name } });
         const given = options.settings?.[name];
         const value = given === undefined || given === null ? (decl.default ?? null) : given;
-        collectSecretRefs(value, decl.type, allowedSecrets);
+        collectSecretRefs(value, decl.type, allowedSecrets, resolveDecl);
         return value;
       },
     },

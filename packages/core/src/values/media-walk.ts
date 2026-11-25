@@ -70,7 +70,11 @@ function walk(
 ): void {
   if (value === null || typeof value !== "object" || depth > 64) return;
   const at = (key: string | number) => (typeof key === "number" ? `${path}[${key}]` : path === "" ? key : `${path}.${key}`);
-  if (type === undefined || type.kind === "var" || (type.kind === "named" && type.id === BUILTIN.Json)) {
+  const json = type?.kind === "named" && (() => {
+    const decl = getType(type.id);
+    return type.id === BUILTIN.Json || (decl?.kind === "struct" && structLayout(decl, getType).root === BUILTIN.Json);
+  })();
+  if (type === undefined || type.kind === "var" || json) {
     if (isMediaRef(value)) {
       out.push({ ref: value, media: undefined, path });
       return;
