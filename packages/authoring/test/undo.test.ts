@@ -78,6 +78,19 @@ const CORPUS: Case[] = [
     ],
   },
   {
+    name: "node.splitPort and node.collapsePort",
+    doc: () =>
+      build(richDoc(), [
+        { op: "type.defineStruct", scope: G, id: "ty_pairz", name: "Pairz", fields: [{ name: "a", type: "string" }, { name: "b", type: "int" }] },
+        { op: "global.create", id: "gv_pairz", name: "pairz", type: "Pairz", access: "readwrite" },
+      ]),
+    batch: [
+      { op: "node.add", flowId: KIT, id: "n_pg", type: "briar.global.get", position: { x: 0, y: 0 }, config: { globalId: "gv_pairz" } },
+      { op: "node.splitPort", flowId: KIT, nodeId: "n_pg", side: "output", port: "value" },
+      { op: "node.collapsePort", flowId: KIT, nodeId: "n_pg", side: "output", port: "value" },
+    ],
+  },
+  {
     name: "type.delete of a struct that extends another",
     doc: () => build(richDoc(), [{ op: "type.defineStruct", scope: G, id: "ty_short", name: "ShortText", extends: "Text", fields: [{ name: "maxLength", type: "int?", static: true, default: 80 }] }]),
     batch: [{ op: "type.delete", typeId: "ty_short" }],
