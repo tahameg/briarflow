@@ -230,6 +230,8 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   `{ uri, mime, …, url }`.
 
 ### After MVP (next)
+- Platform architecture proposal (scopes, sessions, plugins and the plugin registry, flow
+  versions, the studio as a component): `docs/proposals/platform-architecture.md`.
 - Build + run the Docker image on a machine with Docker; consider a bundled server build (smaller image).
 - Live-test `@briarflow/nodes-anthropic` and `@briarflow/nodes-openai` with real keys.
 - REQ-26 P2/P3; studio: restore last active flow on reload; studio palette for server-only packs with dynamic ports
