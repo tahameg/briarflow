@@ -429,17 +429,22 @@ describe("convert nodes", () => {
     [3, true],
     [-1.5, true],
     ["", false],
-    [" False ", false],
-    ["0", false],
-    ["no", false],
-    ["off", false],
-    ["yes", true],
+    [false, false],
+    ["false", true],
+    ["0", true],
     ["anything", true],
-    [[], true],
+    [[], false],
+    [[0], true],
     [{}, true],
     [true, true],
-  ])("convert.asBoolean %j → %s", async (value, expected) => {
+  ])("convert.asBoolean %j → %s (one truthiness rule)", async (value, expected) => {
     expect((await runNode(convertAsBoolean, { value: jsonText(value) }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ value: expected });
+  });
+
+  it("convert.asBoolean: an empty Text is false, others are true", async () => {
+    expect((await runNode(convertAsBoolean, { value: { value: "" } }, { typeBindings: { T: ir.text() } })).outputs).toEqual({ value: false });
+    expect((await runNode(convertAsBoolean, { value: { value: "x" } }, { typeBindings: { T: ir.text() } })).outputs).toEqual({ value: true });
+    expect((await runNode(convertAsBoolean, { value: "" }, { typeBindings: { T: ir.string() } })).outputs).toEqual({ value: false });
   });
 
   it("As JSON keeps the text as it is; As JSON array reads an array from text or json", async () => {
@@ -598,7 +603,7 @@ describe("json nodes", () => {
     expect(bad.message).toContain("is text that is not valid JSON");
   });
 
-  it("As text gives a Json's text", async () => {
+  it("As string gives a Json's text", async () => {
     expect((await runNode(convertToText, { value: J({ b: [1], a: "x" }) }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: '{"b":[1],"a":"x"}' });
     expect((await runNode(convertToText, { value: { text: "plain" } }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "plain" });
   });

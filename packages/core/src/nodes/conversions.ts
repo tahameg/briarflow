@@ -30,7 +30,7 @@ export interface ConversionMatch {
  * @example
  * ```ts
  * findConversions(catalog, { kind: "primitive", name: "json" }, { kind: "primitive", name: "text" });
- * // [{ type: "convert.toText", title: "As text", input: "value", output: "text" }]
+ * // [{ type: "convert.toText", title: "As string", input: "value", output: "text" }]
  * ```
  */
 export function findConversions(catalog: NodeCatalog, from: TypeRef, to: TypeRef): ConversionMatch[] {

@@ -8,7 +8,7 @@ import type { TypeRef } from "../src/index.js";
 const p = (name: string) =>
   (name === "json" ? { kind: "named", id: "briar.Json" } : { kind: "primitive", name: name === "text" ? "string" : name === "boolean" ? "bool" : name }) as TypeRef;
 
-const asText = defineNode({ type: "convert.toText", title: "As text", pure: true, conversion: true, inputs: { value: t.var("T") }, outputs: { text: t.string() }, run: () => ({ text: "" }) });
+const asText = defineNode({ type: "convert.toText", title: "As string", pure: true, conversion: true, inputs: { value: t.var("T") }, outputs: { text: t.string() }, run: () => ({ text: "" }) });
 const asInt = defineNode({
   type: "convert.asInt",
   title: "As int",

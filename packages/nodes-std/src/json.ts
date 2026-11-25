@@ -33,7 +33,7 @@ export const jsonGetField = defineNode({
   category: "JSON",
   icon: "braces",
   color: "yellow",
-  description: "Reads a field of a JSON value. The result is JSON too: use As text, As int, … to turn it into another type. Fails when the field does not exist or the JSON text is not valid.",
+  description: "Reads a field of a JSON value. The result is JSON too: use As string, As int, … to turn it into another type. Fails when the field does not exist or the JSON text is not valid.",
   inputs: { json: t.json(), path: { type: t.string(), description: PATH_DESCRIPTION } },
   outputs: { value: t.json() },
   run: ({ inputs }) => ({ value: json(getAt(open(inputs.json), pathOrThrow(inputs.path))) }),

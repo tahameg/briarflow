@@ -83,10 +83,10 @@ describe("buildFlowView", () => {
       kind: "convert",
       conversion: { type: "convert.asJson", title: "As JSON", input: "text", output: "json" },
     });
-    // count (int) → text: As text.
+    // count (int) → string: As string.
     expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
     expect(canConnect(view, { node: "n_in", port: "count" }, { node: "n_join", port: "separator" }, catalog)).toBe(true);
-    // json → As int's text|json input: direct; int → it: through As text.
+    // json → As int's text|json input: direct; int → it: through As string.
     expect(planConnection(view, catalog, { node: "n_get", port: "value" }, { node: "n_int", port: "value" })).toEqual({ kind: "direct" });
     expect(planConnection(view, catalog, { node: "n_in", port: "count" }, { node: "n_int", port: "value" })).toMatchObject({ kind: "convert", conversion: { type: "convert.toText" } });
     // An unwired oneOf port shows its choices.
