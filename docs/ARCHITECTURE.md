@@ -41,7 +41,7 @@ the library, never the other way around.
 | **Briar instance** | Server-side entry point (`createBriar`). Holds the configured stores, node packs, secrets and the run registry. |
 | **Context** | A workspace document. Holds global types, global variables and flows. Saved and loaded as one unit. |
 | **Flow** | A typed graph inside a context. Has an input signature, an output signature, local types, local variables, nodes and edges. |
-| **Type** | A primitive (`text`, `int`, `float`, `boolean`, `image`, `video`, `audio`, `model3d`, `file`), a user-defined **struct** or **enum**, or a `list`/`optional` of those. No inheritance. Named types are nominal. |
+| **Type** | A primitive (`int`, `float`, `bool`, `string`, `binary`), a **struct** or **enum** (built-in: `Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error`; or user-defined), or a `list`/`optional` of those. Named types are nominal; a struct may **extend** another and only set or add **static fields** (the type fixes their value). |
 | **Global type** | A struct or enum defined on the context. Usable by every flow and by external callers. |
 | **Local type** | A struct or enum defined inside one flow. Usable only inside that flow. |
 | **Pack type** | A struct or enum shipped by a node pack (e.g. `openai.ChatMessage`). Read-only, available in every context that loads the pack. |
@@ -124,27 +124,29 @@ out of its main entry.
 ### 4.1 Type IR
 
 ```ts
-type PrimitiveName =
-  | "text" | "int" | "float" | "boolean"
-  | "image" | "video" | "audio" | "model3d" | "file";
+type PrimitiveName = "int" | "float" | "bool" | "string" | "binary";
 
 type TypeRef =
-  | { kind: "primitive"; name: PrimitiveName; constraints?: Constraints }
+  | { kind: "primitive"; name: PrimitiveName; constraints?: NumberConstraints }  // int / float only
   | { kind: "named"; id: TypeId }            // struct or enum, by stable id
   | { kind: "list"; of: TypeRef; minItems?: number; maxItems?: number }
   | { kind: "optional"; of: TypeRef }
   | { kind: "var"; name: string };           // generics; node definitions only
 ```
 
+- Five primitives; everything else is a struct or an enum. **Built-in structs** (`Text`,
+  `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error`; ids
+  `briar.<Name>`) are in every scope. Text and media limits are their **static fields**; a type
+  with limits **extends** a built-in (`ShortText extends Text { maxLength = 80 }`). Unlimited
+  text is `string`. Details: `docs/specs/types.md` §1.
 - Type ids: user types use `ty_<random>` ids; pack types use `<pack>.<Name>`
-  (e.g. `openai.ChatMessage`). Renaming never changes an id.
-- No recursive types in v1 (validated).
-- Shorthand strings parse to the IR: `"text"`, `"list<image>"`, `"Character?"`,
-  `"list<Character?>"`, `"list<text>[1..4]"`, `"$T"` (node definitions only). Names resolve
-  against the visible scope: flow local → global → pack. Pack types resolve by qualified id
-  (`openai.ChatMessage`) or by short name when exactly one loaded pack exports it and no
-  local/global type has it (else `type.ambiguous`). Grammar, identifiers, generics:
-  `docs/specs/types.md`.
+  (e.g. `openai.ChatMessage`); built-ins `briar.<Name>`. Renaming never changes an id.
+- No recursive types (validated).
+- Shorthand strings parse to the IR: `"string"`, `"list<Image>"`, `"Character?"`,
+  `"list<Character?>"`, `"list<string>[1..4]"`, `"$T"` (node definitions only). Names resolve
+  flow local → global → built-in → pack. Pack types resolve by qualified id or by short name
+  when exactly one loaded pack exports it (else `type.ambiguous`). Grammar, identifiers,
+  generics: `docs/specs/types.md`.
 - Inside a `TypeSpec` built before its pack is known (`t.ref("Role")`, `defineStruct`), a
   named ref may hold a bare name; `definePack` qualifies it to `<pack>.<Name>`. Documents never
   contain bare names.
@@ -152,20 +154,22 @@ type TypeRef =
 ### 4.2 The `t` builder (developer-facing)
 
 ```ts
-t.text({ maxLength: 40, multiline: true })
-t.int({ min: 0, max: 120 })   t.float()   t.boolean()
-t.image({ formats: ["png", "jpeg"] })   t.video()   t.audio()   t.model3d()   t.file()
+t.string()   t.int({ min: 0, max: 120 })   t.float()   t.bool()   t.binary()
+t.text()   t.image()   t.video()   t.audio()   t.model3d()   t.file()     // built-in structs
+t.json()   t.secret()   t.apiKey()   t.error()
 t.list(t.image(), { maxItems: 4 })
-t.optional(t.text())
+t.optional(t.string())
 t.ref("Character")            // named type, resolved by name
 t.var("T")                    // generic placeholder
+
+// A type with limits: a struct that extends a built-in and sets its static fields.
+const Title = defineStruct("Title", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
 ```
 
-Each builder returns a `TypeSpec<V>` carrying the static TS value type `V`, so node `run`
-functions get typed `inputs` and must return typed `outputs`. Lists are `readonly V[]`
-(values are immutable). Builders whose type TS cannot know (`t.ref("Name")`, `t.var`,
-`t.parse`, `t.fromRef`) are typed `UnknownValue` (`string | number | boolean | object | null`),
-which reads like `unknown` but lets TS keep enum literals in `run` return values.
+Each builder returns a `TypeSpec<V>` carrying the static TS value type `V` (`t.text()` →
+`TextValue`, `t.image()` → `ImageValue`…), so node `run` functions get typed `inputs` and must
+return typed `outputs`. Lists are `readonly V[]`. Builders whose type TS cannot know
+(`t.ref("Name")`, `t.var`, `t.parse`, `t.fromRef`) are typed `UnknownValue`.
 
 ### 4.3 Values
 
@@ -173,15 +177,18 @@ All values are JSON:
 
 | Type | JSON value |
 |---|---|
-| text | string |
+| string | string |
 | int | number (safe integer) |
 | float | number |
-| boolean | boolean |
-| image/video/audio/model3d/file | `MediaRef` |
-| struct | object with no unknown fields; optional and defaulted fields may be omitted on input and are normalized to `null` / the default |
+| bool | boolean |
+| binary | `MediaRef` (`{ mediaId }`) |
+| struct | object of its **instance** fields (static fields belong to the type); optional and defaulted fields may be omitted on input and are normalized to `null` / the default |
 | enum | string (member value) |
 | list | array |
 | optional | value or `null` |
+
+So a `Text` is `{ value }`, an `Image` is `{ data: { mediaId }, mime, name, size, width, height }`,
+a `Json` is `{ text }`, a `Secret` is `{ name }`.
 
 ```ts
 interface MediaRef {
@@ -189,25 +196,27 @@ interface MediaRef {
 }
 ```
 
-Everything about the media (mime, size, dimensions, file name, and where the bytes are: raw
-bytes in the registry, a `briar-media://` blob, or a web URL) lives in its registry entry. What
-nodes make is transient: it belongs to its run and goes away when the run stops being its
-flow's last run. Each flow keeps its last run (outputs and reuse keys), so previews survive
-reloads and media nodes with unchanged inputs are carried over instead of run again.
+The registry entry is authoritative for media (mime, size, dimensions, file name, and where the
+bytes are: raw bytes in the registry, a `briar-media://` blob, or a web URL); a media struct
+carries those facts so nodes can read them without the registry. What nodes make is transient:
+it belongs to its run and goes away when the run stops being its flow's last run. Each flow
+keeps its last run (outputs and reuse keys), so previews survive reloads and media nodes with
+unchanged inputs are carried over instead of run again.
 
 `validateValue(value, typeRef, scope, options?)` returns diagnostics with value paths
 (`inputs.character.age must be >= 0`). `normalizeValue(...)` returns
-`{ ok: true, value } | { ok: false, diagnostics }` with every struct field present.
+`{ ok: true, value } | { ok: false, diagnostics }` with every instance field present.
+`isTruthy(value, type?, resolve?)` is the one yes / no reading of a value (types.md §7.1).
 
 ### 4.4 Assignability
 
 - Same primitive → ok. `int → float` → ok (the only implicit widening).
-- Named → named: same id only (nominal).
+- Named → named: same id, or a struct that extends the target (`ShortText → Text`).
 - `list<A> → list<B>` if `A → B`. `T → T?` ok. `T? → T` not ok.
-- Constraints are **not** checked when connecting; they are checked at runtime boundaries
-  (flow inputs, node inputs that declare constraints, outputs).
-- Generic ports: `var` bindings are unified when edges connect; a node instance stores its
-  resolved bindings.
+- Constraints and limits are **not** checked when connecting; they are checked at runtime
+  boundaries (flow inputs, node inputs, outputs).
+- Generic ports: `var` bindings are unified when edges connect (following `extends`); a node
+  instance stores its resolved bindings.
 
 ### 4.5 JSON Schema
 
@@ -220,7 +229,7 @@ in core (no Ajv dependency in core).
 ```ts
 interface ContextDocument {
   format: "briarflow.context";
-  formatVersion: 1;
+  formatVersion: 2;
   id: string;                 // ctx_…
   name: string;
   description?: string;
@@ -234,8 +243,8 @@ interface ContextDocument {
 }
 
 type TypeDecl = StructDecl | EnumDecl;
-interface StructDecl { kind: "struct"; id: string; name: string; description?: string; fields: FieldDecl[] }
-interface FieldDecl  { name: string; type: TypeRef; description?: string; default?: unknown }
+interface StructDecl { kind: "struct"; id: string; name: string; description?: string; extends?: string; fields: FieldDecl[] }
+interface FieldDecl  { name: string; type: TypeRef; description?: string; default?: unknown; static?: true }  // static: the type fixes the value (default)
 interface EnumDecl   { kind: "enum"; id: string; name: string; description?: string; members: { value: string; label?: string }[] }
 
 interface GlobalVariable {
@@ -298,11 +307,11 @@ export const textTemplate = defineNode({
   category: "Text",
   description: "Replaces {name} placeholders with the given values.",
   inputs: {
-    template: { type: t.text({ multiline: true }), description: "Use {name} placeholders." },
-    values:   t.list(t.text()),
+    template: { type: t.string(), description: "Use {name} placeholders.", widget: "textarea" },
+    values:   t.list(t.string()),
   },
   outputs: {
-    text: t.text(),
+    text: t.string(),
   },
   async run({ inputs, ctx }) {
     return { text: render(inputs.template, inputs.values) };
@@ -494,7 +503,7 @@ Command set (v1; authoritative list and payloads in `docs/specs/commands.md`):
 | Group | Commands |
 |---|---|
 | context | `context.rename`, `context.setDescription` |
-| types | `type.defineStruct`, `type.defineEnum`, `type.rename`, `type.setDescription`, `type.delete`, `type.moveScope`, `type.field.add`, `type.field.remove`, `type.field.rename`, `type.field.setType`, `type.field.reorder`, `type.field.setDescription`, `type.field.setDefault`, `type.field.clearDefault`, `type.enum.addMember`, `type.enum.removeMember`, `type.enum.renameMember`, `type.enum.setMemberLabel` |
+| types | `type.defineStruct`, `type.defineEnum`, `type.rename`, `type.setDescription`, `type.setExtends`, `type.delete`, `type.moveScope`, `type.field.add`, `type.field.setStatic`, `type.field.remove`, `type.field.rename`, `type.field.setType`, `type.field.reorder`, `type.field.setDescription`, `type.field.setDefault`, `type.field.clearDefault`, `type.enum.addMember`, `type.enum.removeMember`, `type.enum.renameMember`, `type.enum.setMemberLabel` |
 | globals | `global.create`, `global.rename`, `global.setType`, `global.setAccess`, `global.setValue`, `global.clearValue`, `global.setDescription`, `global.delete` |
 | flows | `flow.create`, `flow.rename`, `flow.setDescription`, `flow.duplicate`, `flow.delete` |
 | signature | `flow.input.add/remove/rename/setType/reorder/setDescription/setDefault/clearDefault`, `flow.output.add/remove/rename/setType/reorder/setDescription` |
@@ -659,15 +668,16 @@ Worker = an HTTP server started by the Python SDK. The spec adds to the summary 
 `log` NDJSON line type; `port: "auto"` with a ready line on stdout; an optional bearer token
 between bridge and worker; and default node types `<pack>.<camelCase(function_name)>`.
 
-- `GET /briarflow/manifest` → `{ protocol: 1, pack: { name, version }, types: TypeDecl[], nodes: NodeDescriptor[] }`
+- `GET /briarflow/manifest` → `{ protocol: 2, pack: { name, version }, types: TypeDecl[], nodes: NodeDescriptor[] }`
 - `POST /briarflow/execute` → body `{ nodeType, inputs, config, runId, nodeId }`;
   response is **NDJSON**: `{"type":"progress","fraction":0.4,"message":"…"}` lines, then exactly
   one `{"type":"result","outputs":{…}}` or `{"type":"error","code":"…","message":"…"}`.
   Cancellation = the TS side aborts the HTTP request.
 - `GET /briarflow/health` → `{ ok: true }`.
-- Media in: inputs carry `MediaRef` plus a fetchable `url`. Media out: the worker returns
-  `{"$media": {"mime": "image/png", "base64": "…"}}`; the bridge stores it via `MediaStore`
-  and substitutes a real `MediaRef`.
+- Media in: every `binary` (the `data` of an `Image`, `Video`…) arrives as
+  `{ uri, mime, bytes?, hash?, meta?, url }` with a fetchable `url`. Media out: a `binary` the
+  worker made is `{"$media": {"mime": "image/png", "base64": "…"}}`; the bridge stores it in
+  the media registry and substitutes a `MediaRef`.
 
 ### 8.2 Python SDK (`python/briarflow`)
 
@@ -676,17 +686,20 @@ Zero runtime dependencies (stdlib only). Python ≥ 3.10.
 ```python
 from dataclasses import dataclass
 from enum import Enum
-from typing import Annotated
-from briarflow import node, struct, Image, MaxLength, ExecContext, pack, serve
+from briarflow import node, struct, Image, Text, ExecContext, pack, serve
 
 class ArtStyle(str, Enum):
     ANIME = "anime"
     PIXEL = "pixel"
 
 @struct
+class Name(Text):              # Name extends Text { maxLength = 40 }
+    max_length = 40
+
+@struct
 @dataclass
 class Character:
-    name: Annotated[str, MaxLength(40)]
+    name: Name
     style: ArtStyle
 
 @node(type="imaging.upscale", title="Upscale image", category="Image")
@@ -701,9 +714,11 @@ if __name__ == "__main__":
     serve(my_pack, port=8765)
 ```
 
-Type bindings: `str→text`, `int→int`, `float→float`, `bool→boolean`, `Image/Video/Audio/Model3D/File`
-→ media primitives, `list[T]→list`, `T | None`/`Optional[T]→optional`, `@struct` dataclass →
-struct, `str`-valued `Enum` → enum, `Annotated[..., MaxLength/Min/Max/…]` → constraints.
+Type bindings: `str→string`, `int→int`, `float→float`, `bool→bool`, `Binary→binary`,
+`Text/Image/Video/Audio/Model3D/File/Json/Secret/ApiKey/Error` → the built-in structs,
+`list[T]→list`, `T | None`/`Optional[T]→optional`, `@struct` dataclass → struct (`ClassVar`
+attributes are static fields; a `@struct` subclass extends its base), `str`-valued `Enum` →
+enum, `Annotated[int, Min/Max]`, `Annotated[list[T], MinItems/MaxItems]` → constraints.
 Outputs: a single return type becomes port `result`; a `@outputs` dataclass return type
 gives one port per field.
 

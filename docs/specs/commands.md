@@ -269,13 +269,21 @@ the field removes the port (and its edges/constants).
 ```json
 { "op": "type.defineStruct", "scope": { "kind": "global" }, "name": "Character", "id": "ty_char",
   "description": "A story character", "index": 0,
-  "fields": [ { "name": "name", "type": "text" }, { "name": "age", "type": "int", "default": 30 } ] }
+  "fields": [ { "name": "name", "type": "string" }, { "name": "age", "type": "int", "default": 30 } ] }
+
+{ "op": "type.defineStruct", "scope": { "kind": "global" }, "name": "ShortText", "extends": "Text",
+  "fields": [ { "name": "maxLength", "type": "int?", "static": true, "default": 80 } ] }
 ```
 - created: `{ typeId }`. `fields` optional (default `[]`). `index` optional: position in the
   scope's type list (default end).
+- `extends` (optional): the struct it extends, as a name, shorthand or type ref (stored as its
+  id; `resolved` carries `{ kind: "named", id }`). A field with `static: true` is a static field:
+  its `default` is its value (types.md §1.3).
 - Rejects: invalid/duplicate/reserved name; invalid field names or duplicates; unknown field
-  types; `visibility.local_type_in_global` (global struct with local field types);
-  `type.recursive`; `type.invalid_default`; `type.invalid_constraint`.
+  types; `visibility.local_type_in_global` (global struct with local field types or a local
+  base); `type.recursive`; `type.invalid_default`; `type.invalid_constraint`; the `extends`
+  rules (`type.extends_not_struct`, `type.extends_cycle`, `type.extends_instance_field`,
+  `type.extends_override`) and `type.static_without_value`.
 - Inverse: `type.delete { typeId }`.
 
 ### `type.defineEnum`
@@ -291,20 +299,25 @@ Rejects: invalid/duplicate/reserved name in its scope. Effects: none on referenc
 
 ### `type.setDescription` `{ typeId, description: string | null }`
 
+### `type.setExtends` `{ typeId, extends: type | null }`
+Sets or clears the struct a struct extends. Rejects as `type.defineStruct` for `extends`; the
+struct's own fields must then all be static. Inverse: `type.setExtends` with the old base.
+
 ### `type.delete` `{ typeId }`
-Rejects `type.in_use` when anything references the id: fields of other types, flow
-signatures, variables, globals, node configs (`struct.make/break`, `briar.constant`),
-`typeBindings`. `details.usages: { kind, flowId?, id, name }[]`. Message:
-`Type "{name}" is used in {n} places ({first three}). Remove those uses first.` Pack types
-cannot be deleted (`type.read_only`).
+Rejects `type.in_use` when anything references the id: fields of other types, structs that
+extend it (`kind: "extends"`), flow signatures, variables, globals, node configs
+(`struct.make/break`, `briar.constant`), `typeBindings`.
+`details.usages: { kind, flowId?, id, name }[]`. Message:
+`Type "{name}" is used in {n} places ({first three}). Remove those uses first.` Pack and
+built-in types cannot be changed or deleted (`type.read_only`).
 
 ### `type.moveScope` `{ typeId, to: scope, index? }`
 - The type keeps its id; it is inserted at `index` in the target list (default end).
 - global → flow F: rejects `type.in_use` if used outside F (other flows, global types,
   globals, F's public signature or public variables — the latter with
   `visibility.local_type_in_public_signature`).
-- flow → global: rejects `visibility.local_type_in_global` if its fields use local types
-  (`details.localDependencies` lists them; move those first).
+- flow → global: rejects `visibility.local_type_in_global` if its fields or its base are local
+  types (`details.localDependencies` lists them; move those first).
 - flow F → flow G: allowed only via global (two commands).
 - Name conflict in target scope → `type.duplicate_name` (type names use the `type.*_name`
   codes, §1.2). Same scope → no-op.
@@ -312,9 +325,10 @@ cannot be deleted (`type.read_only`).
 ### Fields
 | op | Payload | Notes / rejections |
 |---|---|---|
-| `type.field.add` | `{ typeId, name, type, description?, default?, index? }` | `index` default = end; invalid name, duplicate, visibility, recursion, invalid default. Existing values of this struct become invalid unless the field is optional or has a default → soft (`node.invalid_value`, …). Ports of `struct.make/break` gain the port. |
+| `type.field.add` | `{ typeId, name, type, description?, default?, static?, index? }` | `index` default = end; invalid name, duplicate, visibility, recursion, invalid default. `static: true` adds a static field (value = `default`); in a struct that extends another, only static fields can be added, and one with an inherited name sets that field's value. Existing values of this struct become invalid unless the field is optional or has a default → soft (`node.invalid_value`, …). Ports of `struct.make/break` gain the port. |
 | `type.field.remove` | `{ typeId, field }` | Removes port on make/break nodes in all flows (edges/constants removed). Stored values keep the extra key → soft `node.invalid_value` (unknown field). |
-| `type.field.rename` | `{ typeId, field, name }` | Rewrites ports/edges/constants keys on make/break nodes **and** renames the key inside every stored value of this struct (constants, defaults, global values). |
+| `type.field.rename` | `{ typeId, field, name }` | Rewrites ports/edges/constants keys on make/break nodes **and** renames the key inside every stored value of this struct (constants, defaults, global values). A static field is renamed in the structs that extend this one too (their values for it are kept). |
+| `type.field.setStatic` | `{ typeId, field, static: boolean }` | Makes a field static (its `default` is its value) or an instance field. Stored values that hold a field made static → soft `node.invalid_value`. |
 | `type.field.setType` | `{ typeId, field, type }` | Hard: visibility, recursion. Soft: everything else. |
 | `type.field.reorder` | `{ typeId, field, index }` | `index` clamped to `[0, n-1]`. |
 | `type.field.setDescription` | `{ typeId, field, description \| null }` | |
@@ -322,6 +336,10 @@ cannot be deleted (`type.read_only`).
 | `type.field.clearDefault` | `{ typeId, field }` | |
 
 All reject `command.unknown_ref` for unknown `typeId`/`field` and `type.not_struct` for enums.
+Every type and field command checks the `extends` and static-field rules (types.md §1.3) on the
+struct and on every struct that extends it, and rejects with the first problem
+(`type.extends_*`, `type.static_without_value`, `type.invalid_constraint` for Text / media
+limits that cannot hold).
 
 ### Enum members
 | op | Payload | Notes |
@@ -542,10 +560,10 @@ Build a small flow in one batch:
 [
   { "op": "type.defineEnum", "scope": {"kind":"global"}, "id": "ty_style", "name": "ArtStyle", "members": ["anime","pixel"] },
   { "op": "type.defineStruct", "scope": {"kind":"global"}, "id": "ty_char", "name": "Character",
-    "fields": [ {"name":"name","type":"text"}, {"name":"style","type":"ArtStyle"} ] },
+    "fields": [ {"name":"name","type":"string"}, {"name":"style","type":"ArtStyle"} ] },
   { "op": "flow.create", "id": "flow_p", "name": "Portrait", "inputNodeId": "n_in", "outputNodeId": "n_out" },
   { "op": "flow.input.add", "flowId": "flow_p", "name": "character", "type": "Character" },
-  { "op": "flow.output.add", "flowId": "flow_p", "name": "prompt", "type": "text" },
+  { "op": "flow.output.add", "flowId": "flow_p", "name": "prompt", "type": "string" },
   { "op": "node.add", "flowId": "flow_p", "id": "n_brk", "type": "briar.struct.break", "position": {"x":200,"y":0}, "config": {"typeId":"ty_char"} },
   { "op": "node.add", "flowId": "flow_p", "id": "n_tpl", "type": "text.template", "position": {"x":420,"y":0}, "config": {"template":"Draw {name} in {style} style"} },
   { "op": "edge.connect", "flowId": "flow_p", "id": "e_1", "from": {"node":"n_in","port":"character"}, "to": {"node":"n_brk","port":"value"} },
@@ -559,8 +577,8 @@ no diagnostics.
 
 Soft breakage: `{ "op": "type.field.setType", "typeId": "ty_char", "field": "style", "type": "int" }`
 → ok; `n_brk.style` port becomes `int`; edge `e_3` stays (the template port is generic, so it
-re-binds to `int`) — no diagnostic. Changing `flow.output.setType prompt → image` instead gives
+re-binds to `int`) — no diagnostic. Changing `flow.output.setType prompt → Image` instead gives
 `edge.type_mismatch` on `e_4`.
 
-Rejection: `{ "op": "flow.input.add", "flowId":"flow_p", "name":"Character", "type":"text" }` →
+Rejection: `{ "op": "flow.input.add", "flowId":"flow_p", "name":"Character", "type":"string" }` →
 `{ code: "command.duplicate_name", commandIndex: 0, message: "A flow input named \"character\" already exists in flow \"Portrait\". Names must be unique (ignoring case)." }`.
