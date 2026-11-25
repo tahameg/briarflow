@@ -53,8 +53,8 @@ from `@briarflow/python`.
 | `Text`, `Image`, `Video`, `Audio`, `Model3D`, `File`, `Json`, `Secret`, `ApiKey`, `Error` | the built-in structs `briar.*` |
 | `list[T]`, `T \| None` | `list<T>`, `T?` |
 | `@struct` dataclass, `class X(str, Enum)` | pack struct / enum `<pack>.X` |
-| `ClassVar[T] = value` on a `@struct` | a static member (the type fixes its value) |
-| `@struct class X(Base)` | `X extends Base`: only gives static members values or adds new ones |
+| `ClassVar[T] = value` on a `@struct` | a static field (the type fixes its value) |
+| `@struct class X(Base)` | `X extends Base`: only gives static fields values or adds new ones |
 | `Annotated[int, Min(1), Max(8), Port(description=…)]` | number / list constraints and port metadata |
 
 Unlimited text is a plain `str`. Text with limits, and media with limits, extend a built-in:

@@ -1,7 +1,7 @@
 """The built-in structs (types.md §1.2): ``Text``, ``Image``, ``Video``, ``Audio``, ``Model3D``,
 ``File``, ``Json``, ``Secret``, ``ApiKey`` and ``Error``, the same as the engine's ``briar.*``.
 
-Their limits are **static members**: class attributes the type fixes, not values. A struct that
+Their limits are **static fields**: class attributes the type fixes, not values. A struct that
 extends one gives them other values::
 
     @struct

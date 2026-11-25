@@ -484,7 +484,7 @@ def _collect_types(explicit: list[type], specs: dict[str, NodeSpec], pack_name: 
                         raise ValueError(f"pack {pack_name}: default of {n}.{f.name} is invalid: {exc}") from None
             for st in class_statics(cls).values():
                 for ref in named_classes(st.binding):
-                    add(ref, f"static member {n}.{st.name} uses")
+                    add(ref, f"static field {n}.{st.name} uses")
 
     for cls in explicit:
         add(cls, "types entry")

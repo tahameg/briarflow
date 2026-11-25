@@ -1,7 +1,7 @@
 """Briarflow Python SDK: write nodes in Python and serve them to a Briarflow engine.
 
 Types: ``str`` ``int`` ``float`` ``bool`` ``Binary`` are the primitives; ``Text``, ``Image``…
-are built-in structs whose limits are static members (``class ShortText(Text): max_length = 80``).
+are built-in structs whose limits are static fields (``class ShortText(Text): max_length = 80``).
 
 Example:
     from briarflow import node, pack, serve

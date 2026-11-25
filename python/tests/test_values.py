@@ -93,9 +93,9 @@ def test_primitives_in() -> None:
         (None, str, "inputs.p is required"),
         (9, Annotated[int, Max(8)], "inputs.p must be <= 8"),
         (-1, Annotated[int, Min(0)], "inputs.p must be >= 0"),
-        ({"value": "abcdefghijkl"}, Name, "inputs.p must be at most 10 characters long"),
-        ({"value": "ab1"}, Word, "inputs.p must match the pattern [a-z]+"),
-        ({"value": "ab", "maxLength": 3}, Name, "inputs.p.maxLength is a static member of Name; values can't set it"),
+        ({"value": "abcdefghijkl"}, Name, "inputs.p.value must be at most 10 characters long"),
+        ({"value": "ab1"}, Word, "inputs.p.value must match the pattern [a-z]+"),
+        ({"value": "ab", "maxLength": 3}, Name, "inputs.p.maxLength is a static field of Name: its value comes from the type"),
         ("ab", Name, 'inputs.p must be a Name object (got "ab")'),
         ([1, 2, 3], Annotated[list[int], MaxItems(2)], "inputs.p must have at most 2 items"),
         ([1, "x"], list[int], 'inputs.p[1] must be a whole number (got "x")'),
@@ -122,7 +122,7 @@ def test_text_in_and_out() -> None:
     # a plain str is accepted where a Text is returned
     assert to_json("Bo", b(Name), "o") == {"value": "Bo"}
     # a Text is accepted for a struct extending it, and checked against its limits
-    with pytest.raises(InvalidValue, match="o must be at most 10 characters long"):
+    with pytest.raises(InvalidValue, match="o.value must be at most 10 characters long"):
         to_json(Text("x" * 11), b(Name), "o")
 
 
@@ -135,7 +135,7 @@ def test_user_static_members_are_not_values() -> None:
 
     assert from_json({"name": "Rex"}, b(Pet), "p") == Pet("Rex")
     assert to_json(Pet("Rex"), b(Pet), "o") == {"name": "Rex"}
-    with pytest.raises(InvalidValue, match="p.legs is a static member of Pet"):
+    with pytest.raises(InvalidValue, match="p.legs is a static field of Pet"):
         from_json({"name": "Rex", "legs": 3}, b(Pet), "p")
 
 
@@ -213,7 +213,7 @@ def test_media_in() -> None:
         (dict(IMAGE, size=1, width=101), Photo, "must be at most 100 px wide"),
         (dict(IMAGE, data={"mime": "image/png"}), Image, "missing uri"),
         (dict(IMAGE, data="briar-media://x"), Image, "expected a media object"),
-        (dict(IMAGE, maxBytes=3), Photo, "is a static member of Photo"),
+        (dict(IMAGE, maxBytes=3), Photo, "is a static field of Photo"),
     ],
 )
 def test_media_in_invalid(value: Any, ann: Any, fragment: str) -> None:

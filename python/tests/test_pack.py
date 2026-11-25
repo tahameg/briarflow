@@ -350,7 +350,7 @@ def test_explicit_types_are_listed_first() -> None:
     assert [t["id"] for t in p.manifest()["types"]] == ["imaging.Extra", "imaging.Character", "imaging.Name", "imaging.ArtStyle"]
 
 
-# ---------------------------------------------------------------- extends and static members
+# ---------------------------------------------------------------- extends and static fields
 
 
 def test_extending_a_struct_of_the_pack_lists_the_base_first() -> None:
@@ -390,7 +390,7 @@ def test_an_extending_struct_cannot_add_instance_fields() -> None:
     def f(t: Longer) -> None:
         pass
 
-    with pytest.raises(TypeError, match="can only give static members values; field 'extra' is new"):
+    with pytest.raises(TypeError, match="can only give static fields values; field 'extra' is new"):
         pack("demo", "1", [f])
 
 
@@ -412,7 +412,7 @@ def test_an_extending_struct_cannot_change_a_static_type() -> None:
     [
         ({"min_length": 5, "max_length": 2}, "minLength=5 is greater than maxLength=2"),
         ({"pattern": "("}, "does not compile"),
-        ({"max_length": "x"}, "static member"),
+        ({"max_length": "x"}, "static field"),
     ],
 )
 def test_wrong_limits_are_refused(attrs: dict, message: str) -> None:
@@ -431,5 +431,5 @@ def test_constraints_on_a_struct_point_to_extending_it() -> None:
     def f(t: Annotated[Text, Max(3)]) -> None:
         pass
 
-    with pytest.raises(TypeError, match="static members: extend it"):
+    with pytest.raises(TypeError, match="static fields: extend it"):
         pack("demo", "1", [f])

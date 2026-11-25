@@ -3,7 +3,7 @@
 Primitives: ``str`` -> ``string``, ``int``, ``float``, ``bool``, ``Binary`` -> ``binary``.
 Everything else is a struct or an enum: the built-ins (``Text``, ``Image``…, structs.py),
 ``@struct`` dataclasses, and ``@struct`` classes that extend another struct, which may only give
-its static members (``ClassVar`` attributes) other values (types.md §1.3).
+its static fields (``ClassVar`` attributes) other values (types.md §1.3).
 """
 
 from __future__ import annotations
@@ -227,7 +227,7 @@ def _apply_constraints(binding: Binding, markers: list[Constraint], where: str) 
     hint = ""
     if isinstance(binding, StructOf):
         hint = (
-            f"; limits of {binding.cls.__name__} are its static members: extend it "
+            f"; limits of {binding.cls.__name__} are its static fields: extend it "
             f"(@struct class Short{binding.cls.__name__}({binding.cls.__name__}): …)"
         )
     raise TypeError(
@@ -262,7 +262,7 @@ class FieldSpec:
 
 
 class StaticSpec:
-    """A static member: its value is fixed by the type (a ``ClassVar``), never by a value."""
+    """A static field: its value is fixed by the type (a ``ClassVar``), never by a value."""
 
     __slots__ = ("name", "wire", "binding", "value", "own", "description")
 
@@ -337,7 +337,7 @@ def struct_root(cls: type) -> type:
 
 
 def class_statics(cls: type) -> dict[str, StaticSpec]:
-    """Static members of a struct, inherited ones included, with this class's values (cached)."""
+    """Static fields of a struct, inherited ones included, with this class's values (cached)."""
     cache_attr = "__briarflow_statics__"
     cached = cls.__dict__.get(cache_attr)
     if cached is not None:
@@ -348,11 +348,11 @@ def class_statics(cls: type) -> dict[str, StaticSpec]:
         if get_origin(ann) is not ClassVar or name.startswith("_"):
             continue
         args = get_args(ann)
-        where = f"struct {cls.__name__}: static member '{name}'"
+        where = f"struct {cls.__name__}: static field '{name}'"
         if len(args) != 1:
             raise TypeError(f"{where} needs a type, e.g. ClassVar[int]")
         if not hasattr(cls, name):
-            raise ValueError(f"{where} needs a value; static members are fixed by the type")
+            raise ValueError(f"{where} needs a value; static fields are fixed by the type")
         _check_field_name(name, where)
         binding, port = resolve(args[0], where)
         out[name] = StaticSpec(
@@ -374,7 +374,7 @@ def check_struct(cls: type, pack_name: str) -> None:
         for f in fields:
             if f.name not in base_fields:
                 raise TypeError(
-                    f"{who} extends {base.__name__}, so it can only give static members values; "
+                    f"{who} extends {base.__name__}, so it can only give static fields values; "
                     f"field '{f.name}' is new. Declare it as ClassVar[…] = value, or don't extend."
                 )
         inherited = class_statics(base)
@@ -382,14 +382,14 @@ def check_struct(cls: type, pack_name: str) -> None:
             prior = inherited.get(name)
             if prior is not None and describe_binding(prior.binding) != describe_binding(s.binding):
                 raise TypeError(
-                    f"{who}: static member '{name}' is {describe_binding(prior.binding)} in "
+                    f"{who}: static field '{name}' is {describe_binding(prior.binding)} in "
                     f"{base.__name__}; an extending struct can't change its type"
                 )
     for s in statics.values():
         try:
             json.dumps(to_json(s.value, s.binding, f"{cls.__name__}.{s.name}"), allow_nan=False)
         except InvalidValue as exc:
-            raise ValueError(f"{who}: static member {exc}") from None
+            raise ValueError(f"{who}: static field {exc}") from None
     _check_limits_of(cls, who)
 
 
@@ -544,15 +544,16 @@ def check_limits(cls: type, value: dict[str, Any], path: str) -> None:
         text = value.get("value")
         if not isinstance(text, str):
             return
+        at = f"{path}.value"
         n = s.get("min_length")
         if n is not None and len(text) < n:
-            raise InvalidValue(path, f"must be at least {n} characters long")
+            raise InvalidValue(at, f"must be at least {n} characters long")
         n = s.get("max_length")
         if n is not None and len(text) > n:
-            raise InvalidValue(path, f"must be at most {n} characters long")
+            raise InvalidValue(at, f"must be at most {n} characters long")
         pat = s.get("pattern")
         if pat is not None and re.fullmatch(pat, text) is None:
-            raise InvalidValue(path, f"must match the pattern {pat}")
+            raise InvalidValue(at, f"must match the pattern {pat}")
         return
     kind = media_kind_of(cls)
     if kind is None:
@@ -639,7 +640,7 @@ def from_json(value: Any, b: Binding, path: str) -> Any:
         statics = _static_wires(cls)
         for key in value:
             if key in statics:
-                raise InvalidValue(f"{path}.{key}", f"is a static member of {cls.__name__}; values can't set it")
+                raise InvalidValue(f"{path}.{key}", f"is a static field of {cls.__name__}: its value comes from the type and is not part of a value")
             if key not in known:
                 raise InvalidValue(
                     f"{path}.{key}",
@@ -733,7 +734,7 @@ def to_json(value: Any, b: Binding, path: str) -> Any:
             statics = _static_wires(cls)
             for key in value:
                 if key in statics:
-                    raise InvalidValue(f"{path}.{key}", f"is a static member of {cls.__name__}; values can't set it")
+                    raise InvalidValue(f"{path}.{key}", f"is a static field of {cls.__name__}: its value comes from the type and is not part of a value")
                 if key not in by_wire and key not in {f.name for f in fields}:
                     raise InvalidValue(
                         f"{path}.{key}",

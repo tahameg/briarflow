@@ -1,6 +1,6 @@
 """Constraint and metadata markers for ``typing.Annotated``.
 
-Only numbers and lists take constraints. Text and media limits are static members of the
+Only numbers and lists take constraints. Text and media limits are static fields of the
 built-in structs (``class ShortText(Text): max_length = 40``, see ``structs.py``).
 
 Example:

@@ -146,7 +146,7 @@ def test_plain_dataclass_hints_at_struct() -> None:
         (Annotated[str, MinItems(1)], "cannot be used on string"),
         (Annotated[list[int], Min(1)], "cannot be used on a list"),
         (Annotated[Character, Max(3)], "cannot be used on Character"),
-        (Annotated[Image, Max(3)], "limits of Image are its static members"),
+        (Annotated[Image, Max(3)], "limits of Image are its static fields"),
     ],
 )
 def test_misplaced_constraints(ann: Any, msg: str) -> None:
