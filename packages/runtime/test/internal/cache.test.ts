@@ -62,10 +62,10 @@ describe("engine cache", () => {
     const doc = context([flow({ inputs: [field("img", ir.image())], nodes: [node("n_m", "tk.media")], edges: [edge("n_in.img", "n_m.image")] })]);
     const a = await media.put(new Uint8Array([1]), { mime: "image/png" });
     const b = await media.put(new Uint8Array([1]), { mime: "image/png" });
-    await engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: a.id } } }).result;
-    const run = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: a.id } } });
+    await engine.run({ context: doc, flowId: "flow_t", inputs: { img: { data: { mediaId: a.id }, mime: "image/png" } } }).result;
+    const run = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { data: { mediaId: a.id }, mime: "image/png" } } });
     expect(cachedIds(await collect(run.events()))).toEqual(["n_m"]);
-    const run3 = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { mediaId: b.id } } });
+    const run3 = engine.run({ context: doc, flowId: "flow_t", inputs: { img: { data: { mediaId: b.id }, mime: "image/png" } } });
     expect(cachedIds(await collect(run3.events()))).toEqual([]);
   });
 

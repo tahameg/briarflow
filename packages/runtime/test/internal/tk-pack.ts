@@ -209,7 +209,7 @@ const nodes = [
     outputs: { uri: t.string() },
     run: ({ inputs }) => {
       probe.runCalls += 1;
-      return { uri: inputs.image.mediaId };
+      return { uri: inputs.image.data.mediaId };
     },
   }),
   defineNode({

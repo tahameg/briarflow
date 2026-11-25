@@ -63,9 +63,10 @@ describe("phase 3 exit: Character → template → mock LLM → mock image → o
     const description = result.outputs?.["description"] as string;
     expect(description).toMatch(/^Mock reply [0-9a-f]{8}: Portrait of Aria, age 30, in anime style\.$/);
 
-    const portrait = result.outputs?.["portrait"] as MediaRef;
+    const portrait = result.outputs?.["portrait"] as { data: MediaRef; mime: string; width: number | null };
+    expect(portrait).toMatchObject({ mime: "image/svg+xml", width: 256, height: 128 });
     expect(await media.entry(portrait)).toMatchObject({ mime: "image/svg+xml", meta: { width: 256, height: 128 } });
-    expect(portrait.mediaId).toMatch(/^med_\d+$/);
+    expect(portrait.data.mediaId).toMatch(/^med_\d+$/);
     const svg = await media.text(portrait);
     expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="128"');
     expect(svg).toContain(description.slice(0, 60).replace(/,/g, ","));

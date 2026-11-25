@@ -242,10 +242,10 @@ describe("engine cache", () => {
     const run = (img: object) => engine.run({ context: d, flowId: FLOW_ID, inputs: { img } }).result;
     const a = await media.put(new Uint8Array([1]), { mime: "image/png" });
     const b = await media.put(new Uint8Array([1]), { mime: "image/png" });
-    await run({ mediaId: a.id });
-    await run({ mediaId: a.id });
+    await run({ data: { mediaId: a.id }, mime: "image/png" });
+    await run({ data: { mediaId: a.id }, mime: "image/png" });
     expect(spy.gets[0]).toBe(spy.gets[1]);
-    await run({ mediaId: b.id });
+    await run({ data: { mediaId: b.id }, mime: "image/png" });
     expect(spy.gets[2]).not.toBe(spy.gets[0]);
   });
 });

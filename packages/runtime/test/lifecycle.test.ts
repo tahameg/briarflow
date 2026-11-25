@@ -247,7 +247,7 @@ describe("start sequence failures", () => {
     });
 
     it("wrong type and constraint violations; plural message", async () => {
-      const { error, diagnostics } = await invalid({ name: "Too long name", count: -1 });
+      const { error, diagnostics } = await invalid({ name: 42, count: -1 });
       expect(diagnostics.length).toBe(2);
       expect(diagnostics.every((d) => d.code.startsWith("value."))).toBe(true);
       expect(diagnostics.map((d) => d.path.valuePath)).toEqual(["inputs.name", "inputs.count"]);
@@ -259,7 +259,7 @@ describe("start sequence failures", () => {
     it("media inputs use media.* codes", async () => {
       const { engine } = makeEngine();
       const d = doc({ inputs: [{ name: "img", type: ir.image() }], outputs: [] });
-      const result = await engine.run({ context: d, flowId: FLOW_ID, inputs: { img: { uri: "ftp://x/a.png", mime: "image/png" } } }).result;
+      const result = await engine.run({ context: d, flowId: FLOW_ID, inputs: { img: { data: { uri: "ftp://x/a.png", mime: "image/png" }, mime: "image/png" } } }).result;
       expect(result.error?.code).toBe("run.invalid_inputs");
       const diags = (result.error?.details as { diagnostics: { code: string; path: { valuePath?: string } }[] }).diagnostics;
       expect(diags[0]?.code).toBe("media.invalid_ref");

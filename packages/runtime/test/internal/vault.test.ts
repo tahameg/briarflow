@@ -9,11 +9,11 @@ import { context, edge, field, flow, ir, node, testEngine } from "./helpers.js";
 
 const useKey = defineNode({
   type: "keyed.useKey",
-  inputs: { key: t.optional(t.secret({ kind: "apiKey" })), other: { type: t.string(), default: "" } },
+  inputs: { key: t.optional(t.apiKey()), other: { type: t.string(), default: "" } },
   outputs: { text: t.string() },
   cache: false,
   run: async ({ inputs, ctx }) => {
-    const fromSetting = (await ctx.settings.get("defaultKey")) as string | null;
+    const fromSetting = (await ctx.settings.get("defaultKey")) as { name: string } | null;
     const ref = inputs.key ?? fromSetting;
     if (inputs.other !== "") return { text: await ctx.secrets.read(inputs.other) };
     return { text: ref ? `got ${(await ctx.secrets.read(ref)).length} chars` : "no key" };
@@ -45,22 +45,22 @@ async function run(values: Record<string, unknown>, settings = createMemorySetti
 
 describe("vault access", () => {
   it("reads the secret a secret input names", async () => {
-    expect((await run({ key: "MAIN" })).outputs).toEqual({ text: "got 8 chars" });
+    expect((await run({ key: { name: "MAIN" } })).outputs).toEqual({ text: "got 8 chars" });
   });
 
   it("reads the secret a secret setting of the pack names", async () => {
-    expect((await run({}, createMemorySettings({ "keyed.defaultKey": "SIDE" }))).outputs).toEqual({ text: "got 3 chars" });
+    expect((await run({}, createMemorySettings({ "keyed.defaultKey": { name: "SIDE" } }))).outputs).toEqual({ text: "got 3 chars" });
     expect((await run({})).outputs).toEqual({ text: "no key" });
   });
 
   it("refuses a secret the node was not given, by name in text", async () => {
-    const r = await run({ key: "MAIN", other: "SIDE" });
+    const r = await run({ key: { name: "MAIN" }, other: "SIDE" });
     expect(r.status).toBe("failed");
     expect(r.error?.cause?.code ?? r.error?.code).toBe("node.secret_not_allowed");
   });
 
   it("fails with node.missing_secret for a name that is not in the vault", async () => {
-    const r = await run({ key: "GONE" });
+    const r = await run({ key: { name: "GONE" } });
     expect(r.error?.cause?.code ?? r.error?.code).toBe("node.missing_secret");
   });
 });
