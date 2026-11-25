@@ -46,15 +46,15 @@ function defineNode<I extends PortMap, O extends PortMap, C extends ConfigMap = 
 | `config` | `Record<string, ConfigField>` | `{}` | See §4 |
 | `resolvePorts` | `(args) => ResolvedPorts` | none | See §5 |
 | `secrets` | `string[]` | `[]` | Secret names the node needs (`"OPENAI_API_KEY"`) |
-| `cache` | `boolean` | `true` | `false` for non-deterministic or side-effecting nodes |
+| `cache` | `bool` | `true` | `false` for non-deterministic or side-effecting nodes |
 | `cacheVersion` | `string` | `"1"` | Bump to invalidate cached results when `run` logic changes without a pack version bump |
 | `timeoutMs` | `number` | `300_000` (5 min) | Per attempt. `0` = no timeout |
 | `retry` | `number \| RetryPolicy` | `0` retries | `retry: 2` = up to 3 attempts with default backoff (runtime.md §5) |
 | `concurrency` | `number` | unlimited | Max simultaneous executions of this node type per engine |
 | `deprecated` | `string` | none | Message shown in the palette; node still runs |
-| `pure` | `boolean` | `false` | No execution line; runs when a node on the line reads it (execution.md) |
-| `canFail` | `boolean` | `false` | Adds the `failed` line and the `error` output |
-| `conversion` | `boolean` | `false` | A conversion node (§1.1) |
+| `pure` | `bool` | `false` | No execution line; runs when a node on the line reads it (execution.md) |
+| `canFail` | `bool` | `false` | Adds the `failed` line and the `error` output |
+| `conversion` | `bool` | `false` | A conversion node (§1.1) |
 | `variants` | `VariantsInput` | none | A node with variants (§1.2). Replaces `inputs`, `outputs`, `config`, `resolvePorts` and `run` |
 | `run` | `(args: NodeRunArgs) => Promise<Outputs> \| Outputs` | **required** (unless `variants`) | The work |
 
@@ -64,7 +64,7 @@ message naming the node type and field: e.g.
 
 ### 1.1 Conversion nodes (2026-10-24)
 
-A conversion node turns one value into another type: As text, As int, As JSON, … It is a
+A conversion node turns one value into another type: As string, As int, As JSON, … It is a
 first-class kind, not a naming habit:
 
 - `conversion: true` requires `pure: true`, static ports (no `resolvePorts`), exactly one
@@ -88,7 +88,7 @@ OpenAI image is one node with a variant per model (`gpt-image-2.5-flare`, `gpt-i
 deprecated 1.x models only the fixed sizes and quality up to `high`.
 
 ```ts
-const prompt = { prompt: t.text({ multiline: true }) };   // shared ports are plain objects
+const prompt = { prompt: { type: t.string(), widget: "textarea" } };   // shared ports are plain objects
 
 export const generate = defineNode({
   type: "img.generate",
@@ -108,7 +108,7 @@ export const generate = defineNode({
       best: variant({
         title: "Best",
         config: { steps: cfg.int({ min: 1, max: 50, default: 20 }) },
-        inputs: { ...prompt, negative: t.optional(t.text()) },
+        inputs: { ...prompt, negative: t.optional(t.string()) },
         outputs: { image: t.image(), seed: t.int() },
         run: async ({ inputs, config, ctx }) => render(inputs, config.steps, ctx),
       }),
@@ -197,12 +197,14 @@ type Port<V> = TypeSpec<V> | {
 ## 3. The `t` builder
 
 ```ts
-t.text({ minLength?, maxLength?, pattern?, multiline? })   // TypeSpec<string>
+t.string()                                                // TypeSpec<string>
 t.int({ min?, max? })                                     // TypeSpec<number>
 t.float({ min?, max? })                                   // TypeSpec<number>
-t.boolean()                                               // TypeSpec<boolean>
-t.image({ formats?, maxBytes?, minWidth?, maxWidth?, minHeight?, maxHeight? })  // TypeSpec<MediaRef>
-t.video({ formats?, maxBytes?, maxDurationSec? })  t.audio(...)  t.model3d(...)  t.file(...)
+t.bool()                                                  // TypeSpec<boolean>
+t.binary()                                                // TypeSpec<MediaRef>
+t.text()                                                  // TypeSpec<TextValue>   (built-in struct Text)
+t.image()  t.video()  t.audio()  t.model3d()  t.file()    // TypeSpec<ImageValue> …  (media structs)
+t.json()  t.secret()  t.apiKey()  t.error()               // TypeSpec<JsonText> / <SecretValue> / <ErrorValue>
 t.list(item, { minItems?, maxItems? })                    // TypeSpec<readonly V[]>
 t.optional(inner)                                         // TypeSpec<V | null>
 t.ref("Character")  t.ref("openai.ChatMessage")           // TypeSpec<UnknownValue> (or typed, see below)
@@ -219,16 +221,16 @@ type UnknownValue = string | number | boolean | object | null;   // exported by 
 ```ts
 const def = defineNode({
   type: "demo.x",
-  inputs: { a: t.text(), b: { type: t.optional(t.int()), default: null }, c: t.list(t.image()) },
-  outputs: { out: t.text() },
+  inputs: { a: t.string(), b: { type: t.optional(t.int()), default: null }, c: t.list(t.image()) },
+  outputs: { out: t.string() },
   run({ inputs }) {
     inputs.a;   // string
     inputs.b;   // number | null
-    inputs.c;   // readonly MediaRef[]
+    inputs.c;   // readonly ImageValue[]
     return { out: "ok" };          // return type must be { out: string }
   },
 });
-type In  = InputsOf<typeof def>;   // { a: string; b: number | null; c: readonly MediaRef[] }
+type In  = InputsOf<typeof def>;   // { a: string; b: number | null; c: readonly ImageValue[] }
 type Out = OutputsOf<typeof def>;  // { out: string }
 ```
 
@@ -384,8 +386,10 @@ Non-`NodeError` exceptions are wrapped as `node.failed` with the original messag
   tolerated: the engine stops waiting after a grace period (runtime.md §4).
 - **Outputs.** Return an object with every output port. Optional outputs may be omitted
   (become `null`). Media outputs: store bytes with `ctx.media.put(bytes, { mime, filename?,
-  meta? })` and return the `{ mediaId }` it gives. Read media inputs with
-  `ctx.media.read(inputs.image)` and their mime / size with `ctx.media.entry(inputs.image)`.
+  meta? })` and return a media struct around the `{ mediaId }` it gives:
+  `mediaValue("image", ref, { mime, bytes, meta })`. Read media inputs with
+  `ctx.media.read(inputs.image)`; their mime, size and dimensions are on the value
+  (`inputs.image.mime`, `.width`), filled from the registry entry before `run` (media.md §1).
 
 ## 7. Packs and pack types
 
@@ -393,9 +397,11 @@ Non-`NodeError` exceptions are wrapped as `node.failed` with the original messag
 const Role = defineEnum("Role", ["system", "user", "assistant"], { description: "Who speaks" });
 const ChatMessage = defineStruct("ChatMessage", {
   role: t.ref(Role),
-  content: t.text(),
-  name: { type: t.optional(t.text()), description: "Optional speaker name" },
+  content: t.string(),
+  name: { type: t.optional(t.string()), description: "Optional speaker name" },
 });
+// A type with limits extends a built-in and sets its static fields:
+const Title = defineStruct("Title", { maxLength: { type: t.optional(t.int()), static: true, default: 80 } }, { extends: t.text() });
 
 export const openaiPack = definePack({
   name: "openai",                     // pack name regex ^[a-z][a-z0-9_]*$
@@ -403,16 +409,18 @@ export const openaiPack = definePack({
   title: "OpenAI",
   description: "Chat, structured output and images via the OpenAI API.",
   namespaces: [],                     // extra node-type namespaces (default none)
-  types: [Role, ChatMessage],         // ids become "openai.Role", "openai.ChatMessage"
+  types: [Role, ChatMessage, Title],  // ids become "openai.Role", "openai.ChatMessage", "openai.Title"
   nodes: [chat, structured, image],
   settings: {                         // keys "openai.textKey", … (settings.md)
-    textKey: { type: t.optional(t.secret({ kind: "apiKey" })), title: "Key for text" },
+    textKey: { type: t.optional(t.apiKey()), title: "Key for text" },
   },
 });
 ```
 
 - Inside a pack, `t.ref("Role")` resolves first to the pack's own types.
-- Pack types may reference primitives and types from the same pack only (v1).
+- Pack types may reference primitives, built-in types and types from the same pack only, and
+  extend a built-in or a struct of the same pack (`defineStruct(…, { extends })`: its own
+  fields must be static; values of it are values of the base).
 - `definePack` throws `pack.invalid` on: node type outside the pack's namespaces, duplicate
   node types, duplicate type names, unresolved refs.
 - `NodeCatalog` (`createCatalog([packs])`) throws `catalog.duplicate_pack` (same name twice),
@@ -430,7 +438,7 @@ know its pack; `catalog.descriptors()` passes it):
   "type": "text.template", "pack": { "name": "briar", "version": "1.0.0" },
   "title": "Text template", "description": "…", "category": "Text", "icon": "text", "color": "mint",
   "inputs":  [ { "name": "…", "type": { "kind": "…" }, "title": "…", "description": "…", "default": null, "widget": null } ],
-  "outputs": [ { "name": "text", "type": { "kind": "primitive", "name": "text" }, "title": "Text" } ],
+  "outputs": [ { "name": "text", "type": { "kind": "primitive", "name": "string" }, "title": "Text" } ],
   "config":  [ { "name": "template", "kind": "text", "required": true, "multiline": true, "title": "Template" } ],
   "dynamicPorts": true, "secrets": [], "cache": true, "timeoutMs": 300000,
   "retry": { "maxAttempts": 1 }, "concurrency": null, "deprecated": null
@@ -482,30 +490,32 @@ built-ins are labelled **"Input"** and **"Output"** (DECISIONS #36).
 | `briar.struct.break` | `typeId` | `value: S` | one per field | |
 | `briar.member.get` ("Get .path") | `type: cfg.type()`, `path: cfg.text()` | `value: <type>` | one, named after the last step, the member's type | `value.path` (types.md §12); offered from a dropped wire, not the palette |
 | `briar.member.set` ("Set .path") | same | `value: <type>`, `to: <member type>` | `value: <type>` | copy with the struct field replaced; only struct fields (types.md §12) |
-| `debug.print` ("Print") | — | `text: text`, `browserConsole: boolean` (false) | — | frontend node: the studio writes the text to its console |
-| `debug.image` ("View image") | — | `image: image`, `label: text?` | — | frontend node on the execution line: the studio shows the image on the node (double-click: viewer) and as a console line with mime, size and bytes; reading it makes the pure image nodes before it run |
+| `debug.print` ("Print") | — | `text: string`, `browserConsole: bool` (false) | — | frontend node: the studio writes the text to its console |
+| `debug.image` ("View image") | — | `image: Image`, `label: string?` | — | frontend node on the execution line: the studio shows the image on the node (double-click: viewer) and as a console line with mime, size and bytes; reading it makes the pure image nodes before it run |
 | `briar.constant` | `type: cfg.type()` | `value: <type>` (set as constant) | `value: <type>` | identity when wired |
-| `text.template` (title "Template builder") | `template: cfg.text({multiline:true})` | one port per distinct `{{name}}`, in order of first appearance: generic (synthetic type var `T1`, `T2`, … by order of first appearance) or `json` when any slot reads a field path of it (`{{user.address.city}}`, `{{items[0]}}`); `{{$(name)}}` reads a flow variable, else a global, and adds no port | `text: text` | `cache:false` (it reads variables). Values rendered with toText rules; a field path that does not exist → `NodeError("json.field_missing")`; `\{{` is a literal `{{`, single braces are plain text; bad slot → `PortError` `text.invalid_placeholder`, unclosed `{{` → `text.invalid_template`, unknown variable → `text.unknown_variable`. Variables are read at run start (like `ctx.variables`); use a Get variable node and a port for a value written earlier in the same run |
-| `text.join` | — | `items: list<text>`, `separator: text` (default `""`) | `text: text` | |
+| `text.template` (title "Template builder") | `template: cfg.text({multiline:true})` | one port per distinct `{{name}}`, in order of first appearance: generic (synthetic type var `T1`, `T2`, … by order of first appearance) or `Json` when any slot reads a field path of it (`{{user.address.city}}`, `{{items[0]}}`); `{{$(name)}}` reads a flow variable, else a global, and adds no port | `text: string` | `cache:false` (it reads variables). Values rendered with toText rules; a field path that does not exist → `NodeError("json.field_missing")`; `\{{` is a literal `{{`, single braces are plain text; bad slot → `PortError` `text.invalid_placeholder`, unclosed `{{` → `text.invalid_template`, unknown variable → `text.unknown_variable`. Variables are read at run start (like `ctx.variables`); use a Get variable node and a port for a value written earlier in the same run |
+| `text.join` | — | `items: list<string>`, `separator: string` (default `""`) | `text: string` | |
 | `list.make` | `count: cfg.int({min:0,max:32,default:2})` | `item1…itemN: $T` | `list: list<$T>` | |
 | `list.length` | — | `list: list<$T>` | `length: int` | |
 | `list.get` | — | `list: list<$T>`, `index: int` | `item: $T?` | negative index counts from the end; out of range → `null` |
-| `convert.toText` (title "As text") | — | `value: $T` | `text: text` | conversion; never fails; rules below |
-| `convert.asJson` | — | `text: text` | `json: json` | conversion; the text as it is, **not parsed**: fields are parsed when read (Get field, Set field, templates) |
-| `convert.asInt` / `convert.asFloat` | — | `value: $T` with `oneOf: [text, json]` | `value: int` / `float` | conversion; json is read through its text (As text), then trimmed and parsed; invalid → `convert.invalid_number` |
-| `convert.asBoolean` | — | `value: $T` | `value: boolean` | conversion; never fails: `null`, `false`, `0`, NaN and text `""`/`false`/`0`/`no`/`off`/`null` (trimmed, any case) → false; everything else (lists, structs, media) → true |
-| `convert.asJsonArray` (title "As JSON array") | — | `value: $T` with `oneOf: [text, json]` | `items: list<json>` | conversion; text is parsed; not an array → `json.wrong_kind`, bad JSON → `json.invalid_json` |
+| `convert.toText` (title "As string") | — | `value: $T` | `text: string` | conversion; never fails; rules below |
+| `convert.asJson` | — | `text: string` | `json: Json` | conversion; the text as it is, **not parsed**: fields are parsed when read (Get field, Set field, templates) |
+| `convert.asInt` / `convert.asFloat` | — | `value: $T` with `oneOf: [string, Json]` | `value: int` / `float` | conversion; a Json is read through its text (As string), then trimmed and parsed; invalid → `convert.invalid_number` |
+| `convert.asBoolean` (title "As bool") | — | `value: $T` | `value: bool` | conversion; never fails; the one truthiness rule (types.md §7.1): `false`, `0`, `""`, an empty list, an empty Text, `null` → false; everything else → true. A Json is read first (`"0"` → false) |
+| `convert.asJsonArray` (title "As JSON array") | — | `value: $T` with `oneOf: [string, Json]` | `items: list<Json>` | conversion; text is parsed; not an array → `json.wrong_kind`, bad JSON → `json.invalid_json` |
 | `convert.floatToInt` | — | `value: float`, `mode: briar.RoundingMode` (default `round`) | `value: int` | conversion; `round` = half away from zero |
-| `json.construct` | — | `value: json` (default `{}`, edited in the JSON editor) | `json: json` | |
-| `json.getField` | — | `json: json`, `path: text` | `value: json` | path `a.b[0].c`, `[1]` for a root array, `""` = the whole value; missing → `json.field_missing`, bad path → `json.invalid_path`; a string met on the way is JSON text and is parsed there, bad JSON → `json.invalid_json` |
-| `json.setField` | — | `json`, `path`, `value: json` | `json: json` | replaces or adds; creates missing objects on the way; an index may be one past the end (append) |
-| `json.addField` | — | `json`, `path`, `value: json`, `overwrite: boolean` (default false) | `json: json` | existing field and `overwrite` off → `json.field_exists` |
+| `json.construct` | — | `value: Json` (default `{}`, edited in the JSON editor) | `json: Json` | |
+| `json.getField` | — | `json: Json`, `path: string` | `value: Json` | path `a.b[0].c`, `[1]` for a root array, `""` = the whole value; missing → `json.field_missing`, bad path → `json.invalid_path`; a string met on the way is JSON text and is parsed there, bad JSON → `json.invalid_json` |
+| `json.setField` | — | `json`, `path`, `value: Json` | `json: Json` | replaces or adds; creates missing objects on the way; an index may be one past the end (append) |
+| `json.addField` | — | `json`, `path`, `value: Json`, `overwrite: bool` (default false) | `json: Json` | existing field and `overwrite` off → `json.field_exists` |
 
 Pack types: `briar.RoundingMode` enum: `round`, `floor`, `ceil`, `trunc`.
 
-**toText rules:** text as is; int/float via JS `String()`; boolean `"true"`/`"false"`; enum →
-member value; `null` → `""`; media → its `uri`; struct/list → `JSON.stringify` with stable key
-order and no spaces; json → a string as is, anything else as its JSON text (same stable order).
+**toText rules:** a string as is; int/float via JS `String()`; bool `"true"`/`"false"`; enum →
+member value; `null` → `""`; `binary` and media structs → the media id; `Text` (and structs
+extending it) → its `value`; `Json` → a string as is, anything else as its JSON text; other
+structs and lists → `JSON.stringify` with stable key order and no spaces. Templates know the
+types of their inputs and of the variables and globals they read (`ctx.variables.typeOf`).
 
 ## 10. Mock nodes (`@briarflow/nodes-mock`, pack `mock`)
 
@@ -513,13 +523,13 @@ Deterministic, offline, no secrets. `hash(x)` = sha-256 hex of the UTF-8 canonic
 
 | Type | Inputs | Outputs | Behaviour |
 |---|---|---|---|
-| `mock.llm` | `prompt: text`, `system: text?`, `seed: int` (0), `delayMs: int` (0) | `text: text` | `"Mock reply " + hash({system,prompt,seed}).slice(0,8) + ": " + first 200 chars of prompt`. Reports progress 0.5 then 1 while waiting `delayMs` (respects signal). |
-| `mock.structured` | config `typeId: cfg.typeId({kind:"struct"})`; inputs `prompt: text`, `seed: int` (0) | `value: S` | Fills the struct deterministically from `hash({prompt,seed,path})`: text → `"<field> <4 hex>"` (respecting maxLength), int → value in `[min,max]` (default 0–99), float same /100, boolean → even/odd, enum → member by index, list → `minItems` or 2 items, optional → value (but `null` for an optional `video`), media: `image`/`file` → a 64×64 mock SVG (`image/svg+xml`), `model3d` → the glTF cube of `mock.model3d`, `audio` → a short silent WAV (`audio/wav`), required `video` → `mock.unsupported_type`; all stored via `ctx.media.put`. Unknown type id → `mock.unknown_type`. |
-| `mock.image` | `prompt: text`, `width: int` (512, 1–4096), `height: int` (512), `seed: int` (0) | `image: image` | SVG (`image/svg+xml`) with background color from `hash({prompt, seed})`, 3 rectangles, and the first 60 chars of the prompt as text; `meta.width/height` set; stored via `ctx.media.put`. |
-| `mock.model3d` | `prompt: text`, `seed: int` (0) | `model: model3d` | minimal glTF 2.0 JSON cube (`model/gltf+json`), material color from the hash. |
+| `mock.llm` | `prompt: string`, `system: string?`, `seed: int` (0), `delayMs: int` (0) | `text: string` | `"Mock reply " + hash({system,prompt,seed}).slice(0,8) + ": " + first 200 chars of prompt`. Reports progress 0.5 then 1 while waiting `delayMs` (respects signal). |
+| `mock.structured` | config `typeId: cfg.typeId({kind:"struct"})`; inputs `prompt: string`, `seed: int` (0) | `value: S` | Fills the struct deterministically from `hash({prompt,seed,path})`: string → `"<field> <4 hex>"`, a Text (or a struct extending it) → `{ value }` the same way, cut to its `maxLength`, int → value in `[min,max]` (default 0–99), float same /100, bool → even/odd, enum → member by index, list → `minItems` or 2 items, optional → value (but `null` for an optional `Video`), media: `Image`/`File` → a 64×64 mock SVG (`image/svg+xml`), `Model3D` → the glTF cube of `mock.model3d`, `Audio` → a short silent WAV (`audio/wav`), required `Video` → `mock.unsupported_type`; all stored via `ctx.media.put`. Unknown type id → `mock.unknown_type`. |
+| `mock.image` | `prompt: string`, `width: int` (512, 1–4096), `height: int` (512), `seed: int` (0) | `image: Image` | SVG (`image/svg+xml`) with background color from `hash({prompt, seed})`, 3 rectangles, and the first 60 chars of the prompt as text; `meta.width/height` set; stored via `ctx.media.put`. |
+| `mock.model3d` | `prompt: string`, `seed: int` (0) | `model: Model3D` | minimal glTF 2.0 JSON cube (`model/gltf+json`), material color from the hash. |
 | `mock.delay` | `value: $T`, `ms: int` (1000) | `value: $T` | waits, honours cancellation; `cache:false`. For cancellation tests. |
-| `mock.flaky` | `failures: int` (1), `value: text` ("ok") | `value: text` | Fails the first `failures` attempts of each execution with `node.unavailable` (retryable), then succeeds. `retry: 3`, `cache:false`. For retry tests. |
-| `mock.fail` | `message: text` ("Mock failure") | `value: text` | Always throws `NodeError("mock.failed", message)`. |
+| `mock.flaky` | `failures: int` (1), `value: string` ("ok") | `value: string` | Fails the first `failures` attempts of each execution with `node.unavailable` (retryable), then succeeds. `retry: 3`, `cache:false`. For retry tests. |
+| `mock.fail` | `message: string` ("Mock failure") | `value: string` | Always throws `NodeError("mock.failed", message)`. |
 
 ## 10b. Image nodes (`@briarflow/nodes-image`, pack `image`)
 
@@ -555,11 +565,11 @@ export const slugify = defineNode({
   category: "Text",
   description: "Turns any text into a URL-safe slug: lowercase, dashes, no accents.",
   inputs: {
-    text: t.text(),
+    text: t.string(),
     maxLength: { type: t.int({ min: 1, max: 200 }), default: 60, description: "Longer slugs are cut at a dash." },
   },
   outputs: {
-    slug: t.text({ pattern: "[a-z0-9-]*" }),
+    slug: t.string(),
   },
   run({ inputs }) {
     const slug = inputs.text
@@ -581,8 +591,8 @@ function cut(s: string, max: number): string {
 
 ```ts
 // packages/nodes-acme/src/generate-image.ts
-import { defineNode, NodeError, t } from "@briarflow/core";
-import { Size } from "./types.js";   // export const Size = defineEnum("Size", ["square", "portrait", "landscape"]);
+import { defineNode, mediaValue, NodeError, t } from "@briarflow/core";
+import { PngImage, Size } from "./types.js";   // export const Size = defineEnum("Size", ["square", "portrait", "landscape"]);
 
 export const generateImage = defineNode({
   type: "acme.generateImage",
@@ -597,12 +607,12 @@ export const generateImage = defineNode({
   timeoutMs: 120_000,
   concurrency: 2,              // the API allows 2 parallel requests
   inputs: {
-    prompt: { type: t.text({ multiline: true, maxLength: 4000 }), widget: "textarea" },
+    prompt: { type: t.string(), widget: "textarea" },
     size: { type: t.ref(Size), default: "square" },
     seed: { type: t.optional(t.int({ min: 0 })), default: null },
   },
   outputs: {
-    image: t.image({ formats: ["png"] }),
+    image: t.ref(PngImage),    // export const PngImage = defineStruct("PngImage", { formats: { type: t.list(t.string()), static: true, default: ["png"] } }, { extends: t.image() });
   },
   async run({ inputs, ctx }) {
     const key = await ctx.secrets.get("ACME_API_KEY");
@@ -626,8 +636,8 @@ export const generateImage = defineNode({
     }
     ctx.progress(0.8, "Saving image");
     const bytes = new Uint8Array(await res.arrayBuffer());
-    const image = await ctx.media.put(bytes, { mime: "image/png", filename: "acme.png" });
-    return { image };
+    const ref = await ctx.media.put(bytes, { mime: "image/png", filename: "acme.png" });
+    return { image: mediaValue("image", ref, { mime: "image/png", bytes: bytes.length, meta: { filename: "acme.png" } }) };
   },
 });
 ```
