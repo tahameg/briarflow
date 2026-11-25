@@ -8,6 +8,7 @@ import {
   ERROR_OUTPUT,
   completeMediaValues,
   findMedia,
+  readMember,
   typeHasMedia,
   EXEC_FAILED,
   EXEC_THEN,
@@ -523,8 +524,9 @@ export class LocalRun implements Run {
   // Node outcomes
   // ------------------------------------------------------------------------------------------
 
-  private completeNode(node: PlannedNode, ex: NodeExec, outputs: Record<string, unknown>, cached: boolean): void {
+  private completeNode(node: PlannedNode, ex: NodeExec, given: Record<string, unknown>, cached: boolean): void {
     if (TERMINAL.has(ex.state) || this.isFinished) return;
+    const outputs = this.splitOutputs(node, given);
     ex.state = "completed";
     ex.outputs = outputs;
     this.endProgress(ex);
@@ -745,7 +747,31 @@ export class LocalRun implements Run {
       }
       values[port.name] = r.value;
     }
+    // Split input ports (execution.md §8): members become the struct again, deepest first.
+    for (const sp of [...(node.ports.split?.splitInputs ?? [])].reverse()) {
+      const struct: Record<string, unknown> = {};
+      for (const field of sp.fields) {
+        const key = `${sp.path}.${field}`;
+        struct[field] = values[key] ?? null;
+        delete values[key];
+      }
+      values[sp.path] = struct;
+    }
     return { ok: true, values };
+  }
+
+  /** Split output ports (execution.md §8): the struct also gives each member under its own name. */
+  private splitOutputs(node: PlannedNode, outputs: Record<string, unknown>): Record<string, unknown> {
+    const splits = node.ports.split?.splitOutputs ?? [];
+    if (splits.length === 0) return outputs;
+    const plan = this.plan as Plan;
+    const resolve = (id: string) => plan.scope.getType(id)?.decl;
+    const out = { ...outputs };
+    for (const sp of splits) {
+      const value = out[sp.path];
+      for (const field of sp.fields) out[`${sp.path}.${field}`] = value === undefined || value === null ? null : readMember(value, sp.type, [field], resolve);
+    }
+    return out;
   }
 
   private normalizeOutputs(node: PlannedNode, raw: unknown): { ok: true; outputs: Record<string, unknown> } | { ok: false; failure: NodeFailure } {
@@ -758,7 +784,8 @@ export class LocalRun implements Run {
       return bad(`Node ${node.title} returned ${describe(raw)} instead of an object with its outputs.`);
     }
     const rec = raw as Record<string, unknown>;
-    const names = node.ports.outputs.map((p) => p.name);
+    const ports = node.ports.split?.outputs ?? node.ports.outputs;
+    const names = ports.map((p) => p.name);
     for (const key of Object.keys(rec)) {
       if (rec[key] !== undefined && !names.includes(key)) {
         return bad(
@@ -768,7 +795,7 @@ export class LocalRun implements Run {
       }
     }
     const outputs: Record<string, unknown> = {};
-    for (const port of node.ports.outputs) {
+    for (const port of ports) {
       let value = rec[port.name];
       // A canFail node's error output is only filled on the failed line.
       if (value === undefined && port.name === ERROR_OUTPUT && node.def?.canFail) continue;
@@ -997,13 +1024,13 @@ export class LocalRun implements Run {
     const def = node.def;
     if (!def || !def.cache || def.frontend || def.control) return false;
     const plan = this.plan as Plan;
-    return node.ports.outputs.some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
+    return (node.ports.split?.outputs ?? node.ports.outputs).some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
   }
 
   private mediaIn(node: PlannedNode, outputs: Readonly<Record<string, unknown>>): string[] {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
-    return node.ports.outputs.flatMap((p) => findMedia(outputs[p.name], p.type, getType).map((m) => m.ref.mediaId));
+    return (node.ports.split?.outputs ?? node.ports.outputs).flatMap((p) => findMedia(outputs[p.name], p.type, getType).map((m) => m.ref.mediaId));
   }
 
   /** Earlier outputs that still fit the ports and whose media all still exist; else `undefined`. */
@@ -1036,7 +1063,7 @@ export class LocalRun implements Run {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
     const entries = new Map<string, MediaEntry>();
-    for (const port of node.ports.inputs) {
+    for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
       for (const found of findMedia(inputs[port.name], port.type, getType)) {
         const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
         let entry;
@@ -1069,7 +1096,7 @@ export class LocalRun implements Run {
     }
     if (entries.size === 0) return { values: inputs };
     const values: Record<string, unknown> = { ...inputs };
-    for (const port of node.ports.inputs) {
+    for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
       if (port.name in values) values[port.name] = completeMediaValues(values[port.name], port.type, getType, (id) => entries.get(id));
     }
     return { values };
@@ -1087,7 +1114,7 @@ export class LocalRun implements Run {
     const plan = this.plan as Plan;
     try {
       const keyed: Record<string, unknown> = {};
-      for (const port of node.ports.inputs) {
+      for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
         keyed[port.name] = replaceMedia(inputs[port.name], port.type, (id) => plan.scope.getType(id)?.decl);
       }
       return await computeCacheKey({
@@ -1239,7 +1266,7 @@ export class LocalRun implements Run {
       settings: this.services.catalog.packOf(node.node.type)?.settings ?? [],
       store: this.services.settings,
       vault: this.services.vault,
-      allowed: inputSecretRefs(node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
+      allowed: inputSecretRefs(node.ports.split?.inputs ?? node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
     });
     const logger = this.services.logger;
     const tag = { runId: this.id, nodeId: node.id };

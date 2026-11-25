@@ -131,6 +131,18 @@ export interface NodeInstance {
   values?: Record<string, unknown>;
   /** Resolved generics, derived from edges (types.md §5.1). */
   typeBindings?: Record<string, TypeRef>;
+  /**
+   * Struct ports shown as one port per member (execution.md §8): paths of split input and
+   * output ports, `"portrait"` or nested `"portrait.image"`. Edges and values use the member
+   * ports' names (`"portrait.image"`).
+   */
+  split?: NodeSplit;
+}
+
+/** Split ports of a node: paths of struct ports shown as their members. */
+export interface NodeSplit {
+  inputs?: string[];
+  outputs?: string[];
 }
 
 /** One end of an edge. */

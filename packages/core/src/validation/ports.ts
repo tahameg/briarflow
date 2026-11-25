@@ -21,6 +21,7 @@ import { collectNamedIds, containsVar, isBareName, mapNamedIds, typeRefShapeProb
 import { jsonEquals } from "../util/json.js";
 import { isValidFieldName } from "../util/names.js";
 import { titleFromName } from "../util/titles.js";
+import { structLayout } from "../types/layout.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { nodeLabel } from "./labels.js";
 
@@ -37,6 +38,16 @@ export interface ResolvedPort {
   hasDefault: boolean;
   default?: unknown;
   widget?: PortWidget;
+  /** On a member port of a split struct port (execution.md §8): the split port's path and the field. */
+  member?: { of: string; field: string };
+}
+
+/** One split port of a node: its path and the member fields it shows, in order. */
+export interface SplitPort {
+  path: string;
+  /** Type of the split port (a struct). */
+  type: TypeRef;
+  fields: readonly string[];
 }
 
 /** Ports of one node instance. */
@@ -48,6 +59,11 @@ export interface ResolvedNode {
   outputs: ResolvedPort[];
   /** Recomputed from edges (types.md §5.1); compare with `NodeInstance.typeBindings`. */
   typeBindings: TypeBindings;
+  /**
+   * With split ports (`NodeInstance.split`): the ports as the node itself takes and gives them,
+   * and the splits applied, shallowest first. `inputs` / `outputs` show the member ports.
+   */
+  split?: { inputs: ResolvedPort[]; outputs: ResolvedPort[]; splitInputs: SplitPort[]; splitOutputs: SplitPort[] };
   /**
    * Problems found while resolving: `node.unknown_type`, `config.invalid`,
    * `config.unknown_ref`, `node.ports_unresolved`, `node.generic_conflict`.
@@ -87,7 +103,62 @@ export function resolveFlowPorts(doc: ContextDocument, flowId: string, catalog: 
     nodes.set(node.id, resolveNode(node, doc, flow, scope, catalog));
   }
   bindGenerics(flow, nodes, scope);
+  for (const node of flow.nodes) {
+    const r = nodes.get(node.id);
+    if (r && node.split && ((node.split.inputs?.length ?? 0) > 0 || (node.split.outputs?.length ?? 0) > 0)) nodes.set(node.id, applySplits(node, r, scope, flow.id));
+  }
   return { flowId, nodes };
+}
+
+/**
+ * Shows split struct ports as one port per member (execution.md §8): an input gets its
+ * instance fields, an output its instance and static fields. A path that is not a struct port
+ * (any more) stays as it is, with a warning.
+ */
+function applySplits(node: NodeInstance, r: ResolvedNode, scope: TypeScope, flowId: string): ResolvedNode {
+  const resolve = (id: string) => scope.getType(id)?.decl;
+  const diagnostics = [...r.diagnostics];
+  const expand = (ports: readonly ResolvedPort[], paths: readonly string[], isInput: boolean): { ports: ResolvedPort[]; splits: SplitPort[] } => {
+    let out = [...ports];
+    const splits: SplitPort[] = [];
+    for (const path of [...new Set(paths)].sort((a, b) => a.split(".").length - b.split(".").length || (a < b ? -1 : 1))) {
+      const i = out.findIndex((p) => p.name === path);
+      const port = out[i];
+      const decl = port && port.type.kind === "named" ? resolve(port.type.id) : undefined;
+      if (!port || decl?.kind !== "struct") {
+        diagnostics.push({
+          severity: "warning",
+          code: "node.split_invalid",
+          message: `${nodeLabel(node, r.definition)} splits ${isInput ? "input" : "output"} "${path}", which is not a struct port. Collapse it.`,
+          path: { flowId, nodeId: node.id, port: path },
+        });
+        continue;
+      }
+      const layout = structLayout(decl, resolve);
+      const fields = isInput ? layout.fields : [...layout.fields, ...[...layout.statics.values()].map((x) => x.field)];
+      const members: ResolvedPort[] = fields.map((f) => {
+        const m: ResolvedPort = { name: `${path}.${f.name}`, type: f.type, declaredType: f.type, title: `${port.title} ${titleFromName(f.name)}`, hasDefault: false, member: { of: path, field: f.name } };
+        if (f.description !== undefined) m.description = f.description;
+        if (isInput && !f.static && f.default !== undefined) {
+          m.hasDefault = true;
+          m.default = f.default;
+        }
+        return m;
+      });
+      out = [...out.slice(0, i), ...members, ...out.slice(i + 1)];
+      splits.push({ path, type: port.type, fields: fields.map((f) => f.name) });
+    }
+    return { ports: out, splits };
+  };
+  const ins = expand(r.inputs, node.split?.inputs ?? [], true);
+  const outs = expand(r.outputs, node.split?.outputs ?? [], false);
+  return {
+    ...r,
+    inputs: ins.ports,
+    outputs: outs.ports,
+    diagnostics,
+    split: { inputs: r.inputs, outputs: r.outputs, splitInputs: ins.splits, splitOutputs: outs.splits },
+  };
 }
 
 function signaturePorts(fields: readonly FieldDecl[]): ResolvedPort[] {

@@ -170,6 +170,7 @@ const node = fields({
   config: opt(obj),
   values: opt(obj),
   typeBindings: opt(recordOf(typeRef)),
+  split: opt(fields({ inputs: opt(arrayOf(str)), outputs: opt(arrayOf(str)) })),
 });
 const address = fields({ node: req(str), port: req(str) });
 const edge = fields({ id: req(str), from: req(address), to: req(address) });

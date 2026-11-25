@@ -466,6 +466,8 @@ export interface NodeAddCommand extends CommandBase {
   config?: Readonly<Record<string, unknown>>;
   /** Constants of input ports. */
   values?: Readonly<Record<string, unknown>>;
+  /** Split struct ports (`NodeInstance.split`). */
+  split?: { inputs?: readonly string[]; outputs?: readonly string[] };
   /** Position in the target list (default: end; clamped). Used by inverse commands to restore order. */
   index?: number;
 }
@@ -499,6 +501,26 @@ export interface NodeClearValueCommand extends CommandBase {
   op: "node.clearValue";
   flowId: string;
   nodeId: string;
+  port: string;
+}
+/**
+ * Shows a struct port as one port per member (execution.md §8). Edges and the constant of the
+ * port are removed (restored on undo).
+ */
+export interface NodeSplitPortCommand extends CommandBase {
+  op: "node.splitPort";
+  flowId: string;
+  nodeId: string;
+  side: "input" | "output";
+  /** The port's name, or a member port of a split port (`"portrait.image"`). */
+  port: string;
+}
+/** Shows a split port as one port again (and the splits inside it); member edges and constants go. */
+export interface NodeCollapsePortCommand extends CommandBase {
+  op: "node.collapsePort";
+  flowId: string;
+  nodeId: string;
+  side: "input" | "output";
   port: string;
 }
 /** Replaces the whole config. */
@@ -643,6 +665,8 @@ export type Command =
   | NodeSetTitleCommand
   | NodeSetValueCommand
   | NodeClearValueCommand
+  | NodeSplitPortCommand
+  | NodeCollapsePortCommand
   | NodeSetConfigCommand
   | NodeSetVariantCommand
   | EdgeConnectCommand
@@ -724,6 +748,8 @@ export const COMMAND_OPS: readonly CommandOp[] = [
   "node.setTitle",
   "node.setValue",
   "node.clearValue",
+  "node.splitPort",
+  "node.collapsePort",
   "node.setConfig",
   "node.setVariant",
   "edge.connect",

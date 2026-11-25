@@ -175,6 +175,7 @@ export type {
   FlowVariable,
   GlobalVariable,
   NodeInstance,
+  NodeSplit,
   PortAddress,
   Position,
   StructDecl,
@@ -262,7 +263,7 @@ export { hasErrors } from "./validation/diagnostic.js";
 export { nodeLabel } from "./validation/labels.js";
 export type { Diagnostic, DiagnosticPath } from "./validation/diagnostic.js";
 export { resolveFlowPorts, validateNodeConfig } from "./validation/ports.js";
-export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort } from "./validation/ports.js";
+export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort, SplitPort } from "./validation/ports.js";
 export { computeVariableOrder } from "./validation/variables.js";
 export type { ImplicitEdge, VariableAccessPlan, VariableOrder, VariableTarget } from "./validation/variables.js";
 export { validateContext, validateFlow } from "./validation/validate.js";
