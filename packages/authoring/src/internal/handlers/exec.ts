@@ -2,7 +2,7 @@
  * Execution line commands (docs/specs/execution.md): exec.connect, exec.disconnect,
  * flow.exec.enable (auto-wire a flow made before execution lines), flow.exec.set (restore).
  */
-import { autoExecEdges, execPortsOf, type ExecEdge, type FlowDocument, type NodeInstance } from "@briarflow/core";
+import { autoExecEdges, execPortsOf, scopeForFlow, type ExecEdge, type FlowDocument, type NodeInstance, type TypeDecl } from "@briarflow/core";
 import type { Command, PortRef } from "../../commands.js";
 import { getFlow, getNode, newId, putFlow, type Ctx, type Effect, type Payload } from "../ctx.js";
 import { fail, insertAt } from "../util.js";
@@ -15,8 +15,13 @@ function lines(ctx: Ctx, flow: FlowDocument): readonly ExecEdge[] {
   return flow.execEdges;
 }
 
-function execPorts(ctx: Ctx, node: NodeInstance) {
-  return execPortsOf(node.type, ctx.catalog.get(node.type));
+function execPorts(ctx: Ctx, node: NodeInstance, flow?: FlowDocument) {
+  let resolveType: ((id: string) => TypeDecl | undefined) | undefined;
+  if (flow) {
+    const scope = scopeForFlow(ctx.doc, flow.id, ctx.catalog);
+    resolveType = (id) => scope.getType(id)?.decl;
+  }
+  return execPortsOf(node.type, ctx.catalog.get(node.type), node.config ?? {}, resolveType);
 }
 
 /** `exec.connect` that recreates `edge` at `index` (restore). */
@@ -53,8 +58,8 @@ export function execConnect(ctx: Ctx, p: Payload): Effect {
   const to = p["to"] as PortRef;
   const fromNode = getNode(ctx, flow, from.node);
   const toNode = getNode(ctx, flow, to.node);
-  const fp = execPorts(ctx, fromNode);
-  const tp = execPorts(ctx, toNode);
+  const fp = execPorts(ctx, fromNode, flow);
+  const tp = execPorts(ctx, toNode, flow);
   if (!fp.outputs.includes(from.port)) {
     fail("exec.unknown_port", `${label(ctx, fromNode)} has no execution output "${from.port}". Execution outputs: ${fp.outputs.join(", ") || "none"}.`, { nodeId: from.node, port: from.port });
   }

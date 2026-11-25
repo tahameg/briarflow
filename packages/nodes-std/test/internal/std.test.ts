@@ -47,6 +47,10 @@ describe("stdPack", () => {
     expect(stdPack.types.map((t) => t.id)).toEqual(["briar.RoundingMode"]);
     expect(stdPack.nodes.map((n) => n.type).sort()).toEqual(
       [
+        "briar.branch",
+        "briar.switch",
+        "briar.forEach",
+        "briar.forRange",
         "briar.variable.get",
         "briar.variable.set",
         "briar.global.get",
@@ -81,7 +85,7 @@ describe("stdPack", () => {
     expect(catalog.get("briar.input")).toBeUndefined();
     expect(catalog.descriptors().every((d) => JSON.parse(JSON.stringify(d)) !== undefined)).toBe(true);
     const cached = stdPack.nodes.filter((n) => !n.cache).map((n) => n.type).sort();
-    expect(cached).toEqual(["briar.global.get", "briar.global.set", "briar.variable.get", "briar.variable.set", "text.template"]);
+    expect(cached).toEqual(["briar.branch", "briar.forEach", "briar.forRange", "briar.global.get", "briar.global.set", "briar.switch", "briar.variable.get", "briar.variable.set", "text.template"]);
   });
 
   it("qualifies the RoundingMode port of floatToInt", () => {

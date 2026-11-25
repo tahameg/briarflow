@@ -30,6 +30,33 @@ function sample(): ContextDocument {
 }
 
 describe("buildFlowView", () => {
+  it("marks struct ports splittable and member ports of a split port", () => {
+    const r = applyCommands(
+      createContextDocument({ id: "ctx_s", name: "S" }),
+      [
+        { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_char", name: "Character", fields: [{ name: "name", type: "string" }, { name: "age", type: "int" }] },
+        { op: "flow.create", name: "F", id: "flow_f", inputNodeId: "n_in", outputNodeId: "n_out" },
+        { op: "flow.input.add", flowId: "flow_f", name: "hero", type: "Character" },
+        { op: "flow.input.add", flowId: "flow_f", name: "count", type: "int" },
+      ],
+      { catalog },
+    );
+    if (!r.ok) throw r.error;
+    const before = buildFlowView(r.doc, "flow_f", catalog, [], undefined)!.byId.get("n_in")!;
+    expect(before.outputs.map((p) => [p.name, p.splittable])).toEqual([
+      ["hero", true],
+      ["count", false],
+    ]);
+    const s = applyCommands(r.doc, [{ op: "node.splitPort", flowId: "flow_f", nodeId: "n_in", side: "output", port: "hero" }], { catalog });
+    if (!s.ok) throw s.error;
+    const after = buildFlowView(s.doc, "flow_f", catalog, [], undefined)!.byId.get("n_in")!;
+    expect(after.outputs.map((p) => [p.name, p.member?.of])).toEqual([
+      ["hero.name", "hero"],
+      ["hero.age", "hero"],
+      ["count", undefined],
+    ]);
+  });
+
   it("maps nodes, ports, sources and edge colors", () => {
     const doc = sample();
     const view = buildFlowView(doc, "flow_p", catalog, validateContext(doc, catalog), undefined)!;

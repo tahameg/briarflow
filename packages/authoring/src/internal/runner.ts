@@ -81,6 +81,8 @@ const HANDLERS: Record<CommandOp, Handler> = {
   "node.setTitle": g.nodeSetTitle,
   "node.setValue": g.nodeSetValue,
   "node.clearValue": g.nodeClearValue,
+  "node.splitPort": g.nodeSplitPort,
+  "node.collapsePort": g.nodeCollapsePort,
   "node.setConfig": g.nodeSetConfig,
   "node.setVariant": g.nodeSetVariant,
   "edge.connect": g.edgeConnect,

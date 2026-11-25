@@ -7,6 +7,7 @@
  */
 import {
   ERROR_OUTPUT,
+  execPortsOf,
   createMedia,
   createMemoryMediaRegistry,
   containsVar,
@@ -133,6 +134,10 @@ export interface RunNodeResult<O = Readonly<Record<string, unknown>>> {
   ports: { inputs: readonly ResolvedPort[]; outputs: readonly ResolvedPort[] };
   /** Whether `ctx.globals.get` / `ctx.variables.get` was called (the engine would not cache). */
   usedState: boolean;
+  /** A route node (Branch, Switch): the execution output it picked (execution.md §7). */
+  route?: string;
+  /** A loop node (For each, For range): the outputs of every iteration, normalized. */
+  iterations?: O[];
 }
 
 const RUN_NODE_FLOW_ID = "flow_runnode";
@@ -241,6 +246,7 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
   const config = configCheck.config;
   const resolved = resolveFlowPorts(doc, flowId, catalog).nodes.get(nodeId);
   if (!resolved) throw new Error("runNode: the node could not be placed in the flow.");
+  const placed = resolved;
   const portProblem = resolved.diagnostics.find((d) => d.severity === "error" && d.code !== "node.generic_conflict");
   if (portProblem) {
     throw new NodeError(portProblem.code, portProblem.message, { details: { diagnostics: resolved.diagnostics } });
@@ -390,43 +396,65 @@ export async function runNode<D extends { readonly kind: "nodeDefinition"; reado
     resolveType: (id: string): TypeDecl | undefined => scope.getType(id)?.decl,
   };
 
-  const raw: unknown = await definition.run({ inputs: values as never, config: config as never, node: instance, ctx });
-
-  // Outputs.
-  let outputs: Record<string, unknown>;
-  if (options.checkOutputs === false) {
-    outputs = { ...(raw as Record<string, unknown>) };
-  } else {
-    const bad = (message: string, details?: unknown): NodeError =>
-      new NodeError("node.invalid_output", message, details === undefined ? {} : { details });
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      throw bad(`Node ${title} returned ${raw === null ? "null" : Array.isArray(raw) ? "a list" : typeof raw} instead of an object with its outputs.`);
-    }
-    const rec = raw as Record<string, unknown>;
-    const names = resolved.outputs.map((p) => p.name);
-    for (const key of Object.keys(rec)) {
-      if (rec[key] !== undefined && !names.includes(key)) throw bad(`Node ${title} returned an unknown output "${key}".`, { port: key });
-    }
-    outputs = {};
-    for (const port of resolved.outputs) {
-      let value = rec[port.name];
-      // A canFail node's error output is only filled on the failed line.
-      if (value === undefined && port.name === ERROR_OUTPUT && (def as unknown as AnyNodeDefinition).canFail) continue;
-      if (value === undefined) {
-        if (port.declaredType.kind === "optional") value = null;
-        else throw bad(`Node ${title} did not return its output "${port.name}".`, { port: port.name });
-      }
-      const type = portType(port);
-      if (!containsVar(type)) {
-        const r = normalizeValue(value, type, scope, { path: `outputs.${port.name}`, at: { ...at, port: port.name } });
-        if (!r.ok) throw bad(`Node ${title} returned an invalid output: ${firstMessage(r.diagnostics, port.name)}.`, { diagnostics: r.diagnostics });
-        value = r.value;
-      }
-      outputs[port.name] = value;
+  const args = { inputs: values as never, config: config as never, node: instance, ctx };
+  const control = (definition as unknown as AnyNodeDefinition).control;
+  if (control?.kind === "loop") {
+    const list = await control.iterations(args);
+    if (!Array.isArray(list)) throw new NodeError("node.invalid_output", `Node ${title} did not give a list of iterations.`);
+    const iterations = list.map((item) => normalizeOutputs(item));
+    return { outputs: {} as OutputsOf<D>, iterations: iterations as OutputsOf<D>[], progress, logs, media, inputs: values, ports: { inputs: resolved.inputs, outputs: resolved.outputs }, usedState };
+  }
+  const raw: unknown = await definition.run(args);
+  const outputs = normalizeOutputs(raw);
+  let route: string | undefined;
+  if (control?.kind === "route") {
+    route = control.route({ ...args, outputs });
+    const allowed = execPortsOf(instance.type, definition as unknown as AnyNodeDefinition, config, (id) => scope.getType(id)?.decl).outputs;
+    if (typeof route !== "string" || !allowed.includes(route)) {
+      throw new NodeError("node.invalid_route", `Node ${title} picked the execution output ${JSON.stringify(route)}, which it does not have (${allowed.join(", ")}).`);
     }
   }
 
+  function normalizeOutputs(raw: unknown): Record<string, unknown> {
+    const resolved = placed;
+    // Outputs.
+    let outputs: Record<string, unknown>;
+    if (options.checkOutputs === false) {
+      outputs = { ...(raw as Record<string, unknown>) };
+    } else {
+      const bad = (message: string, details?: unknown): NodeError =>
+        new NodeError("node.invalid_output", message, details === undefined ? {} : { details });
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw bad(`Node ${title} returned ${raw === null ? "null" : Array.isArray(raw) ? "a list" : typeof raw} instead of an object with its outputs.`);
+      }
+      const rec = raw as Record<string, unknown>;
+      const names = resolved.outputs.map((p) => p.name);
+      for (const key of Object.keys(rec)) {
+        if (rec[key] !== undefined && !names.includes(key)) throw bad(`Node ${title} returned an unknown output "${key}".`, { port: key });
+      }
+      outputs = {};
+      for (const port of resolved.outputs) {
+        let value = rec[port.name];
+        // A canFail node's error output is only filled on the failed line.
+        if (value === undefined && port.name === ERROR_OUTPUT && (def as unknown as AnyNodeDefinition).canFail) continue;
+        if (value === undefined) {
+          if (port.declaredType.kind === "optional") value = null;
+          else throw bad(`Node ${title} did not return its output "${port.name}".`, { port: port.name });
+        }
+        const type = portType(port);
+        if (!containsVar(type)) {
+          const r = normalizeValue(value, type, scope, { path: `outputs.${port.name}`, at: { ...at, port: port.name } });
+          if (!r.ok) throw bad(`Node ${title} returned an invalid output: ${firstMessage(r.diagnostics, port.name)}.`, { diagnostics: r.diagnostics });
+          value = r.value;
+        }
+        outputs[port.name] = value;
+      }
+    }
+    return outputs;
+  }
+
   return {
+    ...(route === undefined ? {} : { route }),
     outputs: outputs as OutputsOf<D>,
     progress,
     logs,

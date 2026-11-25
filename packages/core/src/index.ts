@@ -175,6 +175,7 @@ export type {
   FlowVariable,
   GlobalVariable,
   NodeInstance,
+  NodeSplit,
   PortAddress,
   Position,
   StructDecl,
@@ -184,6 +185,8 @@ export type {
 } from "./documents/model.js";
 export { createContextDocument, createFlowDocument, findFlow, findNode } from "./documents/factories.js";
 export { ERROR_OUTPUT, EXEC_FAILED, EXEC_IN, EXEC_THEN, execPortsOf, isExecNode } from "./nodes/exec-ports.js";
+export { controlOutputs, LOOP_BODY, LOOP_COMPLETED } from "./nodes/control.js";
+export type { ExecOutputList, LoopControl, NodeControl, RouteArgs, RouteControl } from "./nodes/control.js";
 export type { ExecPorts } from "./nodes/exec-ports.js";
 export { analyzeExec, autoExecEdges } from "./validation/exec.js";
 export type { ExecAnalysis } from "./validation/exec.js";
@@ -207,7 +210,7 @@ export type {
   ConfigMap,
   ConfigValues,
 } from "./nodes/config.js";
-export { defineNode, variant, variantDefinition } from "./nodes/define.js";
+export { defineLoop, defineNode, variant, variantDefinition } from "./nodes/define.js";
 export type {
   AnyNodeDefinition,
   CheckOutputKeys,
@@ -260,7 +263,7 @@ export { hasErrors } from "./validation/diagnostic.js";
 export { nodeLabel } from "./validation/labels.js";
 export type { Diagnostic, DiagnosticPath } from "./validation/diagnostic.js";
 export { resolveFlowPorts, validateNodeConfig } from "./validation/ports.js";
-export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort } from "./validation/ports.js";
+export type { ConfigCheckResult, FlowPorts, ResolvedNode, ResolvedPort, SplitPort } from "./validation/ports.js";
 export { computeVariableOrder } from "./validation/variables.js";
 export type { ImplicitEdge, VariableAccessPlan, VariableOrder, VariableTarget } from "./validation/variables.js";
 export { validateContext, validateFlow } from "./validation/validate.js";

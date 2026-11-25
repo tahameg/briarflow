@@ -122,6 +122,10 @@ export function nodeAdd(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
   if (variant !== undefined) node.variant = variant;
   if (title !== undefined && title !== "") node.title = title;
   if (config !== undefined) node.config = config;
+  const split = p["split"] as NodeInstance["split"] | undefined;
+  if (split !== undefined && ((split.inputs?.length ?? 0) > 0 || (split.outputs?.length ?? 0) > 0)) {
+    node.split = { ...(split.inputs?.length ? { inputs: [...split.inputs] } : {}), ...(split.outputs?.length ? { outputs: [...split.outputs] } : {}) };
+  }
   const values = p["values"] as Record<string, unknown> | undefined;
   const index = (p["index"] as number | undefined) ?? flow.nodes.length;
   putFlow(ctx, { ...flow, nodes: insertAt(flow.nodes, index, node) });
@@ -163,6 +167,7 @@ export function nodeAddCommand(flowId: string, node: NodeInstance, index: number
   if (node.title !== undefined) cmd["title"] = node.title;
   if (node.config !== undefined) cmd["config"] = node.config;
   if (node.values !== undefined) cmd["values"] = node.values;
+  if (node.split !== undefined) cmd["split"] = node.split;
   return cmd as unknown as Command;
 }
 
@@ -206,6 +211,84 @@ export function nodeRemove(ctx: Ctx, p: Payload): Effect {
     fail("node.builtin_protected", `The flow's ${which} node cannot be removed. Edit the signature instead.`, { nodeId: node.id });
   }
   const inverse = removeNodes(ctx, flow.id, new Set([node.id]));
+  return { inverse, resolved: p as unknown as Command, touched: [flow.id] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Split / collapse struct ports (execution.md §8)
+// ---------------------------------------------------------------------------------------------
+
+type Side = "input" | "output";
+const splitKey = (side: Side) => (side === "input" ? "inputs" : "outputs");
+const onPort = (e: Edge, nodeId: string, side: Side, match: (port: string) => boolean) =>
+  side === "input" ? e.to.node === nodeId && match(e.to.port) : e.from.node === nodeId && match(e.from.port);
+
+function withSplit(node: NodeInstance, side: Side, paths: readonly string[]): NodeInstance {
+  const split = { ...(node.split ?? {}), [splitKey(side)]: [...paths] };
+  if (split[splitKey(side)]?.length === 0) delete split[splitKey(side)];
+  return withKey(node, "split", Object.keys(split).length === 0 ? undefined : split);
+}
+
+/** Removes the edges on matching ports of a node and gives the commands that restore them. */
+function dropEdges(ctx: Ctx, flowId: string, nodeId: string, side: Side, match: (port: string) => boolean): Command[] {
+  const flow = getFlow(ctx, flowId);
+  const inverse: Command[] = [];
+  flow.edges.forEach((e, i) => {
+    if (onPort(e, nodeId, side, match)) inverse.push(edgeConnectCommand(flowId, e, i));
+  });
+  putFlow(ctx, { ...flow, edges: flow.edges.filter((e) => !onPort(e, nodeId, side, match)) });
+  return inverse;
+}
+
+export function nodeSplitPort(ctx: Ctx, p: Payload, ports: PortsOf): Effect {
+  const flow = getFlow(ctx, p["flowId"] as string);
+  const node = getNode(ctx, flow, p["nodeId"] as string);
+  const side = p["side"] as Side;
+  const port = p["port"] as string;
+  const resolved = resolvedNode(ctx, ports, flow.id, node.id);
+  const rp = (side === "input" ? resolved.inputs : resolved.outputs).find((x) => x.name === port);
+  if (!rp) fail("command.unknown_ref", `${nodeLabel(node, resolved.definition)} has no ${side} "${port}".`, { kind: "port", id: port });
+  const scope = scopeForFlow(ctx.doc, flow.id, ctx.catalog);
+  const decl = rp.type.kind === "named" ? scope.getType(rp.type.id)?.decl : undefined;
+  if (decl?.kind !== "struct") {
+    fail("port.not_struct", `${nodeLabel(node, resolved.definition)}.${port} is ${formatType(rp.type, scope)}; only a struct port can be split into its members.`, { port });
+  }
+  const inverse: Command[] = [{ op: "node.collapsePort", flowId: flow.id, nodeId: node.id, side, port }];
+  inverse.push(...dropEdges(ctx, flow.id, node.id, side, (x) => x === port));
+  const current = getNode(ctx, getFlow(ctx, flow.id), node.id);
+  let next = withSplit(current, side, [...(current.split?.[splitKey(side)] ?? []), port]);
+  if (side === "input" && current.values && port in current.values) {
+    inverse.push({ op: "node.setValue", flowId: flow.id, nodeId: node.id, port, value: current.values[port] });
+    next = withKey(next, "values", without(current.values, port));
+  }
+  const f = getFlow(ctx, flow.id);
+  putFlow(ctx, { ...f, nodes: f.nodes.map((n) => (n.id === node.id ? next : n)) });
+  return { inverse, resolved: p as unknown as Command, touched: [flow.id] };
+}
+
+export function nodeCollapsePort(ctx: Ctx, p: Payload): Effect {
+  const flow = getFlow(ctx, p["flowId"] as string);
+  const node = getNode(ctx, flow, p["nodeId"] as string);
+  const side = p["side"] as Side;
+  const port = p["port"] as string;
+  const paths = node.split?.[splitKey(side)] ?? [];
+  if (!paths.includes(port)) fail("port.not_split", `${nodeLabel(node, ctx.catalog.get(node.type))}: ${side} "${port}" is not split.`, { port });
+  const inside = (x: string) => x.startsWith(`${port}.`);
+  const removed = paths.filter((x) => x === port || inside(x)).sort((a, b) => a.split(".").length - b.split(".").length);
+  const inverse: Command[] = removed.map((x) => ({ op: "node.splitPort", flowId: flow.id, nodeId: node.id, side, port: x }) as Command);
+  inverse.push(...dropEdges(ctx, flow.id, node.id, side, inside));
+  const current = getNode(ctx, getFlow(ctx, flow.id), node.id);
+  let next = withSplit(current, side, paths.filter((x) => !removed.includes(x)));
+  if (side === "input" && current.values) {
+    const kept: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(current.values)) {
+      if (inside(k)) inverse.push({ op: "node.setValue", flowId: flow.id, nodeId: node.id, port: k, value: v });
+      else kept[k] = v;
+    }
+    next = withKey(next, "values", Object.keys(kept).length === 0 ? undefined : kept);
+  }
+  const f = getFlow(ctx, flow.id);
+  putFlow(ctx, { ...f, nodes: f.nodes.map((n) => (n.id === node.id ? next : n)) });
   return { inverse, resolved: p as unknown as Command, touched: [flow.id] };
 }
 

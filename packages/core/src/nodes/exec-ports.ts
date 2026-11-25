@@ -2,7 +2,8 @@
  * Execution ports (docs/specs/execution.md): which execution lines a node can take and send.
  * Derived from the node type, never stored.
  */
-import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE } from "../documents/model.js";
+import { FLOW_INPUT_NODE_TYPE, FLOW_OUTPUT_NODE_TYPE, type TypeDecl } from "../documents/model.js";
+import { controlOutputs } from "./control.js";
 import type { AnyNodeDefinition } from "./define.js";
 
 /** The execution input every non-pure node has. */
@@ -28,18 +29,35 @@ const FALLIBLE: ExecPorts = { inputs: [EXEC_IN], outputs: [EXEC_THEN, EXEC_FAILE
 
 /**
  * Execution ports of a node type: Input sends `then`; Output takes `in`; pure nodes have
- * none; every other node takes `in` and sends `then` (and `failed` when it `canFail`). An
- * unknown type keeps `in` / `then` so its lines stay valid until its pack is back.
+ * none; flow control nodes send their own outputs (execution.md §7; a Switch's depend on its
+ * `config`, and on `resolveType` for an enum); every other node takes `in` and sends `then`.
+ * `failed` follows when the node `canFail`. An unknown type keeps `in` / `then` so its lines
+ * stay valid until its pack is back.
  *
  * @example
  * ```ts
  * execPortsOf("mock.llm", catalog.get("mock.llm")); // { inputs: ["in"], outputs: ["then", "failed"] }
+ * execPortsOf("briar.branch", catalog.get("briar.branch")); // { inputs: ["in"], outputs: ["true", "false"] }
  * ```
  */
-export function execPortsOf(type: string, def: AnyNodeDefinition | undefined): ExecPorts {
+export function execPortsOf(
+  type: string,
+  def: AnyNodeDefinition | undefined,
+  config?: Readonly<Record<string, unknown>>,
+  resolveType?: (id: string) => TypeDecl | undefined,
+): ExecPorts {
   if (type === FLOW_INPUT_NODE_TYPE) return INPUT_NODE;
   if (type === FLOW_OUTPUT_NODE_TYPE) return OUTPUT_NODE;
   if (def?.pure) return NONE;
+  if (def?.control) {
+    let outputs: readonly string[];
+    try {
+      outputs = controlOutputs(def.control, config ?? {}, resolveType);
+    } catch {
+      outputs = [];
+    }
+    return { inputs: [EXEC_IN], outputs: def.canFail ? [...outputs, EXEC_FAILED] : outputs };
+  }
   return def?.canFail ? FALLIBLE : STEP;
 }
 

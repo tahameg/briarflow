@@ -5,7 +5,11 @@
 import { describe, expect, it } from "vitest";
 import { createCatalog, isBriarError, toNodeDescriptor, type ContextDocument, type PortError , jsonText } from "@briarflow/core";
 import {
+  branch,
   constant,
+  forEach,
+  forRange,
+  switchNode,
   convertAsBoolean,
   convertAsFloat,
   convertAsInt,
@@ -79,6 +83,10 @@ describe("stdPack", () => {
   it("has every §9 node except the core built-ins briar.input / briar.output", () => {
     expect(stdPack.nodes.map((d) => d.type).sort()).toEqual(
       [
+        "briar.branch",
+        "briar.forEach",
+        "briar.forRange",
+        "briar.switch",
         "briar.constant",
         "briar.error.break",
         "briar.global.get",
@@ -124,6 +132,10 @@ describe("stdPack", () => {
       "briar.struct.make": structMake,
       "briar.struct.break": structBreak,
       "briar.constant": constant,
+      "briar.branch": branch,
+      "briar.switch": switchNode,
+      "briar.forEach": forEach,
+      "briar.forRange": forRange,
       "text.template": textTemplate,
       "text.join": textJoin,
       "list.make": listMake,
@@ -145,7 +157,8 @@ describe("stdPack", () => {
 
   it("variable nodes and the Template builder (it reads variables) are cache: false; the others are cached", () => {
     for (const d of stdPack.nodes) {
-      expect(d.cache, d.type).toBe(!d.type.startsWith("briar.variable.") && !d.type.startsWith("briar.global.") && d.type !== "text.template");
+      const flowControl = d.control !== undefined;
+      expect(d.cache, d.type).toBe(!flowControl && !d.type.startsWith("briar.variable.") && !d.type.startsWith("briar.global.") && d.type !== "text.template");
     }
   });
 });
@@ -154,6 +167,10 @@ describeNodePack(stdPack, {
   requireSamples: true,
   context: charCtx(),
   samples: {
+    "briar.branch": [{ inputs: { condition: 1 }, typeBindings: { T: ir.int() }, outputs: {}, check: (r) => expect(r.route).toBe("true") }],
+    "briar.switch": [{ config: { cases: "a\nb" }, inputs: { value: "b" }, outputs: {}, check: (r) => expect(r.route).toBe("b") }],
+    "briar.forEach": [{ inputs: { list: ["x", "y"] }, typeBindings: { T: ir.string() }, check: (r) => expect(r.iterations).toEqual([{ item: "x", index: 0, isFirst: true, isLast: false }, { item: "y", index: 1, isFirst: false, isLast: true }]) }],
+    "briar.forRange": [{ inputs: { first: 2, last: 3 }, check: (r) => expect(r.iterations).toEqual([{ index: 2, isFirst: true, isLast: false }, { index: 3, isFirst: false, isLast: true }]) }],
     "briar.variable.get": [{ config: { variableId: "var_x" }, flowId: "flow_s", errorCode: "node.failed" }],
     "briar.variable.set": [{ config: { variableId: "var_x" }, flowId: "flow_s", inputs: { value: 4 }, outputs: { value: 4 } }],
     "briar.global.get": [{ config: { globalId: "gv_style" }, errorCode: "node.failed" }],

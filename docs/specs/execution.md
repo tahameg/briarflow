@@ -11,7 +11,7 @@ from data wires, decides which nodes run and in what order.
 | **Output** (`briar.output`) | in `in` | when the line reaches it; its inputs become the run outputs |
 | **Execution node** (default) | in `in`, out `then` (+ `failed` with `canFail`) | when the line reaches it |
 | **Pure node** (`pure: true`) | none | when a node that is running reads one of its outputs |
-| **Flow control node** (later: branch, switch, loops, concurrency) | own set of outputs (`true`/`false`, `body`/`completed`, …) | special engine support; not built yet |
+| **Flow control node** (§7: Branch, Switch, For each, For range) | in `in`; its own outputs (`true`/`false`, cases, `body`/`completed`) | when the line reaches it; it picks the output the line follows, or runs its body per iteration |
 
 - `defineNode({ pure: true })` is for nodes that only compute outputs from inputs:
   conversions, operators, templates, list helpers, struct make/break, Break error, constants,
@@ -39,7 +39,7 @@ from data wires, decides which nodes run and in what order.
 
 - `FlowDocument.execEdges?: ExecEdge[]`. Each line is `{ id: "x_…", from: { node, port }, to: { node, port: "in" } }`.
 - An execution output has at most one line. An execution input can take many.
-- No loops: loops will be flow control nodes.
+- No loops in the lines themselves: loops are flow control nodes (§7).
 - `flow.create` starts every new flow with one line, Input `then` → Output `in`.
 - **Flows without `execEdges`**, i.e. made before execution lines, keep running data-driven:
   every node runs, in dependency order.
@@ -72,7 +72,9 @@ Commands:
    | `exec.unknown_port` | error | a line uses an execution port the node does not have |
    | `exec.duplicate_output` | error | two lines leave one execution output |
    | `exec.cycle` | error | the lines form a loop |
-   | `exec.value_unavailable` | error | a live node reads (directly or through pure nodes) the output of a line node that does not always run before it, or that is not on the line at all |
+   | `exec.value_unavailable` | error | a live node reads (directly or through pure nodes) the output of a line node that does not always run before it (does not dominate it: after a Branch, neither side does), or that is not on the line at all |
+   | `exec.loop_value_outside` | error | a node outside a loop's body reads the loop's outputs (they only have values inside the body) |
+   | `exec.loop_escape` | error | a loop's body is not closed: a body node is also reached from outside the body or after `completed`, or the body reaches Output |
    | `exec.output_unreachable` | warning | the flow has outputs but the line never reaches Output |
 
 3. The variable-ordering rules of data-driven flows (variables.md §4) do not apply: the line
@@ -97,7 +99,7 @@ Commands:
      `run.output_not_reached`.
 6. **Variables:** a GET (pure) reads the latest value written so far along the line, else the
    start value.
-7. Execution is sequential for now. Concurrent branches will be flow control nodes.
+7. Execution is sequential. Concurrent branches will be flow control nodes.
 
 ## 6. Editor
 
@@ -106,4 +108,57 @@ Commands:
 - **Lines** are drawn thicker and brighter than data wires and follow the run.
 - Dropping an execution wire on empty canvas lists execution nodes and adds the pick, already
   connected.
+- Flow control nodes show one row per execution output of their own (`true`, `false`, a
+  Switch's cases, `body`, `completed`), each with its socket on the right.
 - Loading a flow without lines wires it (`flow.exec.enable`).
+
+## 7. Flow control
+
+Two kinds, declared on the node definition (node-api.md §1.3):
+
+| Kind | Nodes | What happens |
+|---|---|---|
+| **route** | Branch (`briar.branch`), Switch (`briar.switch`) | the node runs, then `route(...)` names the execution output the line follows |
+| **loop** | For each (`briar.forEach`), For range (`briar.forRange`) | the node computes its iterations; the `body` line runs once per iteration with the node's outputs set to that iteration's values; then the line follows `completed` |
+
+- **Branch:** input `condition` (any type), outputs `true` / `false` by the one truthiness rule
+  (types.md §7.1).
+- **Switch:** config `type` (an enum, `string` or `int`; default `string`) and `cases` (one per
+  line, for strings and ints); input `value`. Its outputs are the cases (an enum's members) and
+  `default`, followed when no case equals the value.
+- **For each:** input `list: list<$T>`; outputs `item: $T`, `index`, `isFirst`, `isLast`.
+  Lists only.
+- **For range:** inputs `first`, `last` (both included; `last < first` → no iterations);
+  outputs `index`, `isFirst`, `isLast`. At most 100 000 iterations (`loop.too_many_iterations`).
+- **A body** is what the `body` line reaches. It ends where its line ends (a node whose next
+  output has no line); then the next iteration starts. Bodies may hold Branches, Switches and
+  other loops. Each iteration runs the body's line nodes again, and the pure nodes they read
+  or that read the loop or the body (a variable GET sees this iteration's writes). Variables
+  carry values from one iteration to the next.
+- **An output without a line** ends the line there: outside a loop the run finishes
+  (`run.output_not_reached` if the flow has outputs); inside a body the iteration ends.
+- **Failures:** a failure in the body without a `failed` line stops the loop: the loop node
+  fails with `loop.body_failed` and the run fails. Cancelling ends running loops cancelled.
+- **Events:** a body's nodes emit `node.started` / `node.completed` once per iteration; the loop
+  node reports `node.progress` per iteration (`Iteration 2 of 5`) and completes once, after the
+  last.
+- Flow control nodes are never cached.
+
+## 8. Split ports
+
+A struct port (input or output; on any node, the flow's Input and Output and a variable's GET
+included) can be shown as one port per member. Right-click the port → **Split**; right-click a
+member → **Collapse** (commands `node.splitPort` / `node.collapsePort`, undoable).
+
+- **Stored** on the node: `NodeInstance.split = { inputs?: string[], outputs?: string[] }`,
+  paths of split ports (`"portrait"`, nested `"portrait.image"`). Member ports are named by
+  their path (`"portrait.image"`); edges and constants use those names.
+- **Members:** a split input shows the struct's instance fields (with their defaults); a split
+  output shows its instance and static fields. A member that is a struct can be split again.
+- **Edges and constants:** splitting removes the port's edges and constant; collapsing removes
+  the members' edges and constants (and the splits inside it). Undo restores them.
+- **Running:** the node still takes and gives the whole struct. Before it runs, the members of a
+  split input are put back together (deepest first; an unwired member without a value is null).
+  After it runs, a split output's struct gives each member on its member port.
+- A path that is not a struct port (the type changed) stays as it is with a warning
+  (`node.split_invalid`); collapse it.

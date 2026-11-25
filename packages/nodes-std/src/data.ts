@@ -1,7 +1,7 @@
 /**
  * Struct and constant nodes (docs/specs/node-api.md §9).
  */
-import { cfg, defineNode, memberAt, readMember, t, writeMember, type PortError, type PortMap, type PortOptions, type PortScope, type TypeRef, type UnknownValue } from "@briarflow/core";
+import { cfg, defineNode, memberAt, readMember, structLayout, t, writeMember, type PortError, type PortMap, type PortOptions, type PortScope, type TypeRef, type UnknownValue } from "@briarflow/core";
 
 function notAStruct(id: string): PortError {
   return { error: { code: "config.unknown_ref", message: `Struct type "${id}" does not exist in this flow. Pick a struct type for this node.` } };
@@ -22,7 +22,8 @@ export const structMake = defineNode({
     const decl = scope.resolveType(config.typeId);
     if (!decl || decl.kind !== "struct") return notAStruct(config.typeId);
     const inputs: PortMap = {};
-    for (const f of decl.fields) {
+    // Instance fields only (an extending struct's come from its base); static ones belong to the type.
+    for (const f of structLayout(decl, (id) => scope.resolveType(id)).fields) {
       const port: PortOptions = { type: t.fromRef(f.type) };
       if (f.description !== undefined) port.description = f.description;
       if (f.default !== undefined) port.default = f.default as UnknownValue;
@@ -48,14 +49,21 @@ export const structBreak = defineNode({
     const decl = scope.resolveType(config.typeId);
     if (!decl || decl.kind !== "struct") return notAStruct(config.typeId);
     const outputs: PortMap = {};
-    for (const f of decl.fields) {
+    const layout = structLayout(decl, (id) => scope.resolveType(id));
+    // Every member: instance fields, then static fields (read from the type).
+    for (const f of [...layout.fields, ...[...layout.statics.values()].map((x) => x.field)]) {
       outputs[f.name] = f.description === undefined ? t.fromRef(f.type) : { type: t.fromRef(f.type), description: f.description };
     }
     return { inputs: { value: t.fromRef({ kind: "named", id: decl.id }) }, outputs };
   },
-  run: ({ inputs }) => {
+  run: ({ inputs, config, ctx }) => {
     const value = inputs.value;
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...(value as Record<string, UnknownValue>) } : {};
+    const fields = typeof value === "object" && value !== null && !Array.isArray(value) ? { ...(value as Record<string, UnknownValue>) } : {};
+    const decl = ctx.resolveType(config.typeId);
+    if (decl?.kind !== "struct") return fields;
+    const statics: Record<string, UnknownValue> = {};
+    for (const [name, st] of structLayout(decl, (id) => ctx.resolveType(id)).statics) statics[name] = (st.value ?? null) as UnknownValue;
+    return { ...statics, ...fields };
   },
 });
 

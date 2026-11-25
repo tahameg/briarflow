@@ -8,9 +8,11 @@ import {
   ERROR_OUTPUT,
   completeMediaValues,
   findMedia,
+  readMember,
   typeHasMedia,
   EXEC_FAILED,
   EXEC_THEN,
+  execPortsOf,
   NodeError,
   serializeError,
   type ErrorValue,
@@ -105,10 +107,20 @@ interface NodeExec {
   holdsSlot: boolean;
   progress: ProgressState;
   startedAtMs: number;
+  /** A route node's pick, or a loop's `completed`: the execution output the line follows. */
+  route?: string;
+}
+
+/** A loop node whose body is running (execution.md §7). */
+interface LoopFrame {
+  node: PlannedNode;
+  ex: NodeExec;
+  iterations: readonly Record<string, unknown>[];
+  index: number;
 }
 
 type Outcome =
-  | { kind: "ok"; value: unknown; usedState: boolean }
+  | { kind: "ok"; value: unknown; usedState: boolean; route?: string; iterations?: readonly unknown[] }
   | { kind: "error"; failure: NodeFailure }
   | { kind: "timeout" }
   | { kind: "cancelled" };
@@ -153,6 +165,8 @@ export class LocalRun implements Run {
   private readonly active = new Set<string>();
   private firstFailure: { node: PlannedNode; error: SerializedError } | undefined;
   private readonly readyQueue: string[] = [];
+  /** Loops whose body runs now, innermost last. */
+  private readonly loopStack: LoopFrame[] = [];
   private draining = false;
   /** Writer node id → value it wrote. */
   private readonly written = new Map<string, unknown>();
@@ -279,6 +293,11 @@ export class LocalRun implements Run {
         ex.slot = undefined;
         ex.state = "skipped";
         this.emit({ type: "node.skipped", nodeId: node.id, reason: "cancelled" });
+      }
+      // Loops waiting for their body end cancelled.
+      while (this.loopStack.length > 0) {
+        const frame = this.loopStack.pop() as LoopFrame;
+        this.cancelNode(frame.node, frame.ex);
       }
     }
     this.checkDone();
@@ -505,8 +524,9 @@ export class LocalRun implements Run {
   // Node outcomes
   // ------------------------------------------------------------------------------------------
 
-  private completeNode(node: PlannedNode, ex: NodeExec, outputs: Record<string, unknown>, cached: boolean): void {
+  private completeNode(node: PlannedNode, ex: NodeExec, given: Record<string, unknown>, cached: boolean): void {
     if (TERMINAL.has(ex.state) || this.isFinished) return;
+    const outputs = this.splitOutputs(node, given);
     ex.state = "completed";
     ex.outputs = outputs;
     this.endProgress(ex);
@@ -515,8 +535,9 @@ export class LocalRun implements Run {
     const lines = (this.plan as Plan).exec;
     if (!this.cancelKind && lines) {
       for (const d of node.dependents) if (this.active.has(d)) this.startWhenFed(d);
-      const next = node.pure ? undefined : lines.next.get(node.id)?.get(EXEC_THEN);
+      const next = node.pure ? undefined : lines.next.get(node.id)?.get(ex.route ?? EXEC_THEN);
       if (next !== undefined) this.activate(next);
+      else if (!node.pure && this.loopStack.length > 0) this.loopNext();
     } else if (!this.cancelKind) {
       const plan = this.plan as Plan;
       const ready: string[] = [];
@@ -552,9 +573,91 @@ export class LocalRun implements Run {
     } else {
       if (!this.firstFailure) this.firstFailure = { node, error: f.error };
       this.skipDownstream(node);
+      this.abortLoops(f);
     }
     this.releaseSlot(node, ex);
     this.checkDone();
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Flow control (execution.md §7)
+  // ------------------------------------------------------------------------------------------
+
+  /** A route node's pick must be one of its execution outputs. */
+  private routeProblem(node: PlannedNode, route: string | undefined): NodeFailure | undefined {
+    if (node.def?.control?.kind !== "route") return undefined;
+    const plan = this.plan as Plan;
+    const outputs = execPortsOf(node.node.type, node.def, node.config, (id) => plan.scope.getType(id)?.decl).outputs;
+    if (typeof route === "string" && outputs.includes(route) && route !== EXEC_FAILED) return undefined;
+    return failure("node.invalid_route", `Node ${node.title} picked the execution output ${JSON.stringify(route)}, which it does not have (${outputs.join(", ")}).`, node.id, {
+      details: { route: route ?? null, outputs },
+    });
+  }
+
+  /** The loop node was reached and gave its iterations: run the body once per iteration. */
+  private startLoop(node: PlannedNode, ex: NodeExec, iterations: readonly Record<string, unknown>[]): void {
+    // The body needs slots of its own; the loop waits without one.
+    this.releaseSlot(node, ex);
+    this.loopStack.push({ node, ex, iterations, index: -1 });
+    this.loopNext();
+  }
+
+  /** The body line ended (or the loop just started): the next iteration, or the end of the loop. */
+  private loopNext(): void {
+    const plan = this.plan as Plan;
+    const control = (frame: LoopFrame) => frame.node.def?.control;
+    // Iterations whose body has no line end at once; loop instead of recursing.
+    for (;;) {
+      const frame = this.loopStack[this.loopStack.length - 1];
+      if (!frame || this.cancelKind || this.isFinished) return;
+      const loop = control(frame);
+      if (loop?.kind !== "loop") return;
+      frame.index += 1;
+      if (frame.index >= frame.iterations.length) {
+        this.loopStack.pop();
+        frame.ex.route = loop.completed;
+        this.completeNode(frame.node, frame.ex, frame.ex.outputs ?? {}, false);
+        return;
+      }
+      for (const id of plan.exec?.loops.get(frame.node.id) ?? []) {
+        this.active.delete(id);
+        this.exec.set(id, {
+          state: "pending",
+          outputs: undefined,
+          slot: undefined,
+          holdsSlot: false,
+          progress: { open: false, timer: undefined, pending: undefined },
+          startedAtMs: 0,
+        });
+      }
+      frame.ex.outputs = frame.iterations[frame.index] as Record<string, unknown>;
+      const n = frame.iterations.length;
+      this.emitProgress(frame.node.id, frame.index / n, `Iteration ${frame.index + 1} of ${n}`);
+      const body = plan.exec?.next.get(frame.node.id)?.get(loop.body);
+      if (body !== undefined) {
+        this.activate(body);
+        return;
+      }
+    }
+  }
+
+  /** An unhandled failure stops every running loop: each ends failed, innermost first. */
+  private abortLoops(f: NodeFailure): void {
+    while (this.loopStack.length > 0) {
+      const frame = this.loopStack.pop() as LoopFrame;
+      if (TERMINAL.has(frame.ex.state)) continue;
+      frame.ex.state = "failed";
+      this.endProgress(frame.ex);
+      this.emit({
+        type: "node.failed",
+        nodeId: frame.node.id,
+        error: {
+          code: "loop.body_failed",
+          message: `The body of ${frame.node.title} failed in iteration ${frame.index + 1}: ${f.error.message}`,
+          details: { iteration: frame.index, cause: f.error.code },
+        },
+      });
+    }
   }
 
   private cancelNode(node: PlannedNode, ex: NodeExec): void {
@@ -644,7 +747,31 @@ export class LocalRun implements Run {
       }
       values[port.name] = r.value;
     }
+    // Split input ports (execution.md §8): members become the struct again, deepest first.
+    for (const sp of [...(node.ports.split?.splitInputs ?? [])].reverse()) {
+      const struct: Record<string, unknown> = {};
+      for (const field of sp.fields) {
+        const key = `${sp.path}.${field}`;
+        struct[field] = values[key] ?? null;
+        delete values[key];
+      }
+      values[sp.path] = struct;
+    }
     return { ok: true, values };
+  }
+
+  /** Split output ports (execution.md §8): the struct also gives each member under its own name. */
+  private splitOutputs(node: PlannedNode, outputs: Record<string, unknown>): Record<string, unknown> {
+    const splits = node.ports.split?.splitOutputs ?? [];
+    if (splits.length === 0) return outputs;
+    const plan = this.plan as Plan;
+    const resolve = (id: string) => plan.scope.getType(id)?.decl;
+    const out = { ...outputs };
+    for (const sp of splits) {
+      const value = out[sp.path];
+      for (const field of sp.fields) out[`${sp.path}.${field}`] = value === undefined || value === null ? null : readMember(value, sp.type, [field], resolve);
+    }
+    return out;
   }
 
   private normalizeOutputs(node: PlannedNode, raw: unknown): { ok: true; outputs: Record<string, unknown> } | { ok: false; failure: NodeFailure } {
@@ -657,7 +784,8 @@ export class LocalRun implements Run {
       return bad(`Node ${node.title} returned ${describe(raw)} instead of an object with its outputs.`);
     }
     const rec = raw as Record<string, unknown>;
-    const names = node.ports.outputs.map((p) => p.name);
+    const ports = node.ports.split?.outputs ?? node.ports.outputs;
+    const names = ports.map((p) => p.name);
     for (const key of Object.keys(rec)) {
       if (rec[key] !== undefined && !names.includes(key)) {
         return bad(
@@ -667,7 +795,7 @@ export class LocalRun implements Run {
       }
     }
     const outputs: Record<string, unknown> = {};
-    for (const port of node.ports.outputs) {
+    for (const port of ports) {
       let value = rec[port.name];
       // A canFail node's error output is only filled on the failed line.
       if (value === undefined && port.name === ERROR_OUTPUT && node.def?.canFail) continue;
@@ -797,7 +925,7 @@ export class LocalRun implements Run {
     }
 
     let cacheKey: string | undefined;
-    if (def.cache && this.options.useCache) {
+    if (def.cache && !def.control && this.options.useCache) {
       cacheKey = reuseKey ?? (await this.cacheKey(node, inputs.values));
       if (cacheKey !== undefined && !this.options.force) {
         const key = cacheKey;
@@ -832,9 +960,26 @@ export class LocalRun implements Run {
       const outcome = await this.attempt(node, ex, values, attempt, secretValues);
       if (this.cancelKind) return this.cancelNode(node, ex);
       let fail: NodeFailure;
-      if (outcome.kind === "ok") {
+      if (outcome.kind === "ok" && outcome.iterations !== undefined) {
+        const list: Record<string, unknown>[] = [];
+        let bad: NodeFailure | undefined;
+        for (const [i, raw] of outcome.iterations.entries()) {
+          const out = this.normalizeOutputs(node, raw);
+          if (!out.ok) {
+            bad = failure(out.failure.error.code, `Iteration ${i + 1}: ${out.failure.error.message}`, node.id);
+            break;
+          }
+          list.push(out.outputs);
+        }
+        if (!bad) return this.startLoop(node, ex, list);
+        fail = bad;
+      } else if (outcome.kind === "ok") {
         const out = this.normalizeOutputs(node, outcome.value);
-        if (out.ok) {
+        const routeProblem = this.routeProblem(node, outcome.route);
+        if (out.ok && routeProblem) {
+          fail = routeProblem;
+        } else if (out.ok) {
+          if (outcome.route !== undefined) ex.route = outcome.route;
           if (cacheKey !== undefined && !outcome.usedState) {
             try {
               await this.services.cache.set(cacheKey, out.outputs);
@@ -845,8 +990,9 @@ export class LocalRun implements Run {
           }
           if (makesMedia && cacheKey !== undefined && !outcome.usedState) await this.reportResult(node, cacheKey, out.outputs, false);
           return this.completeNode(node, ex, out.outputs, false);
+        } else {
+          fail = out.failure;
         }
-        fail = out.failure;
       } else if (outcome.kind === "timeout") {
         fail = failure("node.timeout", `Node ${node.title} did not finish within ${def.timeoutMs} ms (attempt ${attempt}).`, node.id, {
           retryable: true,
@@ -876,15 +1022,15 @@ export class LocalRun implements Run {
   /** Catalog nodes that cache and have an output holding media take part in carry-over. */
   private makesMedia(node: PlannedNode): boolean {
     const def = node.def;
-    if (!def || !def.cache || def.frontend) return false;
+    if (!def || !def.cache || def.frontend || def.control) return false;
     const plan = this.plan as Plan;
-    return node.ports.outputs.some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
+    return (node.ports.split?.outputs ?? node.ports.outputs).some((p) => typeHasMedia(p.type, (id) => plan.scope.getType(id)?.decl));
   }
 
   private mediaIn(node: PlannedNode, outputs: Readonly<Record<string, unknown>>): string[] {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
-    return node.ports.outputs.flatMap((p) => findMedia(outputs[p.name], p.type, getType).map((m) => m.ref.mediaId));
+    return (node.ports.split?.outputs ?? node.ports.outputs).flatMap((p) => findMedia(outputs[p.name], p.type, getType).map((m) => m.ref.mediaId));
   }
 
   /** Earlier outputs that still fit the ports and whose media all still exist; else `undefined`. */
@@ -917,7 +1063,7 @@ export class LocalRun implements Run {
     const plan = this.plan as Plan;
     const getType = (id: string) => plan.scope.getType(id)?.decl;
     const entries = new Map<string, MediaEntry>();
-    for (const port of node.ports.inputs) {
+    for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
       for (const found of findMedia(inputs[port.name], port.type, getType)) {
         const where = `inputs.${port.name}${found.path === "" ? "" : found.path.startsWith("[") ? found.path : `.${found.path}`}`;
         let entry;
@@ -950,7 +1096,7 @@ export class LocalRun implements Run {
     }
     if (entries.size === 0) return { values: inputs };
     const values: Record<string, unknown> = { ...inputs };
-    for (const port of node.ports.inputs) {
+    for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
       if (port.name in values) values[port.name] = completeMediaValues(values[port.name], port.type, getType, (id) => entries.get(id));
     }
     return { values };
@@ -968,7 +1114,7 @@ export class LocalRun implements Run {
     const plan = this.plan as Plan;
     try {
       const keyed: Record<string, unknown> = {};
-      for (const port of node.ports.inputs) {
+      for (const port of node.ports.split?.inputs ?? node.ports.inputs) {
         keyed[port.name] = replaceMedia(inputs[port.name], port.type, (id) => plan.scope.getType(id)?.decl);
       }
       return await computeCacheKey({
@@ -1077,14 +1223,27 @@ export class LocalRun implements Run {
           settle({ kind: "timeout" });
         }, def.timeoutMs);
       }
-      let work: Promise<unknown>;
+      const args = { inputs: inputs as never, config: node.config as never, node: node.node, ctx };
+      const control = def.control;
+      let work: Promise<Outcome & { kind: "ok" }>;
       try {
-        work = Promise.resolve(def.run({ inputs: inputs as never, config: node.config as never, node: node.node, ctx }));
+        if (control?.kind === "loop") {
+          work = Promise.resolve(control.iterations(args)).then((list) => {
+            if (!Array.isArray(list)) throw new NodeError("node.invalid_output", `Node ${node.title} did not give a list of iterations.`);
+            return { kind: "ok", value: {}, usedState, iterations: list };
+          });
+        } else {
+          work = Promise.resolve(def.run(args)).then((value) => {
+            if (control?.kind !== "route") return { kind: "ok", value, usedState };
+            const outputs = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+            return { kind: "ok", value, usedState, route: control.route({ ...args, outputs }) };
+          });
+        }
       } catch (err) {
         work = Promise.reject(err);
       }
       work.then(
-        (value) => settle({ kind: "ok", value, usedState }),
+        (outcome) => settle({ ...outcome, usedState }),
         (err: unknown) => settle({ kind: "error", failure: classify(err, node.id, this.services.fetchErrors) }),
       );
     });
@@ -1107,7 +1266,7 @@ export class LocalRun implements Run {
       settings: this.services.catalog.packOf(node.node.type)?.settings ?? [],
       store: this.services.settings,
       vault: this.services.vault,
-      allowed: inputSecretRefs(node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
+      allowed: inputSecretRefs(node.ports.split?.inputs ?? node.ports.inputs, inputs, (id) => (this.plan as Plan).scope.getType(id)?.decl),
     });
     const logger = this.services.logger;
     const tag = { runId: this.id, nodeId: node.id };

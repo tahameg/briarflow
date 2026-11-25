@@ -11,6 +11,7 @@ import { capitalize, titleFromNodeType } from "../util/titles.js";
 import { checkValue } from "../values/validate.js";
 import type { ConfigField, ConfigFieldKind, ConfigMap, ConfigValues } from "./config.js";
 import type { NodeRunArgs } from "./exec.js";
+import { LOOP_BODY, LOOP_COMPLETED, type LoopControl, type NodeControl, type RouteArgs } from "./control.js";
 
 /** UI hint for an input port's constant widget. */
 export type PortWidget = "textarea" | "slider" | "color" | "password";
@@ -182,6 +183,12 @@ export interface NodeDefinitionInput<
    * types it converts between (`findConversions`).
    */
   conversion?: boolean;
+  /**
+   * A flow control node (execution.md §7): `{ kind: "route", outputs, route }` picks the
+   * execution output the line follows after `run` (Branch, Switch). Loops are made with
+   * {@link defineLoop}. Not on pure nodes.
+   */
+  control?: NodeControl;
   /** Pure, synchronous, deterministic. Replaces static ports when present. */
   resolvePorts?(args: ResolvePortsArgs<ConfigValues<C>>): DynamicPorts | PortError;
   /** Only on nodes with variants (see {@link VariantNodeDefinitionInput}). */
@@ -220,6 +227,8 @@ export interface NodeDefinition<I extends PortMap = PortMap, O extends PortMap =
   readonly canFail?: true;
   /** Set (true) on conversion nodes; see {@link NodeDefinitionInput.conversion}. */
   readonly conversion?: true;
+  /** On flow control nodes; see {@link NodeDefinitionInput.control}. */
+  readonly control?: NodeControl;
   /** On a node with variants: the variant this definition is (each variant is a full definition). */
   readonly variant?: string;
   /** On a node with variants: the selector and every variant (the same object on each of them). */
@@ -343,6 +352,51 @@ export function defineNode<
   return out as NodeDefinition<I, O, C>;
 }
 
+/** What {@link defineLoop} takes: a node definition without `run`, plus the iterations. */
+export type LoopDefinitionInput<I extends PortMap, O extends PortMap, C extends ConfigMap> = Omit<
+  NodeDefinitionInput<I, O, C>,
+  "run" | "control" | "pure" | "conversion" | "variants" | "resolvePorts"
+> & {
+  /** Execution output run once per iteration. Default `"body"`. */
+  body?: string;
+  /** Execution output followed after the last iteration. Default `"completed"`. */
+  completed?: string;
+  /** The data outputs of every iteration, in order; empty skips the body. */
+  iterations(args: NodeRunArgs<PortValues<I>, ConfigValues<C>>): MaybePromise<readonly NodeOutputs<O>[]>;
+};
+
+/**
+ * Defines a loop node (execution.md §7): when the line reaches it, its `body` line runs once
+ * per iteration with the node's outputs set to that iteration's values, then the line follows
+ * `completed`. Nodes reading the outputs must be in the body.
+ *
+ * @example
+ * ```ts
+ * export const repeat = defineLoop({
+ *   type: "demo.repeat",
+ *   inputs: { times: t.int({ min: 0 }) },
+ *   outputs: { index: t.int() },
+ *   iterations: ({ inputs }) => Array.from({ length: inputs.times }, (_, index) => ({ index })),
+ * });
+ * ```
+ */
+export function defineLoop<I extends PortMap = Record<never, never>, O extends PortMap = Record<never, never>, C extends ConfigMap = Record<never, never>>(
+  def: LoopDefinitionInput<I, O, C>,
+): NodeDefinition<I, O, C> {
+  const { body, completed, iterations, ...rest } = def;
+  const control: LoopControl = {
+    kind: "loop",
+    body: body ?? LOOP_BODY,
+    completed: completed ?? LOOP_COMPLETED,
+    iterations: iterations as unknown as LoopControl["iterations"],
+  };
+  const input = { ...rest, control, run: () => ({}) } as unknown as NodeDefinitionInput<PortMap, PortMap, ConfigMap>;
+  return defineNode(input as never) as unknown as NodeDefinition<I, O, C>;
+}
+
+/** Typed helper for a route node's `control` (execution.md §7). */
+export type { RouteArgs };
+
 type Fail = (what: string) => never;
 
 /** Internal: everything of a definition except its shape (ports, config, run). */
@@ -360,6 +414,7 @@ function commonDefinition(input: Omit<NodeDefinitionInput<PortMap, PortMap, Conf
   if (input.pure !== undefined && typeof input.pure !== "boolean") fail("pure must be true or false.");
   if (input.canFail !== undefined && typeof input.canFail !== "boolean") fail("canFail must be true or false.");
   if (input.pure === true && input.canFail === true) fail("a pure node has no execution line, so it cannot have a failed line (canFail). Drop one of them.");
+  if (input.control !== undefined) checkControl(input.control, input.pure === true, input.canFail === true, input.conversion === true, fail);
   const timeoutMs = input.timeoutMs ?? 300_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) fail("timeoutMs must be a whole number >= 0 (0 = no timeout).");
   if (input.concurrency !== undefined && (!Number.isSafeInteger(input.concurrency) || input.concurrency < 1)) {
@@ -389,7 +444,37 @@ function commonDefinition(input: Omit<NodeDefinitionInput<PortMap, PortMap, Conf
   if (input.frontend === true) o.frontend = true;
   if (input.pure === true) o.pure = true;
   if (input.canFail === true) o.canFail = true;
+  if (input.control !== undefined) o.control = input.control;
   return out;
+}
+
+const EXEC_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** A control node sits on the line and names its execution outputs like fields. */
+function checkControl(control: NodeControl, pure: boolean, canFail: boolean, conversion: boolean, fail: Fail): void {
+  if (pure) fail("a flow control node sits on the execution line; it cannot be pure.");
+  if (conversion) fail("a conversion node cannot be a flow control node.");
+  const names = (list: readonly string[]) => {
+    const seen = new Set<string>();
+    for (const n of list) {
+      if (typeof n !== "string" || !EXEC_NAME.test(n) || n.length > 64) fail(`execution output "${String(n)}" is not a valid name (letters, digits and _; start with a letter or _).`);
+      if (n === "in" || (canFail && n === "failed")) fail(`execution output "${n}" is reserved.`);
+      if (seen.has(n)) fail(`execution output "${n}" appears twice.`);
+      seen.add(n);
+    }
+  };
+  if (control.kind === "route") {
+    if (typeof control.route !== "function") fail("control.route must be a function.");
+    if (typeof control.outputs !== "function") {
+      if (!Array.isArray(control.outputs) || control.outputs.length === 0) fail("control.outputs must list at least one execution output, or compute them from the config.");
+      names(control.outputs);
+    }
+  } else if (control.kind === "loop") {
+    if (typeof control.iterations !== "function") fail("control.iterations must be a function.");
+    names([control.body, control.completed]);
+  } else {
+    fail('control.kind must be "route" or "loop".');
+  }
 }
 
 /** Checks and copies the shape (ports, config, run) of a node or one of its variants. */

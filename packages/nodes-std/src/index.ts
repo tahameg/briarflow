@@ -12,6 +12,7 @@
  */
 import { definePack, type NodePack } from "@briarflow/core";
 import { convertAsBoolean, convertAsFloat, convertAsInt, convertAsJson, convertAsJsonArray, convertFloatToInt, convertToText, RoundingMode } from "./convert.js";
+import { branch, forEach, forRange, switchNode } from "./control.js";
 import { constant, errorBreak, memberGet, memberSet, structBreak, structMake } from "./data.js";
 import { debugImage, debugPrint } from "./debug.js";
 import { jsonAddField, jsonConstruct, jsonGetField, jsonSetField } from "./json.js";
@@ -22,6 +23,7 @@ import { globalGet, globalSet, variableGet, variableSet } from "./variables.js";
 export const PACKAGE_NAME = "@briarflow/nodes-std";
 
 export { convertAsBoolean, convertAsFloat, convertAsInt, convertAsJson, convertAsJsonArray, convertFloatToInt, convertToText, RoundingMode, truthOf } from "./convert.js";
+export { branch, forEach, forRange, MAX_ITERATIONS, switchNode } from "./control.js";
 export { constant, errorBreak, memberGet, memberSet, structBreak, structMake } from "./data.js";
 export { debugImage, debugPrint } from "./debug.js";
 export { jsonAddField, jsonConstruct, jsonGetField, jsonSetField } from "./json.js";
@@ -43,10 +45,14 @@ export const stdPack: NodePack = definePack({
   name: "briar",
   version: "1.0.0",
   title: "Briarflow standard nodes",
-  description: "Variables, structs, constants, text, JSON, lists and conversions.",
+  description: "Flow control, variables, structs, constants, text, JSON, lists and conversions.",
   namespaces: ["text", "list", "convert", "debug", "json"],
   types: [RoundingMode],
   nodes: [
+    branch,
+    switchNode,
+    forEach,
+    forRange,
     variableGet,
     variableSet,
     globalGet,

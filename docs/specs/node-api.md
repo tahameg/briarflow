@@ -166,6 +166,46 @@ its own `resolvePorts`.
 (model × mode) are flattened into one list (`gpt-image-1 · edit`) until nested selectors land
 (OPEN_QUESTIONS Q-NODE-10).
 
+### 1.3 Flow control nodes (2026-11-25)
+
+A node can steer the execution line (execution.md §7).
+
+**Route** — runs like any line node, then picks the execution output the line follows:
+
+```ts
+export const branch = defineNode({
+  type: "briar.branch",
+  inputs: { condition: t.var("T") },
+  control: {
+    kind: "route",
+    outputs: ["true", "false"],                    // or ({ config, resolveType }) => [...] (a Switch's cases)
+    route: ({ inputs, outputs, config, node, ctx }) => (isTruthy(inputs.condition) ? "true" : "false"),
+  },
+  run: () => ({}),
+});
+```
+
+**Loop** — `defineLoop` gives the outputs of every iteration; the body line runs once per
+iteration with them, then `completed`:
+
+```ts
+export const forRange = defineLoop({
+  type: "briar.forRange",
+  inputs: { first: { type: t.int(), default: 0 }, last: { type: t.int(), default: 0 } },
+  outputs: { index: t.int() },
+  // body: "body", completed: "completed" (defaults)
+  iterations: ({ inputs }) => Array.from({ length: Math.max(0, inputs.last - inputs.first + 1) }, (_, i) => ({ index: inputs.first + i })),
+});
+```
+
+- Control nodes sit on the line (never `pure`); they may `canFail` (`failed` is added). They are
+  never cached. Output names follow field-name rules; `in` and `failed` are reserved.
+- `route` must return one of the node's outputs, else the node fails with `node.invalid_route`.
+- Every iteration's outputs are checked like `run`'s outputs.
+- `execPortsOf(type, def, config?, resolveType?)` gives a node's execution ports; descriptors
+  carry `control` (a route's outputs, `null` when they come from the config).
+- `runNode` returns `route` for route nodes and `iterations` for loops.
+
 ## 2. Ports
 
 A port is either a `TypeSpec` or an object:
@@ -486,8 +526,8 @@ built-ins are labelled **"Input"** and **"Output"** (DECISIONS #36).
 | `briar.variable.set` | `variableId` | `value: V` | `value: V` | `cache:false` |
 | `briar.global.get` | `globalId: cfg.global()` | — | `value: G` | `cache:false` |
 | `briar.global.set` | `globalId: cfg.global({writable:true})` | `value: G` | `value: G` | `cache:false` |
-| `briar.struct.make` | `typeId: cfg.typeId({kind:"struct"})` | one per field (field type; field default as port default) | `value: S` | |
-| `briar.struct.break` | `typeId` | `value: S` | one per field | |
+| `briar.struct.make` | `typeId: cfg.typeId({kind:"struct"})` | one per instance field (an extending struct's come from its base; field default as port default) | `value: S` | |
+| `briar.struct.break` | `typeId` | `value: S` | one per instance field, then one per static field (the type's value) | |
 | `briar.member.get` ("Get .path") | `type: cfg.type()`, `path: cfg.text()` | `value: <type>` | one, named after the last step, the member's type | `value.path` (types.md §12); offered from a dropped wire, not the palette |
 | `briar.member.set` ("Set .path") | same | `value: <type>`, `to: <member type>` | `value: <type>` | copy with the struct field replaced; only struct fields (types.md §12) |
 | `debug.print` ("Print") | — | `text: string`, `browserConsole: bool` (false) | — | frontend node: the studio writes the text to its console |
@@ -501,6 +541,10 @@ built-ins are labelled **"Input"** and **"Output"** (DECISIONS #36).
 | `convert.toText` (title "As string") | — | `value: $T` | `text: string` | conversion; never fails; rules below |
 | `convert.asJson` | — | `text: string` | `json: Json` | conversion; the text as it is, **not parsed**: fields are parsed when read (Get field, Set field, templates) |
 | `convert.asInt` / `convert.asFloat` | — | `value: $T` with `oneOf: [string, Json]` | `value: int` / `float` | conversion; a Json is read through its text (As string), then trimmed and parsed; invalid → `convert.invalid_number` |
+| `briar.branch` ("Branch") | — | `condition: $T` | — | route: `true` / `false` (types.md §7.1) |
+| `briar.switch` ("Switch") | `type: cfg.type` (optional, default string), `cases: cfg.text` (one per line) | `value: <type>` | — | route: a case (an enum's members, else the lines) or `default` |
+| `briar.forEach` ("For each") | — | `list: list<$T>` | `item: $T`, `index: int`, `isFirst: bool`, `isLast: bool` | loop: `body` per item, then `completed` |
+| `briar.forRange` ("For range") | — | `first: int` (0), `last: int` (0) | `index: int`, `isFirst: bool`, `isLast: bool` | loop: `first`…`last` included; at most 100 000 |
 | `convert.asBoolean` (title "As bool") | — | `value: $T` | `value: bool` | conversion; never fails; the one truthiness rule (types.md §7.1): `false`, `0`, `""`, an empty list, an empty Text, `null` → false; everything else → true. A Json is read first (`"0"` → false) |
 | `convert.asJsonArray` (title "As JSON array") | — | `value: $T` with `oneOf: [string, Json]` | `items: list<Json>` | conversion; text is parsed; not an array → `json.wrong_kind`, bad JSON → `json.invalid_json` |
 | `convert.floatToInt` | — | `value: float`, `mode: briar.RoundingMode` (default `round`) | `value: int` | conversion; `round` = half away from zero |

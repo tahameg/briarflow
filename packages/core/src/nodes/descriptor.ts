@@ -64,6 +64,11 @@ export interface NodeDescriptor {
   /** Present (true) on conversion nodes (first input → the one output). */
   conversion?: true;
   /**
+   * Present on flow control nodes (execution.md §7): a route node's execution outputs (`null`
+   * when they depend on the config, e.g. a Switch's cases), or a loop's body / completed.
+   */
+  control?: { kind: "route"; outputs: string[] | null } | { kind: "loop"; body: string; completed: string };
+  /**
    * Present on nodes with variants. The top-level `inputs` / `outputs` / `config` /
    * `dynamicPorts` are the default variant's.
    */
@@ -121,6 +126,14 @@ export function toNodeDescriptor(def: AnyNodeDefinition, pack: Pick<NodePack, "n
     ...(def.pure ? { pure: true as const } : {}),
     ...(def.canFail ? { canFail: true as const } : {}),
     ...(def.conversion ? { conversion: true as const } : {}),
+    ...(def.control
+      ? {
+          control:
+            def.control.kind === "loop"
+              ? { kind: "loop" as const, body: def.control.body, completed: def.control.completed }
+              : { kind: "route" as const, outputs: typeof def.control.outputs === "function" ? null : [...def.control.outputs] },
+        }
+      : {}),
   };
   if (def.variants) {
     const v = def.variants;

@@ -9,6 +9,7 @@ import { cloneJson } from "../util/json.js";
 import type { NodeCatalog } from "./catalog.js";
 import { createCatalog } from "./catalog.js";
 import type { ConfigField, ConfigMap } from "./config.js";
+import type { NodeControl } from "./control.js";
 import type { AnyNodeDefinition, PortMap, PortOptions, VariantOption } from "./define.js";
 import { linkVariants } from "./define.js";
 import type { ConfigDescriptor, NodeDescriptor, PortDescriptor } from "./descriptor.js";
@@ -91,6 +92,7 @@ export function definitionFromDescriptor(d: NodeDescriptor): AnyNodeDefinition {
     ...(d.pure === true ? { pure: true as const } : {}),
     ...(d.canFail === true ? { canFail: true as const } : {}),
     ...(d.conversion === true ? { conversion: true as const } : {}),
+    ...(d.control ? { control: controlFromDescriptor(d.control, run) } : {}),
     run,
   };
   if (!d.variants) return def;
@@ -210,4 +212,10 @@ function configMap(fields: readonly ConfigDescriptor[]): ConfigMap {
     out[f.name] = field;
   }
   return out;
+}
+
+/** The control of a descriptor node: its execution outputs; it cannot route or loop here. */
+function controlFromDescriptor(c: NonNullable<NodeDescriptor["control"]>, run: () => never): NodeControl {
+  if (c.kind === "loop") return { kind: "loop", body: c.body, completed: c.completed, iterations: run };
+  return { kind: "route", outputs: c.outputs ?? [], route: run };
 }

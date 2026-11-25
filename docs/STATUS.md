@@ -128,7 +128,7 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   - Nodes off the line are dimmed.
   - Dropping a line on empty canvas offers the nodes that sit on a line.
   - Media LEDs moved to magenta; red now means error.
-- Flow control nodes (branch, switch, loops, concurrency) are the next kind; not built.
+- Flow control nodes: Branch, Switch, For each, For range (2026-11-25); concurrency not built.
 
 ### Console, conversions, vault, settings, OpenAI (2026-10-24)
 - Studio run UX: run inputs live in the editor store (`state.runInputs`, `setRunInput`,
@@ -249,6 +249,16 @@ Goal: studio → build flow → run on real server → see results (mock + Anthr
   `cd python && .venv/bin/python -m pytest` 167 passed, studio `vite build` ok.
 - Not done here: flow control nodes (Branch, Switch, For each, For range), split / collapse
   pins, Break struct improvements, Output "+" (next, Giftibul TG.2).
+
+### Flow control and split ports (2026-11-25, DECISIONS #67–#68)
+- Flow control nodes: Branch, Switch, For each, For range (lists only); node definitions declare
+  `control` (route / loop, `defineLoop`); bodies, ordering and loops in the engine; one row per
+  execution output in the editor (execution.md §7, node-api §1.3).
+- Make / Break struct on struct layouts (extending structs' fields included).
+- Split / collapse struct ports: `NodeInstance.split`, member ports in `resolveFlowPorts`, the
+  runtime folds split inputs and spreads split outputs, `node.splitPort` / `node.collapsePort`
+  (74 commands); right-click Split / Collapse on ports in the canvas (execution.md §8).
+- Verified: `npm test` 2364 passed (2 skipped), `npm run typecheck` clean.
 
 ### After MVP (next)
 - Platform architecture proposal (scopes, sessions, plugins and the plugin registry, flow

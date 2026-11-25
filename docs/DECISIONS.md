@@ -264,3 +264,15 @@ Phase-1 contract decisions (lead):
     `ClassVar` attributes are static fields, a `@struct` subclass extends its base. Its text and
     media constraint markers are gone. The SDK checks input limits; output limits are the
     engine's, as the protocol already said. Python support stays (Giftibul does not load it).
+
+## 2026-11-25 — Flow control and split ports (Giftibul TG.2)
+
+67. **Flow control is declared on the node** (`control: route | loop`). A route node names the
+    execution output the line follows; a loop node gives its iterations and the engine runs the
+    `body` line once per iteration, then `completed`. Loops take lists only (For each) or an
+    int range (For range, at most 100 000). Alternative rejected: special engine nodes outside
+    the node API (packs could not add their own).
+68. **Split ports are a view of one struct port.** The node keeps taking and giving the whole
+    struct; the split lives on the instance (`split` paths) and the runtime folds and spreads
+    members. Splitting or collapsing drops the edges that no longer fit (undo restores them).
+    Alternative rejected: inserting Make / Break nodes (more nodes and wires for every struct).
