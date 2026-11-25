@@ -232,7 +232,7 @@ describe("ids", () => {
   it("resolved replaces shorthand types with IR", () => {
     const r = accept(richDoc(), [
       { op: "global.create", id: "gv_list", name: "names", type: "list<Character?>", access: "readwrite" },
-      { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_x", name: "X", fields: [{ name: "a", type: "text?" }] },
+      { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_x", name: "X", fields: [{ name: "a", type: "string?" }] },
       { op: "node.add", flowId: KIT, id: "n_k", type: "briar.constant", position: { x: 0, y: 0 }, config: { type: "int" } },
     ]);
     expect(r.resolved[0]).toMatchObject({ type: ir.list(ir.optional(ir.named("ty_char"))) });

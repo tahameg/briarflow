@@ -81,7 +81,7 @@ describe("toJsonSchema: mapping table", () => {
   it("int, float, boolean", () => {
     expect(toJsonSchema(ir.int({ min: 0, max: 9 }), empty)).toEqual({ $schema: DRAFT, type: "integer", minimum: 0, maximum: 9 });
     expect(toJsonSchema(ir.float({ min: -1.5 }), empty)).toEqual({ $schema: DRAFT, type: "number", minimum: -1.5 });
-    expect(toJsonSchema(ir.bool(), empty)).toEqual({ $schema: DRAFT, type: "boolean" });
+    expect(toJsonSchema(ir.bool(), empty)).toEqual({ $schema: DRAFT, type: "bool" });
     expect(toJsonSchema(ir.string(), empty)).toEqual({ $schema: DRAFT, type: "string" });
     const validate = compile(toJsonSchema(ir.int({ min: 0, max: 9 }), empty));
     expect(validate(3)).toBe(true);

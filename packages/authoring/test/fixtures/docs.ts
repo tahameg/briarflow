@@ -115,13 +115,13 @@ export const SECTION_10_BATCH: readonly Command[] = [
     id: "ty_char",
     name: "Character",
     fields: [
-      { name: "name", type: "text" },
+      { name: "name", type: "string" },
       { name: "style", type: "ArtStyle" },
     ],
   },
   { op: "flow.create", id: "flow_p", name: "Portrait", inputNodeId: "n_in", outputNodeId: "n_out" },
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
-  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "text" },
+  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "string" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
   {
     op: "node.add",

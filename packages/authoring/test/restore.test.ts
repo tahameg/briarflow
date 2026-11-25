@@ -34,7 +34,7 @@ const softCases: SoftCase[] = [
   },
   {
     name: "media.* on a constant → node.invalid_value",
-    command: { op: "node.add", flowId: KIT, id: "n_x", type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "ftp://x", mime: "image/png" } } },
+    command: { op: "node.add", flowId: KIT, id: "n_x", type: "briar.constant", position: at, config: { type: "Image" }, values: { value: { data: { uri: "ftp://x", mime: "image/png" }, mime: "image/png" } } },
     normalCode: "media.invalid_ref",
     diagnostic: "node.invalid_value",
   },
@@ -166,7 +166,7 @@ const structural: [string, Command[], string][] = [
   ["type.reserved_name", [{ op: "type.defineEnum", scope: { kind: "global" }, name: "List" }], "type.reserved_name"],
   ["type.duplicate_name", [{ op: "type.defineEnum", scope: { kind: "global" }, name: "ARTSTYLE" }], "type.duplicate_name"],
   ["type.recursive", [{ op: "type.field.add", typeId: "ty_char", name: "me", type: "Character?" }], "type.recursive"],
-  ["type.invalid_constraint", [{ op: "type.field.add", typeId: "ty_char", name: "l", type: "list<text>[4..1]" }], "type.invalid_constraint"],
+  ["type.invalid_constraint", [{ op: "type.field.add", typeId: "ty_char", name: "l", type: "list<string>[4..1]" }], "type.invalid_constraint"],
   ["type.duplicate_member", [{ op: "type.enum.addMember", typeId: "ty_style", value: "ANIME" }], "type.duplicate_member"],
   ["type.in_use", [{ op: "type.delete", typeId: "ty_style" }], "type.in_use"],
   ["global.in_use", [{ op: "global.delete", globalId: "gv_brand" }], "global.in_use"],

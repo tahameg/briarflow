@@ -7,7 +7,7 @@
  * - As int, As float and As JSON array take text or json and fail when it does not read.
  */
 import { defineEnum, defineNode, jsonText, NodeError, t } from "@briarflow/core";
-import { jsonToText, openJson } from "./json-path.js";
+import { isJsonText, jsonToText, openJson } from "./json-path.js";
 import { valueToText } from "./text-utils.js";
 
 const TEXT_OR_JSON = { oneOf: [t.string(), t.json()] };
@@ -42,8 +42,18 @@ function invalidNumber(text: string, what: string): NodeError {
   });
 }
 
+/** A Json value's document (its text when that is not JSON); other values as they are. */
+function unwrapJson(value: unknown): unknown {
+  if (!isJsonText(value)) return value;
+  try {
+    return JSON.parse(value.text) as unknown;
+  } catch {
+    return value.text;
+  }
+}
+
 function readNumber(value: unknown, what: string, pattern: RegExp, ok: (n: number) => boolean): number {
-  const text = jsonToText(value);
+  const text = jsonToText(unwrapJson(value));
   const s = text.trim();
   const n = Number(s);
   if (!pattern.test(s) || !ok(n)) throw invalidNumber(text, what);
@@ -83,7 +93,8 @@ export const convertAsFloat = defineNode({
 const FALSE_TEXT = new Set(["", "false", "0", "no", "off", "null"]);
 
 /** Truth of any value: no value, false, 0 and "false"-like text are false; the rest is true. */
-export function truthOf(value: unknown): boolean {
+export function truthOf(given: unknown): boolean {
+  const value = unwrapJson(given);
   if (value === null || value === undefined) return false;
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0 && !Number.isNaN(value);

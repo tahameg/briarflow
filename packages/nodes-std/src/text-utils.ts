@@ -26,6 +26,8 @@ export function valueToText(value: unknown, type?: TypeRef): string {
   if (inner?.kind === "primitive" && inner.name === "binary" && isMediaRef(value)) return value.mediaId;
   if (inner?.kind === "named" && inner.id === BUILTIN.Text && typeof (value as { value?: unknown }).value === "string") return (value as { value: string }).value;
   if (inner?.kind === "named" && inner.id === BUILTIN.Json && typeof (value as { text?: unknown }).text === "string") return (value as { text: string }).text;
+  // A media value (Image, … or a struct extending one) prints as its media id.
+  if (inner?.kind === "named" && isMediaRef((value as { data?: unknown }).data)) return (value as { data: { mediaId: string } }).data.mediaId;
   if ((inner === undefined || inner.kind === "var") && isMediaRef(value)) return value.mediaId;
   return canonicalJson(value);
 }

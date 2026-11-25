@@ -26,7 +26,7 @@ async function setup(storage?: KeyValueStorage) {
   });
   await store.ready;
   store.dispatch([
-    { op: "flow.input.add", flowId: "flow_a", name: "topic", type: "text" },
+    { op: "flow.input.add", flowId: "flow_a", name: "topic", type: "string" },
     { op: "node.add", flowId: "flow_a", type: "debug.echo", position: { x: 0, y: 0 }, id: "n_e" },
   ]);
   await store.flush();

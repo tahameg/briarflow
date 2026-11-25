@@ -18,8 +18,7 @@ import {
   type ContextDocument,
   type NodePack,
   type Port,
-  type TypeRef,
-} from "@briarflow/core";
+  type TypeRef, isBuiltinId } from "@briarflow/core";
 import { runNode, type RunNodeOptions, type RunNodeResult } from "../run-node.js";
 
 /** One sample execution of a node. */
@@ -175,7 +174,7 @@ export function describeNodePack(pack: NodePack, options: NodePackSuiteOptions =
           const ref = portRef(port);
           expect(ref, "port must have a type").toBeDefined();
           for (const id of namedIds(ref as TypeRef)) {
-            if (id.includes(".")) expect(visible.has(id), `type ${id} used by ${def.type}`).toBe(true);
+            if (id.includes(".") && !isBuiltinId(id)) expect(visible.has(id), `type ${id} used by ${def.type}`).toBe(true);
           }
         }
       });

@@ -14,7 +14,7 @@ function g(doc: ContextDocument, id: string): GlobalVariable {
 describe("global.create", () => {
   it("creates with a shorthand type stored as IR, value and description", () => {
     const r = accept(richDoc(), [
-      { op: "global.create", id: "gv_tags", name: "tags", type: "list<text>", access: "readonly", value: ["a"], description: "Tags" },
+      { op: "global.create", id: "gv_tags", name: "tags", type: "list<string>", access: "readonly", value: ["a"], description: "Tags" },
     ]);
     expect(r.created).toEqual([{ globalId: "gv_tags" }]);
     expect(r.doc.globals.at(-1)).toEqual({ id: "gv_tags", name: "tags", type: ir.list(ir.string()), access: "readonly", value: ["a"], description: "Tags" });
@@ -28,7 +28,7 @@ describe("global.create", () => {
   });
 
   it("readonly without value → global.readonly_requires_value", () => {
-    reject(richDoc(), [{ op: "global.create", name: "key", type: "text", access: "readonly" }], "global.readonly_requires_value", {
+    reject(richDoc(), [{ op: "global.create", name: "key", type: "string", access: "readonly" }], "global.readonly_requires_value", {
       message: 'Readonly global "key" needs a value. Set a value or make it readwrite.',
     });
   });
@@ -41,10 +41,10 @@ describe("global.create", () => {
   });
 
   it("name rules", () => {
-    reject(richDoc(), [{ op: "global.create", name: "Brand", type: "text", access: "readwrite" }], "command.duplicate_name", { message: msg.duplicateName("brand") });
-    reject(richDoc(), [{ op: "global.create", name: "my global", type: "text", access: "readwrite" }], "command.invalid_name", { message: msg.invalidName("my global") });
-    reject(richDoc(), [{ op: "global.create", name: chars(65), type: "text", access: "readwrite" }], "command.invalid_name");
-    reject(richDoc(), [{ op: "global.create", name: "__proto__", type: "text", access: "readwrite" }], "command.reserved_name", { message: msg.reservedName("__proto__") });
+    reject(richDoc(), [{ op: "global.create", name: "Brand", type: "string", access: "readwrite" }], "command.duplicate_name", { message: msg.duplicateName("brand") });
+    reject(richDoc(), [{ op: "global.create", name: "my global", type: "string", access: "readwrite" }], "command.invalid_name", { message: msg.invalidName("my global") });
+    reject(richDoc(), [{ op: "global.create", name: chars(65), type: "string", access: "readwrite" }], "command.invalid_name");
+    reject(richDoc(), [{ op: "global.create", name: "__proto__", type: "string", access: "readwrite" }], "command.reserved_name", { message: msg.reservedName("__proto__") });
   });
 
   it("types: visibility, unknown, local shorthand not visible", () => {
@@ -54,11 +54,11 @@ describe("global.create", () => {
   });
 
   it("payload and ids", () => {
-    reject(richDoc(), [{ op: "global.create", name: "m", type: "text", access: "write" } as unknown as Command], "command.invalid_payload", {
+    reject(richDoc(), [{ op: "global.create", name: "m", type: "string", access: "write" } as unknown as Command], "command.invalid_payload", {
       message: msg.invalidPayload("global.create", "access"),
     });
-    reject(richDoc(), [{ op: "global.create", id: "var_x", name: "m", type: "text", access: "readwrite" }], "command.invalid_id", { message: msg.invalidId("global.create", "var_x") });
-    reject(richDoc(), [{ op: "global.create", id: "gv_brand", name: "m", type: "text", access: "readwrite" }], "command.duplicate_id", { message: msg.duplicateId("global.create", "gv_brand") });
+    reject(richDoc(), [{ op: "global.create", id: "var_x", name: "m", type: "string", access: "readwrite" }], "command.invalid_id", { message: msg.invalidId("global.create", "var_x") });
+    reject(richDoc(), [{ op: "global.create", id: "gv_brand", name: "m", type: "string", access: "readwrite" }], "command.duplicate_id", { message: msg.duplicateId("global.create", "gv_brand") });
   });
 });
 
@@ -78,7 +78,7 @@ describe("global.rename", () => {
 
 describe("global.setType", () => {
   it("soft: value and set-node constants become diagnostics; get/set ports follow", () => {
-    const r = accept(richDoc(), [{ op: "global.setType", globalId: "gv_count", type: "text" }]);
+    const r = accept(richDoc(), [{ op: "global.setType", globalId: "gv_count", type: "string" }]);
     expect(g(r.doc, "gv_count").type).toEqual(ir.string());
     expect(g(r.doc, "gv_count").value).toBe(0);
     expect(diags(r.diagnostics, "global.invalid_value").some((d) => d.path.globalId === "gv_count")).toBe(true);

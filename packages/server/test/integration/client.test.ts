@@ -21,11 +21,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { UnauthorizedError, briarError, createBriarApp, serve, type BriarServer } from "../../src/index.js";
 
 const PORTRAIT: Command[] = [
-  { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_char", name: "Character", fields: [{ name: "name", type: "text" }] },
+  { op: "type.defineStruct", scope: { kind: "global" }, id: "ty_char", name: "Character", fields: [{ name: "name", type: "string" }] },
   { op: "flow.create", id: "flow_p", name: "Portrait", inputNodeId: "n_in", outputNodeId: "n_out" },
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
-  { op: "flow.output.add", flowId: "flow_p", name: "description", type: "text" },
-  { op: "flow.output.add", flowId: "flow_p", name: "image", type: "image" },
+  { op: "flow.output.add", flowId: "flow_p", name: "description", type: "string" },
+  { op: "flow.output.add", flowId: "flow_p", name: "image", type: "Image" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", config: { typeId: "ty_char" }, position: { x: 200, y: 0 } },
   { op: "node.add", flowId: "flow_p", id: "n_llm", type: "mock.llm", position: { x: 400, y: 0 } },
   { op: "node.add", flowId: "flow_p", id: "n_img", type: "mock.image", position: { x: 600, y: 0 } },
@@ -37,8 +37,8 @@ const PORTRAIT: Command[] = [
   { op: "flow.exec.set", flowId: "flow_p", edges: null },
   { op: "flow.exec.enable", flowId: "flow_p" },
   { op: "flow.create", id: "flow_d", name: "Slow", inputNodeId: "n_din", outputNodeId: "n_dout" },
-  { op: "flow.output.add", flowId: "flow_d", name: "value", type: "text" },
-  { op: "flow.input.add", flowId: "flow_d", name: "value", type: "text" },
+  { op: "flow.output.add", flowId: "flow_d", name: "value", type: "string" },
+  { op: "flow.input.add", flowId: "flow_d", name: "value", type: "string" },
   { op: "node.add", flowId: "flow_d", id: "n_delay", type: "mock.delay", values: { ms: 150 }, position: { x: 200, y: 0 } },
   { op: "edge.connect", flowId: "flow_d", from: { node: "n_din", port: "value" }, to: { node: "n_delay", port: "value" } },
   { op: "edge.connect", flowId: "flow_d", from: { node: "n_delay", port: "value" }, to: { node: "n_dout", port: "value" } },
@@ -120,7 +120,7 @@ describe("client ⇄ server", () => {
     expect(stale).toMatchObject({ expected: 0, actual: 1 });
 
     const rejected = await client.contexts
-      .apply("ctx_portraits", { baseRevision: 1, commands: [{ op: "context.rename", name: "Ok" }, { op: "flow.input.add", flowId: "flow_p", name: "Character", type: "text" }] })
+      .apply("ctx_portraits", { baseRevision: 1, commands: [{ op: "context.rename", name: "Ok" }, { op: "flow.input.add", flowId: "flow_p", name: "Character", type: "string" }] })
       .catch((e: unknown) => e);
     expect(rejected).toBeInstanceOf(CommandError);
     expect(rejected).toMatchObject({ commandIndex: 1, op: "flow.input.add" });

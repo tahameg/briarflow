@@ -32,7 +32,7 @@ describe("node.add", () => {
       message: "nodes.n_x.values.value must be <= 10",
     });
     reject(richDoc(), [{ op: "node.add", flowId: KIT, id: "n_x", type: "kit.sinkText", position: at, values: { value: 5 } }], "value.invalid", {
-      message: "nodes.n_x.values.value must be text (got 5)",
+      message: "nodes.n_x.values.value must be a string (got 5)",
     });
   });
 
@@ -121,13 +121,13 @@ describe("node.add", () => {
   it("media values are validated (media.*)", () => {
     const e = reject(
       richDoc(),
-      [{ op: "node.add", flowId: KIT, id: "n_img", type: "briar.constant", position: at, config: { type: "image" }, values: { value: { uri: "ftp://x", mime: "image/png" } } }],
+      [{ op: "node.add", flowId: KIT, id: "n_img", type: "briar.constant", position: at, config: { type: "Image" }, values: { value: { data: { uri: "ftp://x", mime: "image/png" }, mime: "image/png" } } }],
       "media.invalid_ref",
     );
     expect(e.message).toContain("nodes.n_img.values.value");
-    reject(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { mediaId: "bad id" } } }], "media.invalid_ref");
+    reject(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "Image" }, values: { value: { data: { mediaId: "bad id" }, mime: "image/png" } } }], "media.invalid_ref");
     // The entry (mime, size) is checked when a node reads the media, not when the document is edited.
-    accept(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "image" }, values: { value: { mediaId: "med_1" } } }]);
+    accept(richDoc(), [{ op: "node.add", flowId: KIT, type: "briar.constant", position: at, config: { type: "Image" }, values: { value: { data: { mediaId: "med_1" }, mime: "image/png" } } }]);
   });
 
   it("a constant on an unbound generic port → value.generic_unbound", () => {

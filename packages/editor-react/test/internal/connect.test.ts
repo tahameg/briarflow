@@ -15,7 +15,7 @@ function doc(): ContextDocument {
     createContextDocument({ id: "ctx_1", name: "T", clock: () => new Date("2026-01-01T00:00:00.000Z") }),
     [
       { op: "flow.create", name: "F", id: "flow_f", inputNodeId: "n_in", outputNodeId: "n_out" },
-      { op: "flow.variable.create", flowId: "flow_f", name: "tone", type: "text", access: "private", id: "var_tone" },
+      { op: "flow.variable.create", flowId: "flow_f", name: "tone", type: "string", access: "private", id: "var_tone" },
     ],
     { catalog },
   );

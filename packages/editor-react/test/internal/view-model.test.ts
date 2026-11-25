@@ -19,7 +19,7 @@ function sample(): ContextDocument {
       { op: "flow.create", name: "Portrait", id: "flow_p", inputNodeId: "n_in", outputNodeId: "n_out" },
       { op: "flow.input.add", flowId: "flow_p", name: "count", type: "int" },
       { op: "flow.input.add", flowId: "flow_p", name: "style", type: "Style" },
-      { op: "flow.output.add", flowId: "flow_p", name: "text", type: "text" },
+      { op: "flow.output.add", flowId: "flow_p", name: "text", type: "string" },
       { op: "node.add", flowId: "flow_p", type: "text.join", id: "n_join", position: { x: 300, y: 0 } },
       { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_join", port: "text" }, to: { node: "n_out", port: "text" } },
     ],
@@ -70,7 +70,7 @@ describe("buildFlowView", () => {
     const r = applyCommands(
       sample(),
       [
-        { op: "flow.input.add", flowId: "flow_p", name: "raw", type: "text" },
+        { op: "flow.input.add", flowId: "flow_p", name: "raw", type: "string" },
         { op: "node.add", flowId: "flow_p", type: "json.getField", id: "n_get", position: { x: 300, y: 200 } },
         { op: "node.add", flowId: "flow_p", type: "convert.asInt", id: "n_int", position: { x: 300, y: 400 } },
       ],
@@ -112,7 +112,7 @@ describe("helpers", () => {
 
   it("builds a starting config for config-required nodes", () => {
     const doc = sample();
-    expect(initialConfig(catalog.get("briar.constant"), doc, "flow_p", catalog)).toEqual({ type: "text" });
+    expect(initialConfig(catalog.get("briar.constant"), doc, "flow_p", catalog)).toEqual({ type: "string" });
     expect(initialConfig(catalog.get("text.join"), doc, "flow_p", catalog)).toBeUndefined();
     expect(snap({ x: 13, y: 29 })).toEqual({ x: 12, y: 24 });
   });

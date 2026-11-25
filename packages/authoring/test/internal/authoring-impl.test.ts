@@ -53,13 +53,13 @@ const SECTION_10: Command[] = [
     id: "ty_char",
     name: "Character",
     fields: [
-      { name: "name", type: "text" },
+      { name: "name", type: "string" },
       { name: "style", type: "ArtStyle" },
     ],
   },
   { op: "flow.create", id: "flow_p", name: "Portrait", inputNodeId: "n_in", outputNodeId: "n_out" },
   { op: "flow.input.add", flowId: "flow_p", name: "character", type: "Character" },
-  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "text" },
+  { op: "flow.output.add", flowId: "flow_p", name: "prompt", type: "string" },
   { op: "node.add", flowId: "flow_p", id: "n_brk", type: "briar.struct.break", position: { x: 200, y: 0 }, config: { typeId: "ty_char" } },
   { op: "node.add", flowId: "flow_p", id: "n_tpl", type: "text.template", position: { x: 420, y: 0 }, config: { template: "Draw {{name}} in {{style}} style" } },
   { op: "edge.connect", flowId: "flow_p", id: "e_1", from: { node: "n_in", port: "character" }, to: { node: "n_brk", port: "value" } },
@@ -84,12 +84,12 @@ describe("commands.md §10 examples", () => {
   it("soft breakage: field type change re-binds the template, output type change mismatches", () => {
     const a = ok(portrait(), [{ op: "type.field.setType", typeId: "ty_char", field: "style", type: "int" }]);
     expect(a.diagnostics).toEqual([]);
-    const b = ok(portrait(), [{ op: "flow.output.setType", flowId: "flow_p", name: "prompt", type: "image" }]);
+    const b = ok(portrait(), [{ op: "flow.output.setType", flowId: "flow_p", name: "prompt", type: "Image" }]);
     expect(b.diagnostics.map((d) => [d.code, d.path.edgeId])).toContainEqual(["edge.type_mismatch", "e_4"]);
   });
 
   it("rejection example has the exact message and index", () => {
-    const e = err(portrait(), [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "text" }]);
+    const e = err(portrait(), [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "string" }]);
     expect(e.code).toBe("command.duplicate_name");
     expect(e.commandIndex).toBe(0);
     expect(e.message).toBe('A flow input named "character" already exists in flow "Portrait". Names must be unique (ignoring case).');
@@ -130,7 +130,7 @@ describe("structural follow-up", () => {
 
   it("global delete with cascade restores nodes and edges on undo", () => {
     const d = ok(portrait(), [
-      { op: "global.create", id: "gv_n", name: "n", type: "text", access: "readwrite" },
+      { op: "global.create", id: "gv_n", name: "n", type: "string", access: "readwrite" },
       { op: "node.add", flowId: "flow_p", id: "n_g", type: "briar.global.get", position: { x: 0, y: 0 }, config: { globalId: "gv_n" } },
       { op: "node.add", flowId: "flow_p", id: "n_s", type: "kit.sinkText", position: { x: 0, y: 0 } },
       { op: "edge.connect", flowId: "flow_p", id: "e_g", from: { node: "n_g", port: "value" }, to: { node: "n_s", port: "value" } },

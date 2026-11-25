@@ -70,7 +70,7 @@ describe("flow.variable.rename", () => {
 
 describe("flow.variable.setType", () => {
   it("soft: default and set-node constants become diagnostics; ports follow", () => {
-    const r = accept(richDoc(), [{ op: "flow.variable.setType", flowId: KIT, variableId: "var_n", type: "text" }]);
+    const r = accept(richDoc(), [{ op: "flow.variable.setType", flowId: KIT, variableId: "var_n", type: "string" }]);
     expect(v(r.doc, "var_n")).toMatchObject({ type: ir.string(), default: 1 });
     expect(diags(r.diagnostics, "variable.invalid_default").some((d) => d.path.variableId === "var_n")).toBe(true);
     expect(diags(r.diagnostics, "node.invalid_value").some((d) => d.path.nodeId === "n_vset")).toBe(true);

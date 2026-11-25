@@ -26,7 +26,7 @@ describe("commands.md §10", () => {
 
   it("flow.output.setType prompt → image gives edge.type_mismatch on e_4", () => {
     const doc = build(emptyDoc(), SECTION_10_BATCH);
-    const r = accept(doc, [{ op: "flow.output.setType", flowId: PORTRAIT, name: "prompt", type: "image" }]);
+    const r = accept(doc, [{ op: "flow.output.setType", flowId: PORTRAIT, name: "prompt", type: "Image" }]);
     expect(edgeIds(r.doc, PORTRAIT)).toContain("e_4");
     const d = diags(r.diagnostics, "edge.type_mismatch");
     expect(d).toHaveLength(1);
@@ -36,7 +36,7 @@ describe("commands.md §10", () => {
 
   it("the rejection example returns the exact message", () => {
     const doc = build(emptyDoc(), SECTION_10_BATCH);
-    const e = reject(doc, [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "text" }], "command.duplicate_name", {
+    const e = reject(doc, [{ op: "flow.input.add", flowId: "flow_p", name: "Character", type: "string" }], "command.duplicate_name", {
       message: 'A flow input named "character" already exists in flow "Portrait". Names must be unique (ignoring case).',
     });
     expect(e.commandIndex).toBe(0);

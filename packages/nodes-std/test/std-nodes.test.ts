@@ -3,7 +3,7 @@
  * behaviour (through `runNode` from @briarflow/testing), toText rules and templates.
  */
 import { describe, expect, it } from "vitest";
-import { createCatalog, isBriarError, toNodeDescriptor, type ContextDocument, type PortError } from "@briarflow/core";
+import { createCatalog, isBriarError, toNodeDescriptor, type ContextDocument, type PortError , jsonText } from "@briarflow/core";
 import {
   constant,
   convertAsBoolean,
@@ -172,15 +172,15 @@ describeNodePack(stdPack, {
     "convert.asInt": [{ inputs: { value: " 42 " }, outputs: { value: 42 } }],
     "convert.asFloat": [{ inputs: { value: "1e3" }, outputs: { value: 1000 } }],
     "convert.asBoolean": [{ inputs: { value: 0 }, outputs: { value: false } }],
-    "convert.asJson": [{ inputs: { text: '{"a":1}' }, outputs: { json: '{"a":1}' } }],
-    "convert.asJsonArray": [{ inputs: { value: "[1,2]" }, outputs: { items: [1, 2] } }],
+    "convert.asJson": [{ inputs: { text: '{"a":1}' }, outputs: { json: { text: '{"a":1}' } } }],
+    "convert.asJsonArray": [{ inputs: { value: "[1,2]" }, outputs: { items: [jsonText(1), jsonText(2)] } }],
     "convert.floatToInt": [{ inputs: { value: 2.5 }, outputs: { value: 3 } }],
     "debug.print": [{ inputs: { text: "hello" }, outputs: {} }],
-    "debug.image": [{ inputs: { image: { mediaId: "med_1" }, label: "after resize" }, outputs: {} }],
-    "json.construct": [{ inputs: { value: [1, { a: true }] }, outputs: { json: [1, { a: true }] } }],
-    "json.getField": [{ inputs: { json: { user: { tags: ["a", "b"] } }, path: "user.tags[1]" }, outputs: { value: "b" } }],
-    "json.setField": [{ inputs: { json: { a: 1 }, path: "b.c", value: 2 }, outputs: { json: { a: 1, b: { c: 2 } } } }],
-    "json.addField": [{ inputs: { json: { a: 1 }, path: "a", value: 2 }, errorCode: "json.field_exists" }],
+    "debug.image": [{ inputs: { image: { data: { mediaId: "med_1" }, mime: "image/png" }, label: "after resize" }, outputs: {} }],
+    "json.construct": [{ inputs: { value: jsonText([1, { a: true }]) }, outputs: { json: jsonText([1, { a: true }]) } }],
+    "json.getField": [{ inputs: { json: jsonText({ user: { tags: ["a", "b"] } }), path: "user.tags[1]" }, outputs: { value: jsonText("b") } }],
+    "json.setField": [{ inputs: { json: jsonText({ a: 1 }), path: "b.c", value: jsonText(2) }, outputs: { json: jsonText({ a: 1, b: { c: 2 } }) } }],
+    "json.addField": [{ inputs: { json: jsonText({ a: 1 }), path: "a", value: jsonText(2) }, errorCode: "json.field_exists" }],
     "briar.error.break": [{ inputs: { error: { code: "node.timeout", message: "Too slow", node: "LLM" } }, outputs: { code: "node.timeout", message: "Too slow", node: "LLM", nodeId: null } }],
   },
 });
@@ -206,9 +206,9 @@ describe("valueToText (toText rules)", () => {
     ["false", false, undefined, "false"],
     ["null", null, undefined, ""],
     ["enum member value", "gpt-4.1", ir.named("ty_mood"), "gpt-4.1"],
-    ["media → its id (typed)", { mediaId: "med_1" }, ir.image(), "med_1"],
+    ["media → its id (typed)", { data: { mediaId: "med_1" }, mime: "image/png" }, ir.image(), "med_1"],
     ["media → its id (untyped media shape)", { mediaId: "med_3" }, undefined, "med_3"],
-    ["optional media", { mediaId: "med_2" }, ir.optional(ir.image()), "med_2"],
+    ["optional media", { data: { mediaId: "med_2" }, mime: "image/png" }, ir.optional(ir.image()), "med_2"],
     ["struct → canonical JSON", { b: 2, a: { d: [1, "x"], c: null } }, undefined, '{"a":{"c":null,"d":[1,"x"]},"b":2}'],
     ["list → JSON", [3, "a", { z: 1, y: 2 }], undefined, '[3,"a",{"y":2,"z":1}]'],
     ["struct shaped like a media value stays JSON when typed as a struct", { mediaId: "u" }, ir.named("ty_s"), '{"mediaId":"u"}'],
@@ -243,7 +243,7 @@ describe("templates", () => {
   it("renderTemplate uses toText, field paths, variables and literal braces", () => {
     expect(renderTemplate("Hi {{name}} \\{{ok}} {x}", { name: "Aria" })).toBe("Hi Aria {{ok}} {x}");
     expect(renderTemplate("{{a}}|{{b}}|{{c}}|{{d}}", { a: 1, b: null, c: [1, 2], d: true })).toBe("1||[1,2]|true");
-    expect(renderTemplate("{{m}}", { m: { mediaId: "med_9" } }, { m: ir.image() })).toBe("med_9");
+    expect(renderTemplate("{{m}}", { m: { data: { mediaId: "med_9" }, mime: "image/png" } }, { m: ir.image() })).toBe("med_9");
     expect(renderTemplate("{{u.name}} {{u.tags[1]}} {{u.tags}}", { u: { name: "Aria", tags: ["a", "b"] } })).toBe('Aria b ["a","b"]');
     expect(renderTemplate("{{$(city)}} {{$(user).age}}", {}, undefined, (n) => (n === "city" ? "Rome" : { age: 9 }))).toBe("Rome 9");
     const code = (fn: () => unknown) => {
@@ -296,7 +296,7 @@ describe("text.template", () => {
   it("renders values with toText, using bound media types", async () => {
     const r = await runNode(
       textTemplate,
-      { img: { mediaId: "med_1" }, list: ["a"], nothing: null },
+      { img: { data: { mediaId: "med_1" }, mime: "image/png" }, list: ["a"], nothing: null },
       { config: { template: "{{img}} {{list}} [{{nothing}}] \\{{x}}" }, typeBindings: { T1: ir.image() } },
     );
     expect(r.outputs.text).toBe('med_1 ["a"] [] {{x}}');
@@ -366,7 +366,7 @@ describe("convert nodes", () => {
     expect((await runNode(convertToText, { value: 3.5 })).outputs).toEqual({ text: "3.5" });
     expect((await runNode(convertToText, { value: null })).outputs).toEqual({ text: "" });
     expect((await runNode(convertToText, { value: [1, { b: 2, a: 1 }] })).outputs).toEqual({ text: '[1,{"a":1,"b":2}]' });
-    const media = await runNode(convertToText, { value: { mediaId: "med_1" } }, { typeBindings: { T: ir.image() } });
+    const media = await runNode(convertToText, { value: { data: { mediaId: "med_1" }, mime: "image/png" } }, { typeBindings: { T: ir.image() } });
     expect(media.outputs).toEqual({ text: "med_1" });
   });
 
@@ -410,12 +410,12 @@ describe("convert nodes", () => {
 
   it("As int / As float read json the same way: through its text", async () => {
     const json = { typeBindings: { T: ir.json() } };
-    expect((await runNode(convertAsInt, { value: 7 }, json)).outputs).toEqual({ value: 7 });
-    expect((await runNode(convertAsInt, { value: "12" }, json)).outputs).toEqual({ value: 12 });
-    expect((await runNode(convertAsFloat, { value: 1.5 }, json)).outputs).toEqual({ value: 1.5 });
-    expect((await rejects(runNode(convertAsInt, { value: 2.5 }, json))).code).toBe("convert.invalid_number");
-    expect((await rejects(runNode(convertAsInt, { value: true }, json))).code).toBe("convert.invalid_number");
-    expect((await rejects(runNode(convertAsFloat, { value: null }, json))).code).toBe("convert.invalid_number");
+    expect((await runNode(convertAsInt, { value: jsonText(7) }, json)).outputs).toEqual({ value: 7 });
+    expect((await runNode(convertAsInt, { value: jsonText("12") }, json)).outputs).toEqual({ value: 12 });
+    expect((await runNode(convertAsFloat, { value: jsonText(1.5) }, json)).outputs).toEqual({ value: 1.5 });
+    expect((await rejects(runNode(convertAsInt, { value: jsonText(2.5) }, json))).code).toBe("convert.invalid_number");
+    expect((await rejects(runNode(convertAsInt, { value: jsonText(true) }, json))).code).toBe("convert.invalid_number");
+    expect((await rejects(runNode(convertAsFloat, { value: jsonText(null) }, json))).code).toBe("convert.invalid_number");
   });
 
   it("As int / As float take only text or json", () => {
@@ -439,13 +439,13 @@ describe("convert nodes", () => {
     [{}, true],
     [true, true],
   ])("convert.asBoolean %j → %s", async (value, expected) => {
-    expect((await runNode(convertAsBoolean, { value }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ value: expected });
+    expect((await runNode(convertAsBoolean, { value: jsonText(value) }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ value: expected });
   });
 
   it("As JSON keeps the text as it is; As JSON array reads an array from text or json", async () => {
-    expect((await runNode(convertAsJson, { text: "{not json" })).outputs).toEqual({ json: "{not json" });
-    expect((await runNode(convertAsJsonArray, { value: ' [1, {"a": 2}] ' })).outputs).toEqual({ items: [1, { a: 2 }] });
-    expect((await runNode(convertAsJsonArray, { value: ["x"] }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ items: ["x"] });
+    expect((await runNode(convertAsJson, { text: "{not json" })).outputs).toEqual({ json: { text: "{not json" } });
+    expect((await runNode(convertAsJsonArray, { value: ' [1, {"a": 2}] ' })).outputs).toEqual({ items: [jsonText(1), jsonText({ a: 2 })] });
+    expect((await runNode(convertAsJsonArray, { value: jsonText(["x"]) }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ items: [jsonText("x")] });
     expect((await rejects(runNode(convertAsJsonArray, { value: "{}" }))).code).toBe("json.wrong_kind");
     expect((await rejects(runNode(convertAsJsonArray, { value: "[1," }))).code).toBe("json.invalid_json");
   });
@@ -551,59 +551,60 @@ describe("variable nodes outside the engine", () => {
 });
 
 describe("json nodes", () => {
+  const J = jsonText;
   const order = { items: [{ id: 1, tags: ["a"] }, { id: 2.5 }], note: "hi", ok: true };
 
   it("Get field reads object fields and array items; the whole value for an empty path", async () => {
-    expect((await runNode(jsonGetField, { json: order, path: "items[0].tags[0]" })).outputs).toEqual({ value: "a" });
-    expect((await runNode(jsonGetField, { json: [10, 20], path: "[1]" })).outputs).toEqual({ value: 20 });
-    expect((await runNode(jsonGetField, { json: order, path: "" })).outputs).toEqual({ value: order });
+    expect((await runNode(jsonGetField, { json: J(order), path: "items[0].tags[0]" })).outputs).toEqual({ value: J("a") });
+    expect((await runNode(jsonGetField, { json: J([10, 20]), path: "[1]" })).outputs).toEqual({ value: J(20) });
+    expect((await runNode(jsonGetField, { json: J(order), path: "" })).outputs).toEqual({ value: J(order) });
   });
 
   it("Get field fails at run time for a missing field or a bad path", async () => {
-    const missing = await rejects(runNode(jsonGetField, { json: order, path: "items[5].id" }));
+    const missing = await rejects(runNode(jsonGetField, { json: J(order), path: "items[5].id" }));
     expect(missing.code).toBe("json.field_missing");
     expect(missing.message).toContain("items has 2 items");
-    expect((await rejects(runNode(jsonGetField, { json: order, path: "ok.length" }))).code).toBe("json.field_missing");
-    // A string is JSON text until read: going into one parses it.
-    expect((await rejects(runNode(jsonGetField, { json: order, path: "note.length" }))).code).toBe("json.invalid_json");
-    expect((await rejects(runNode(jsonGetField, { json: order, path: "items[x]" }))).code).toBe("json.invalid_path");
-    expect((await rejects(runNode(jsonGetField, { json: order, path: "a..b" }))).code).toBe("json.invalid_path");
+    expect((await rejects(runNode(jsonGetField, { json: J(order), path: "ok.length" }))).code).toBe("json.field_missing");
+    // A string inside the document is JSON text until read: going into one parses it.
+    expect((await rejects(runNode(jsonGetField, { json: J(order), path: "note.length" }))).code).toBe("json.invalid_json");
+    expect((await rejects(runNode(jsonGetField, { json: J(order), path: "items[x]" }))).code).toBe("json.invalid_path");
+    expect((await rejects(runNode(jsonGetField, { json: J(order), path: "a..b" }))).code).toBe("json.invalid_path");
   });
 
   it("Set field replaces, creates missing objects and appends one past the end; the input is not changed", async () => {
-    const input = { a: { b: 1 }, list: [1] };
-    expect((await runNode(jsonSetField, { json: input, path: "a.b", value: 2 })).outputs).toEqual({ json: { a: { b: 2 }, list: [1] } });
-    expect((await runNode(jsonSetField, { json: input, path: "x.y.z", value: true })).outputs.json).toMatchObject({ x: { y: { z: true } } });
-    expect((await runNode(jsonSetField, { json: input, path: "list[1]", value: 2 })).outputs.json).toMatchObject({ list: [1, 2] });
-    expect((await rejects(runNode(jsonSetField, { json: input, path: "list[3]", value: 2 }))).code).toBe("json.field_missing");
-    expect(input).toEqual({ a: { b: 1 }, list: [1] });
+    const input = J({ a: { b: 1 }, list: [1] });
+    expect((await runNode(jsonSetField, { json: input, path: "a.b", value: J(2) })).outputs).toEqual({ json: J({ a: { b: 2 }, list: [1] }) });
+    expect(JSON.parse((await runNode(jsonSetField, { json: input, path: "x.y.z", value: J(true) })).outputs.json.text)).toMatchObject({ x: { y: { z: true } } });
+    expect(JSON.parse((await runNode(jsonSetField, { json: input, path: "list[1]", value: J(2) })).outputs.json.text)).toMatchObject({ list: [1, 2] });
+    expect((await rejects(runNode(jsonSetField, { json: input, path: "list[3]", value: J(2) }))).code).toBe("json.field_missing");
+    expect(input).toEqual(J({ a: { b: 1 }, list: [1] }));
   });
 
   it("Add field fails on an existing field unless overwrite is on", async () => {
-    expect((await runNode(jsonAddField, { json: { a: 1 }, path: "b", value: 2 })).outputs).toEqual({ json: { a: 1, b: 2 } });
-    expect((await rejects(runNode(jsonAddField, { json: { a: 1 }, path: "a", value: 2 }))).code).toBe("json.field_exists");
-    expect((await runNode(jsonAddField, { json: { a: 1 }, path: "a", value: 2, overwrite: true })).outputs).toEqual({ json: { a: 2 } });
+    expect((await runNode(jsonAddField, { json: J({ a: 1 }), path: "b", value: J(2) })).outputs).toEqual({ json: J({ a: 1, b: 2 }) });
+    expect((await rejects(runNode(jsonAddField, { json: J({ a: 1 }), path: "a", value: J(2) }))).code).toBe("json.field_exists");
+    expect((await runNode(jsonAddField, { json: J({ a: 1 }), path: "a", value: J(2), overwrite: true })).outputs).toEqual({ json: J({ a: 2 }) });
   });
 
   it("text from As JSON is parsed when a field is read: valid text works, invalid text fails there", async () => {
     const text = (await runNode(convertAsJson, { text: '{"ali": "kamil", "n": [1, 2]}' })).outputs.json;
     const ali = (await runNode(jsonGetField, { json: text, path: "ali" })).outputs.value;
-    expect(ali).toBe("kamil");
-    expect((await runNode(convertToText, { value: ali }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "kamil" });
-    expect((await runNode(jsonGetField, { json: text, path: "n[1]" })).outputs).toEqual({ value: 2 });
-    expect((await runNode(jsonSetField, { json: text, path: "n[2]", value: 3 })).outputs.json).toEqual({ ali: "kamil", n: [1, 2, 3] });
-    const bad = await rejects(runNode(jsonGetField, { json: "{ali:", path: "ali" }));
+    expect(ali).toEqual(J("kamil"));
+    expect((await runNode(convertToText, { value: ali }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: '"kamil"' });
+    expect((await runNode(jsonGetField, { json: text, path: "n[1]" })).outputs).toEqual({ value: J(2) });
+    expect((await runNode(jsonSetField, { json: text, path: "n[2]", value: J(3) })).outputs.json).toEqual(J({ ali: "kamil", n: [1, 2, 3] }));
+    const bad = await rejects(runNode(jsonGetField, { json: { text: "{ali:" }, path: "ali" }));
     expect(bad.code).toBe("json.invalid_json");
     expect(bad.message).toContain("is text that is not valid JSON");
-    expect((await runNode(jsonGetField, { json: "{ali:", path: "" })).outputs).toEqual({ value: "{ali:" });
   });
 
-  it("As text renders any JSON without failing", async () => {
-    expect((await runNode(convertToText, { value: { b: [1], a: "x" } }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: '{"a":"x","b":[1]}' });
-    expect((await runNode(convertToText, { value: "plain" }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "plain" });
+  it("As text gives a Json's text", async () => {
+    expect((await runNode(convertToText, { value: J({ b: [1], a: "x" }) }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: '{"b":[1],"a":"x"}' });
+    expect((await runNode(convertToText, { value: { text: "plain" } }, { typeBindings: { T: ir.json() } })).outputs).toEqual({ text: "plain" });
   });
 
   it("json inputs reject values that are not JSON", async () => {
     expect((await rejects(runNode(jsonGetField, { json: Number.NaN, path: "" }))).code).toBe("node.invalid_input");
+    expect((await rejects(runNode(jsonGetField, { json: { a: 1 }, path: "" }))).code).toBe("node.invalid_input");
   });
 });

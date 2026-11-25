@@ -40,7 +40,7 @@ describe("type.defineStruct", () => {
         name: "Scene",
         description: "A scene",
         fields: [
-          { name: "title", type: "text" },
+          { name: "title", type: "string" },
           { name: "count", type: "int", default: 3, description: "how many" },
           { name: "style", type: "ArtStyle" },
           { name: "cast", type: "list<Character?>" },
@@ -98,13 +98,13 @@ describe("type.defineStruct", () => {
 
   it("field names: invalid / reserved / duplicate → command.*_name", () => {
     const def = (fields: { name: string; type: string }[]): Command[] => [{ op: "type.defineStruct", scope: G, name: "X", fields }];
-    reject(richDoc(), def([{ name: "1x", type: "text" }]), "command.invalid_name", { message: msg.invalidName("1x") });
-    reject(richDoc(), def([{ name: "constructor", type: "text" }]), "command.reserved_name", { message: msg.reservedName("constructor") });
-    reject(richDoc(), def([{ name: "__proto__", type: "text" }]), "command.reserved_name");
+    reject(richDoc(), def([{ name: "1x", type: "string" }]), "command.invalid_name", { message: msg.invalidName("1x") });
+    reject(richDoc(), def([{ name: "constructor", type: "string" }]), "command.reserved_name", { message: msg.reservedName("constructor") });
+    reject(richDoc(), def([{ name: "__proto__", type: "string" }]), "command.reserved_name");
     reject(
       richDoc(),
       def([
-        { name: "a", type: "text" },
+        { name: "a", type: "string" },
         { name: "A", type: "int" },
       ]),
       "command.duplicate_name",
@@ -142,7 +142,7 @@ describe("type.defineStruct", () => {
     reject(richDoc(), [{ op: "type.defineStruct", scope: G, name: "X", fields: [{ name: "a", type: "int", default: "x" }] }], "type.invalid_default", {
       message: msg.invalidDefault,
     });
-    reject(richDoc(), [{ op: "type.defineStruct", scope: G, name: "X", fields: [{ name: "a", type: "list<text>[3..1]" }] }], "type.invalid_constraint");
+    reject(richDoc(), [{ op: "type.defineStruct", scope: G, name: "X", fields: [{ name: "a", type: "list<string>[3..1]" }] }], "type.invalid_constraint");
   });
 
   it("ids: invalid / duplicate in the type domain (global + all local)", () => {
@@ -361,7 +361,7 @@ describe("type.moveScope", () => {
 
 describe("type.field.add", () => {
   it("adds at an index; struct.make / struct.break gain the port in every flow", () => {
-    const r = accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "title", type: "text", default: "Sir", description: "Honorific", index: 1 }]);
+    const r = accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "title", type: "string", default: "Sir", description: "Honorific", index: 1 }]);
     expect(fieldNames(r.doc, "ty_char")).toEqual(["name", "title", "age", "style", "nickname"]);
     expect(structOf(r.doc, "ty_char").fields[1]).toEqual({ name: "title", type: ir.string(), default: "Sir", description: "Honorific" });
     expect(portsOf(r.doc, KIT, "n_make").inputs).toContain("title");
@@ -369,10 +369,10 @@ describe("type.field.add", () => {
   });
 
   it("index defaults to the end and is clamped to [0, n]", () => {
-    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "text?" }]).doc, "ty_char").at(-1)).toBe("z");
-    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "text?", index: 99 }]).doc, "ty_char").at(-1)).toBe("z");
-    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "text?", index: -4 }]).doc, "ty_char")[0]).toBe("z");
-    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "text", index: 1.5 }], "command.invalid_payload");
+    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "string?" }]).doc, "ty_char").at(-1)).toBe("z");
+    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "string?", index: 99 }]).doc, "ty_char").at(-1)).toBe("z");
+    expect(fieldNames(accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "string?", index: -4 }]).doc, "ty_char")[0]).toBe("z");
+    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "z", type: "string", index: 1.5 }], "command.invalid_payload");
   });
 
   it("a required field without default makes stored values soft-invalid", () => {
@@ -382,12 +382,12 @@ describe("type.field.add", () => {
   });
 
   it("an optional field keeps stored values valid", () => {
-    const r = accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "alias", type: "text?" }]);
+    const r = accept(richDoc(), [{ op: "type.field.add", typeId: "ty_char", name: "alias", type: "string?" }]);
     expect(diags(r.diagnostics, "global.invalid_value")).toEqual([]);
   });
 
   it("rejections", () => {
-    const add = (extra: Record<string, unknown>): Command[] => [{ op: "type.field.add", typeId: "ty_char", name: "x", type: "text", ...extra } as Command];
+    const add = (extra: Record<string, unknown>): Command[] => [{ op: "type.field.add", typeId: "ty_char", name: "x", type: "string", ...extra } as Command];
     reject(richDoc(), add({ name: "NAME" }), "command.duplicate_name", { message: msg.duplicateName("name") });
     reject(richDoc(), add({ name: "a-b" }), "command.invalid_name", { message: msg.invalidName("a-b") });
     reject(richDoc(), add({ name: "prototype" }), "command.reserved_name");
@@ -397,8 +397,8 @@ describe("type.field.add", () => {
     reject(richDoc(), add({ type: "Team" }), "type.recursive"); // Team → Character → Team
     reject(richDoc(), add({ type: "int", default: "x" }), "type.invalid_default", { message: msg.invalidDefault });
     reject(richDoc(), add({ type: "list<int>[5..2]" }), "type.invalid_constraint");
-    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_nope", name: "x", type: "text" }], "command.unknown_ref", { message: msg.unknownRef("type.field.add", "type", "ty_nope") });
-    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_style", name: "x", type: "text" }], "type.not_struct");
+    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_nope", name: "x", type: "string" }], "command.unknown_ref", { message: msg.unknownRef("type.field.add", "type", "ty_nope") });
+    reject(richDoc(), [{ op: "type.field.add", typeId: "ty_style", name: "x", type: "string" }], "type.not_struct");
   });
 
   it("a local struct resolves local types in shorthand", () => {
@@ -460,7 +460,7 @@ describe("type.field.rename", () => {
 
 describe("type.field.setType", () => {
   it("soft breakage: constants, globals, variables and the field default become diagnostics", () => {
-    const r = accept(richDoc(), [{ op: "type.field.setType", typeId: "ty_char", field: "age", type: "text" }]);
+    const r = accept(richDoc(), [{ op: "type.field.setType", typeId: "ty_char", field: "age", type: "string" }]);
     expect(structOf(r.doc, "ty_char").fields[1]!.type).toEqual(ir.string());
     expect(structOf(r.doc, "ty_char").fields[1]!.default).toBe(30);
     expect(diags(r.diagnostics, "node.invalid_value").some((d) => d.path.nodeId === "n_make")).toBe(true);
